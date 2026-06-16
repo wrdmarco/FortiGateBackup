@@ -1,0 +1,38 @@
+import { prisma } from "@/lib/db";
+import { decryptSecret, encryptSecret } from "@/lib/crypto";
+
+export async function getSetting(key: string, tenantId?: string | null) {
+  const setting = await prisma.systemSetting.findFirst({
+    where: { tenantId: tenantId ?? null, key }
+  });
+  if (!setting) return null;
+  return setting.encrypted ? decryptSecret(setting.value) : setting.value;
+}
+
+export async function setSetting(
+  key: string,
+  value: string,
+  options: { tenantId?: string | null; encrypted?: boolean } = {}
+) {
+  const encrypted = options.encrypted ?? false;
+  const existing = await prisma.systemSetting.findFirst({
+    where: { tenantId: options.tenantId ?? null, key }
+  });
+  if (existing) {
+    return prisma.systemSetting.update({
+      where: { id: existing.id },
+      data: {
+        value: encrypted ? encryptSecret(value) : value,
+        encrypted
+      }
+    });
+  }
+  return prisma.systemSetting.create({
+    data: {
+      tenantId: options.tenantId ?? null,
+      key,
+      value: encrypted ? encryptSecret(value) : value,
+      encrypted
+    }
+  });
+}

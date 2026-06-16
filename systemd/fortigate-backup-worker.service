@@ -1,0 +1,16 @@
+[Unit]
+Description=FortiGate Backup Portal Worker
+After=network.target fortigate-backup.service
+
+[Service]
+Type=simple
+User=fortigate-backup
+WorkingDirectory=/opt/fortigate-backup
+Environment=NODE_ENV=production
+EnvironmentFile=/opt/fortigate-backup/.env
+ExecStart=/usr/bin/pnpm run worker
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
