@@ -12,36 +12,44 @@ export async function Shell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen">
       <header className="border-b border-border bg-background">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-4">
-          <Link href="/" className="text-lg font-semibold">
+          <Link href={user ? "/" : "/login"} className="text-lg font-semibold">
             FortiGate Backup Portal
           </Link>
-          <nav className="flex flex-wrap gap-2 text-sm text-muted-foreground">
-            <Link className="rounded px-3 py-2 hover:bg-muted" href="/">
-              Dashboard
+          {user ? (
+            <>
+              <nav className="flex flex-wrap gap-2 text-sm text-muted-foreground">
+                <Link className="rounded px-3 py-2 hover:bg-muted" href="/">
+                  Dashboard
+                </Link>
+                <Link className="rounded px-3 py-2 hover:bg-muted" href="/customers">
+                  Klanten
+                </Link>
+                <Link className="rounded px-3 py-2 hover:bg-muted" href="/fortigates">
+                  FortiGates
+                </Link>
+                <Link className="rounded px-3 py-2 hover:bg-muted" href="/backups">
+                  Backups
+                </Link>
+                {canManageTenants ? (
+                  <Link className="rounded px-3 py-2 hover:bg-muted" href="/tenants">
+                    Tenants
+                  </Link>
+                ) : null}
+                <Link className="rounded px-3 py-2 hover:bg-muted" href="/settings">
+                  Instellingen
+                </Link>
+              </nav>
+              <form action={logoutAction}>
+                <button className="rounded px-3 py-2 text-sm text-muted-foreground hover:bg-muted">
+                  Uitloggen
+                </button>
+              </form>
+            </>
+          ) : (
+            <Link className="rounded px-3 py-2 text-sm text-muted-foreground hover:bg-muted" href="/login">
+              Inloggen
             </Link>
-            <Link className="rounded px-3 py-2 hover:bg-muted" href="/customers">
-              Klanten
-            </Link>
-            <Link className="rounded px-3 py-2 hover:bg-muted" href="/fortigates">
-              FortiGates
-            </Link>
-            <Link className="rounded px-3 py-2 hover:bg-muted" href="/backups">
-              Backups
-            </Link>
-            {canManageTenants ? (
-              <Link className="rounded px-3 py-2 hover:bg-muted" href="/tenants">
-                Tenants
-              </Link>
-            ) : null}
-            <Link className="rounded px-3 py-2 hover:bg-muted" href="/settings">
-              Instellingen
-            </Link>
-          </nav>
-          <form action={logoutAction}>
-            <button className="rounded px-3 py-2 text-sm text-muted-foreground hover:bg-muted">
-              Uitloggen
-            </button>
-          </form>
+          )}
         </div>
       </header>
       <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>

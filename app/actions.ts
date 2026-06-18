@@ -12,8 +12,29 @@ import { createSession, destroySession } from "@/lib/session";
 import { setSetting } from "@/lib/settings";
 import { customerSchema, fortigateSchema, tenantSchema } from "@/lib/validators";
 
+const loginAttempts = new Map<string, { count: number; lockedUntil: number }>();
+
 function bool(value: FormDataEntryValue | null) {
   return value === "on" || value === "true";
+}
+
+function checkLoginThrottle(email: string) {
+  const now = Date.now();
+  const attempt = loginAttempts.get(email);
+  if (attempt?.lockedUntil && attempt.lockedUntil > now) {
+    throw new Error("Te veel mislukte pogingen. Probeer het later opnieuw.");
+  }
+}
+
+function recordLoginFailure(email: string) {
+  const now = Date.now();
+  const attempt = loginAttempts.get(email);
+  const lockExpired = attempt?.lockedUntil ? attempt.lockedUntil < now : false;
+  const count = attempt && !lockExpired ? attempt.count + 1 : 1;
+  loginAttempts.set(email, {
+    count,
+    lockedUntil: count >= 5 ? now + 1000 * 60 * 15 : 0
+  });
 }
 
 export async function createTenant(formData: FormData) {
@@ -109,12 +130,21 @@ export async function setTenantActive(formData: FormData) {
 export async function loginAction(formData: FormData) {
   const email = String(formData.get("email") ?? "").toLowerCase();
   const password = String(formData.get("password") ?? "");
-  const user = await prisma.user.findUnique({ where: { email } });
+  checkLoginThrottle(email);
+  const user = await prisma.user.findUnique({ where: { email }, include: { tenant: true } });
   if (!user?.passwordHash || !user.active) {
+    recordLoginFailure(email);
     throw new Error("Ongeldige inloggegevens.");
   }
   const valid = await bcrypt.compare(password, user.passwordHash);
-  if (!valid) throw new Error("Ongeldige inloggegevens.");
+  if (!valid) {
+    recordLoginFailure(email);
+    throw new Error("Ongeldige inloggegevens.");
+  }
+  if (!isSuperAdmin(user) && !user.tenant?.active) {
+    throw new Error("Deze tenant is niet actief.");
+  }
+  loginAttempts.delete(email);
   await createSession(user.id);
   await auditLog({ action: "auth.login", tenantId: user.tenantId, userId: user.id, entity: "User", entityId: user.id });
   redirect("/");

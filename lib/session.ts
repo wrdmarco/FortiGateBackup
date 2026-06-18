@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { UserRole } from "@prisma/client";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
@@ -7,6 +8,11 @@ import { sessionCookieName } from "@/lib/session-cookie";
 export async function createSession(userId: string) {
   const token = crypto.randomBytes(32).toString("hex");
   const expires = new Date(Date.now() + 1000 * 60 * 60 * 24 * 14);
+  await prisma.session.deleteMany({
+    where: {
+      OR: [{ userId }, { expires: { lt: new Date() } }]
+    }
+  });
   await prisma.session.create({ data: { userId, sessionToken: token, expires } });
   const cookieStore = await cookies();
   cookieStore.set(sessionCookieName, token, {
@@ -31,9 +37,10 @@ export async function currentUser() {
   if (!token) return null;
   const session = await prisma.session.findUnique({
     where: { sessionToken: token },
-    include: { user: true }
+    include: { user: { include: { tenant: true } } }
   });
   if (!session || session.expires < new Date() || !session.user.active) return null;
+  if (session.user.role !== UserRole.SUPER_ADMIN && !session.user.tenant?.active) return null;
   return session.user;
 }
 

@@ -17,5 +17,11 @@ export async function POST(request: NextRequest) {
     encrypted: body.encrypted ?? false
   });
   await auditLog({ action: "settings.updated", tenantId, userId: user.id });
-  return NextResponse.json(setting);
+  return NextResponse.json({
+    id: setting.id,
+    tenantId: setting.tenantId,
+    key: setting.key,
+    encrypted: setting.encrypted,
+    updatedAt: setting.updatedAt
+  });
 }

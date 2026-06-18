@@ -18,7 +18,11 @@ export async function GET(
   if (!backup.filename) {
     return NextResponse.json({ error: "No backup file stored for this record." }, { status: 404 });
   }
-  const fullPath = path.join(process.cwd(), backup.filename);
+  const backupRoot = path.resolve(process.cwd(), "data", "backups");
+  const fullPath = path.resolve(process.cwd(), backup.filename);
+  if (!fullPath.startsWith(`${backupRoot}${path.sep}`)) {
+    return NextResponse.json({ error: "Invalid backup path." }, { status: 400 });
+  }
   const content = await readFile(fullPath);
   return new NextResponse(content, {
     headers: {

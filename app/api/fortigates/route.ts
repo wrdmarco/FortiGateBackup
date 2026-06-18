@@ -5,11 +5,35 @@ import { encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 import { fortigateSchema } from "@/lib/validators";
 
+const fortigateSelect = {
+  id: true,
+  customerId: true,
+  hostname: true,
+  serialNumber: true,
+  model: true,
+  firmwareVersion: true,
+  firmwareBuild: true,
+  uptime: true,
+  managementUrl: true,
+  httpsPort: true,
+  tlsVerify: true,
+  vdom: true,
+  scheduleType: true,
+  cronExpression: true,
+  nextRunAt: true,
+  lastCheckedAt: true,
+  active: true,
+  createdAt: true,
+  updatedAt: true,
+  customer: true,
+  backups: { orderBy: { createdAt: "desc" as const }, take: 1 }
+};
+
 export async function GET() {
   const user = await requireTenantUser();
   const devices = await prisma.fortiGate.findMany({
     where: isSuperAdmin(user) ? {} : { customer: { tenantId: user.tenantId ?? "" } },
-    include: { customer: true, backups: { orderBy: { createdAt: "desc" }, take: 1 } },
+    select: fortigateSelect,
     orderBy: { createdAt: "desc" }
   });
   return NextResponse.json(devices);
@@ -31,7 +55,7 @@ export async function POST(request: NextRequest) {
       scheduleType: data.scheduleType,
       cronExpression: data.cronExpression
     },
-    include: { customer: true }
+    select: fortigateSelect
   });
   await auditLog({
     action: "fortigate.created",
