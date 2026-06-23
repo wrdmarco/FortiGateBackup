@@ -4,7 +4,8 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   experimental: {
     serverActions: {
-      bodySizeLimit: "2mb"
+      bodySizeLimit: "2mb",
+      allowedOrigins: ["firewallbackup.wrdmarco.nl", "localhost:3000", "127.0.0.1:3000"]
     }
   },
   async headers() {

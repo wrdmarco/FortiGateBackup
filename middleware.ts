@@ -8,13 +8,27 @@ function isPublicPath(pathname: string) {
   return publicPaths.some((path) => pathname === path || pathname.startsWith(`${path}/`));
 }
 
+function requestHosts(request: NextRequest) {
+  const forwardedHosts =
+    request.headers
+      .get("x-forwarded-host")
+      ?.split(",")
+      .map((host) => host.trim().toLowerCase())
+      .filter(Boolean) ?? [];
+  return new Set([
+    request.nextUrl.host.toLowerCase(),
+    request.headers.get("host")?.toLowerCase(),
+    ...forwardedHosts
+  ].filter(Boolean));
+}
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   if (unsafeMethods.has(request.method)) {
     const origin = request.headers.get("origin");
     if (origin) {
       try {
-        if (new URL(origin).host !== request.nextUrl.host) {
+        if (!requestHosts(request).has(new URL(origin).host.toLowerCase())) {
           return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
         }
       } catch {
