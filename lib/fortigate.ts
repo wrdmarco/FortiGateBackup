@@ -18,7 +18,16 @@ type FortiGateSystemStatus = {
 
 type RequestOptions = {
   headers: Record<string, string>;
+  method?: "GET" | "POST";
   rejectUnauthorized?: boolean;
+};
+
+type BackupAttempt = {
+  method: "GET" | "POST";
+  endpoint: string;
+  scope: "global" | "vdom";
+  destination: boolean;
+  vdom?: string | null;
 };
 
 function baseUrl(device: FortiGate) {
@@ -55,7 +64,7 @@ function requestBuffer(url: URL, options: RequestOptions) {
     const req = request(
       url,
       {
-        method: "GET",
+        method: options.method ?? "GET",
         headers: options.headers,
         rejectUnauthorized: options.rejectUnauthorized,
         timeout: 30000
@@ -88,33 +97,89 @@ function networkErrorMessage(error: unknown, endpoint: string) {
   return `FortiGate API request failed for ${endpoint}: ${error.message}.${cause}`;
 }
 
-function backupEndpoint(device: FortiGate) {
-  const query = new URLSearchParams({ destination: "file" });
-  if (device.vdom) {
+function backupEndpoint(scope: "global" | "vdom", options?: { destination?: boolean; vdom?: string | null }) {
+  const query = new URLSearchParams();
+  if (options?.destination) query.set("destination", "file");
+  query.set("scope", scope);
+  if (scope === "vdom" && options?.vdom) {
     query.set("scope", "vdom");
-    query.set("vdom", device.vdom);
-  } else {
-    query.set("scope", "global");
+    query.set("vdom", options.vdom);
   }
   return `/api/v2/monitor/system/config/backup?${query.toString()}`;
 }
 
-async function fortigateFetch(device: FortiGate, endpoint: string) {
+function backupAttempts(device: FortiGate): BackupAttempt[] {
+  const scopes: Array<{ scope: "global" | "vdom"; vdom?: string | null }> = device.vdom
+    ? [{ scope: "vdom", vdom: device.vdom }, { scope: "global" }]
+    : [{ scope: "global" }];
+  const attempts: BackupAttempt[] = [];
+  for (const { scope, vdom } of scopes) {
+    for (const destination of [true, false]) {
+      for (const method of ["GET", "POST"] as const) {
+        attempts.push({
+          method,
+          endpoint: backupEndpoint(scope, { destination, vdom }),
+          scope,
+          destination,
+          vdom
+        });
+      }
+    }
+  }
+  return attempts;
+}
+
+async function fortigateFetch(device: FortiGate, endpoint: string, method: "GET" | "POST" = "GET") {
   const token = decryptSecret(device.apiTokenEncrypted);
   const url = new URL(`${baseUrl(device)}${endpoint}`);
   let response: Response;
   try {
     response = await requestBuffer(url, {
       headers: { Authorization: `Bearer ${token}` },
+      method,
       rejectUnauthorized: device.tlsVerify
     });
   } catch (error) {
     throw new Error(networkErrorMessage(error, endpoint));
   }
   if (!response.ok) {
-    throw new Error(`FortiGate API returned ${response.status} for ${endpoint}.`);
+    const body = (await response.text()).slice(0, 500).trim();
+    throw new Error(
+      `FortiGate API returned ${response.status} for ${method} ${endpoint}.${body ? ` Body: ${body}` : ""}`
+    );
   }
   return response;
+}
+
+async function fetchBackupConfig(device: FortiGate) {
+  const failures: string[] = [];
+  for (const attempt of backupAttempts(device)) {
+    await writeFortiGateLog(
+      device.id,
+      FortiGateLogLevel.INFO,
+      "backup.fetch_config",
+      "Configuratie ophalen bij FortiGate.",
+      attempt
+    );
+    try {
+      const response = await fortigateFetch(device, attempt.endpoint, attempt.method);
+      return {
+        attempt,
+        config: Buffer.from(await response.arrayBuffer())
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Onbekende FortiGate backup fout.";
+      failures.push(`${attempt.method} ${attempt.endpoint} -> ${message}`);
+      await writeFortiGateLog(
+        device.id,
+        FortiGateLogLevel.WARN,
+        "backup.fetch_config_failed",
+        message,
+        attempt
+      );
+    }
+  }
+  throw new Error(`Alle FortiGate backup endpoint pogingen zijn mislukt. ${failures.join(" | ")}`);
 }
 
 export async function refreshFortiGateInventory(deviceId: string) {
@@ -211,23 +276,13 @@ export async function runBackup(deviceId: string) {
       "Backup gestart."
     );
     await refreshFortiGateInventory(device.id);
-    const scope = device.vdom ? "vdom" : "global";
-    const endpoint = backupEndpoint(device);
-    await writeFortiGateLog(
-      device.id,
-      FortiGateLogLevel.INFO,
-      "backup.fetch_config",
-      "Configuratie ophalen bij FortiGate.",
-      { destination: "file", scope, vdom: device.vdom, endpoint }
-    );
-    const response = await fortigateFetch(device, endpoint);
-    const config = Buffer.from(await response.arrayBuffer());
+    const { attempt, config } = await fetchBackupConfig(device);
     await writeFortiGateLog(
       device.id,
       FortiGateLogLevel.INFO,
       "backup.config_received",
       "Configuratie ontvangen.",
-      { bytes: config.byteLength }
+      { bytes: config.byteLength, attempt }
     );
     const digest = sha256(config);
     const latest = await prisma.backup.findFirst({
