@@ -21,7 +21,7 @@ export const fortigateSchema = z.object({
   managementUrl: z.string().url(),
   httpsPort: z.coerce.number().int().min(1).max(65535).default(443),
   apiToken: z.string().min(8),
-  tlsVerify: z.boolean().default(true),
+  tlsVerify: z.boolean().default(false),
   vdom: z.string().optional(),
   scheduleType: z.enum(["HOURLY", "DAILY", "WEEKLY", "MONTHLY", "CRON"]).default("DAILY"),
   cronExpression: z.string().optional()

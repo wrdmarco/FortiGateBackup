@@ -100,7 +100,7 @@ export default async function FortiGatesPage({
               name="tlsVerify"
               type="checkbox"
               value="true"
-              defaultChecked={editDevice?.tlsVerify ?? true}
+              defaultChecked={editDevice?.tlsVerify ?? false}
             />
             TLS verify
           </label>

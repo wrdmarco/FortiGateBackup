@@ -138,7 +138,7 @@ model FortiGate {
   managementUrl     String
   httpsPort         Int              @default(443)
   apiTokenEncrypted String
-  tlsVerify         Boolean          @default(true)
+  tlsVerify         Boolean          @default(false)
   vdom              String?
   scheduleType      ScheduleType     @default(DAILY)
   cronExpression    String?
