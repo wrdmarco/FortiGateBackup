@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { runBackupAction } from "@/app/actions";
+import { FirmwareStatus } from "@/components/firmware-status";
 import { Button, Card, Shell } from "@/components/ui";
 import { assertTenantAccess, requireTenantUser } from "@/lib/authz";
 import { prisma } from "@/lib/db";
@@ -93,7 +94,10 @@ export default async function CustomerDetailPage({
                     </td>
                     <td className="px-3 py-2">{device.model ?? "-"}</td>
                     <td className="px-3 py-2">
-                      {[device.firmwareVersion, device.firmwareBuild].filter(Boolean).join(" ") || "-"}
+                      <div className="grid gap-2">
+                        <span>{[device.firmwareVersion, device.firmwareBuild].filter(Boolean).join(" ") || "-"}</span>
+                        <FirmwareStatus version={device.firmwareVersion} />
+                      </div>
                     </td>
                     <td className="px-3 py-2">{device.tlsVerify ? "Aan" : "Uit"}</td>
                     <td className="max-w-[360px] px-3 py-2">

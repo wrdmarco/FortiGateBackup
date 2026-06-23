@@ -11,6 +11,7 @@ Productiegericht MSP-portaal voor centraal beheer van FortiGate configuratieback
 - Lokale login met beveiligde sessiecookies
 - FortiGate REST API backupflow met SHA256-deduplicatie
 - Firmwarehistorie, audit logging en per-FortiGate backuplogs
+- Online FortiOS firmwarecheck tegen Fortinet Document Library release notes
 - SMTP en Microsoft Graph mailconfiguratie via database-instellingen
 - Health endpoint voor monitoring
 - Systemd services voor webapp en scheduler-worker

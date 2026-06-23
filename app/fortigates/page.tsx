@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createFortiGate, deleteFortiGate, runBackupAction, updateFortiGate } from "@/app/actions";
+import { FirmwareStatus } from "@/components/firmware-status";
 import { Button, Field, Shell } from "@/components/ui";
 import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
@@ -149,7 +150,10 @@ export default async function FortiGatesPage({
                     </td>
                     <td className="px-3 py-2">{device.model ?? "-"}</td>
                     <td className="px-3 py-2">
-                      {[device.firmwareVersion, device.firmwareBuild].filter(Boolean).join(" ") || "-"}
+                      <div className="grid gap-2">
+                        <span>{[device.firmwareVersion, device.firmwareBuild].filter(Boolean).join(" ") || "-"}</span>
+                        <FirmwareStatus version={device.firmwareVersion} />
+                      </div>
                     </td>
                     <td className="px-3 py-2">{device.backups[0]?.status ?? "nog niet uitgevoerd"}</td>
                     <td className="max-w-[360px] px-3 py-2">
