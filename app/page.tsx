@@ -41,7 +41,7 @@ export default async function DashboardPage() {
         <Card title="FortiGates" value={fortigates} />
         <Card title="Backups" value={backups} detail={`${changed} gewijzigd`} />
         <Card title="Fouten" value={failures} />
-        <Card title="Versie" value="0.1.1" detail="Applicatie" />
+        <Card title="Versie" value="0.1.2" detail="Applicatie" />
       </div>
       <section className="mt-8">
         <h2 className="mb-3 text-xl font-semibold">Recente activiteiten</h2>
