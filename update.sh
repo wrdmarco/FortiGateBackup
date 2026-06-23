@@ -8,6 +8,8 @@ RELEASE_STAMP="$(date +%Y%m%d%H%M%S)"
 BACKUP_NAME="release-$RELEASE_STAMP.tar.gz"
 BACKUP_DIR="data/self-backups"
 TMP_BACKUP="/tmp/fortigate-backup-$BACKUP_NAME"
+HEALTH_RETRIES="${HEALTH_RETRIES:-30}"
+HEALTH_DELAY="${HEALTH_DELAY:-2}"
 
 cd "$APP_DIR"
 sudo -u "$SERVICE_USER" mkdir -p "$BACKUP_DIR"
@@ -27,5 +29,16 @@ sudo -u "$SERVICE_USER" pnpm install --frozen-lockfile
 sudo -u "$SERVICE_USER" pnpm prisma migrate deploy
 sudo -u "$SERVICE_USER" pnpm run build
 sudo systemctl restart fortigate-backup fortigate-backup-worker
-sudo -u "$SERVICE_USER" pnpm run health
+for attempt in $(seq 1 "$HEALTH_RETRIES"); do
+  if sudo -u "$SERVICE_USER" pnpm run health; then
+    echo "Health check passed."
+    break
+  fi
+  if [ "$attempt" -eq "$HEALTH_RETRIES" ]; then
+    echo "Health check failed after $HEALTH_RETRIES attempts." >&2
+    exit 1
+  fi
+  echo "Waiting for application health check ($attempt/$HEALTH_RETRIES)..."
+  sleep "$HEALTH_DELAY"
+done
 echo "Update complete."

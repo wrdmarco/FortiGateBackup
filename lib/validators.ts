@@ -26,3 +26,7 @@ export const fortigateSchema = z.object({
   scheduleType: z.enum(["HOURLY", "DAILY", "WEEKLY", "MONTHLY", "CRON"]).default("DAILY"),
   cronExpression: z.string().optional()
 });
+
+export const fortigateUpdateSchema = fortigateSchema.omit({ apiToken: true }).extend({
+  apiToken: z.string().min(8).optional().or(z.literal(""))
+});

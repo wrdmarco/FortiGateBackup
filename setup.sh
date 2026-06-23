@@ -29,6 +29,59 @@ set_env_if_blank() {
   fi
 }
 
+set_env_value() {
+  local key="$1"
+  local value="$2"
+  local env_file="$APP_DIR/.env"
+
+  if sudo grep -Eq "^${key}=" "$env_file"; then
+    sudo awk -v key="$key" -v value="$value" '
+      BEGIN { replacement = key "=\"" value "\"" }
+      $0 ~ "^" key "=" { print replacement; next }
+      { print }
+    ' "$env_file" | sudo tee "$env_file.tmp" >/dev/null
+    sudo mv "$env_file.tmp" "$env_file"
+  else
+    printf '%s="%s"\n' "$key" "$value" | sudo tee -a "$env_file" >/dev/null
+  fi
+}
+
+normalize_server_url() {
+  local value="$1"
+  value="${value%/}"
+  if [ -z "$value" ]; then
+    echo ""
+    return
+  fi
+  case "$value" in
+    https://*) echo "$value" ;;
+    http://*) echo "https://${value#http://}" ;;
+    *) echo "https://$value" ;;
+  esac
+}
+
+prompt_server_url() {
+  local env_file="$APP_DIR/.env"
+  local current
+  local requested
+
+  current="$(sudo sed -n 's/^SERVER_URL=//p' "$env_file" | tail -n 1 | sed 's/^"//; s/"$//')"
+  if [ -n "${SERVER_URL:-}" ]; then
+    requested="$SERVER_URL"
+  elif [ -t 0 ]; then
+    if [ -n "$current" ]; then
+      read -r -p "Publieke server URL [$current]: " requested
+      requested="${requested:-$current}"
+    else
+      read -r -p "Publieke server URL (bijv. firewallbackup.example.nl): " requested
+    fi
+  else
+    requested="$current"
+  fi
+
+  set_env_value "SERVER_URL" "$(normalize_server_url "$requested")"
+}
+
 if [ ! -f package.json ]; then
   echo "Run setup.sh from the APP directory."
   exit 1
@@ -50,10 +103,10 @@ fi
 
 set_env_if_blank "NEXTAUTH_SECRET" "$(generate_secret)"
 set_env_if_blank "ENCRYPTION_KEY" "$(generate_secret)"
-set_env_if_blank "SERVER_URL" ""
+prompt_server_url
 sudo chown "$SERVICE_USER":"$SERVICE_USER" "$APP_DIR/.env"
 sudo chmod 600 "$APP_DIR/.env"
-echo "Generated missing NEXTAUTH_SECRET and ENCRYPTION_KEY values in $APP_DIR/.env."
+echo "Updated SERVER_URL and generated missing NEXTAUTH_SECRET and ENCRYPTION_KEY values in $APP_DIR/.env."
 
 cd "$APP_DIR"
 sudo -u "$SERVICE_USER" corepack enable
@@ -66,4 +119,9 @@ sudo cp systemd/fortigate-backup-worker.service /etc/systemd/system/fortigate-ba
 sudo systemctl daemon-reload
 sudo systemctl enable --now fortigate-backup fortigate-backup-worker
 
-echo "Setup complete. Open http://localhost:3000/setup"
+FINAL_SERVER_URL="$(sudo sed -n 's/^SERVER_URL=//p' "$APP_DIR/.env" | tail -n 1 | sed 's/^"//; s/"$//')"
+if [ -n "$FINAL_SERVER_URL" ]; then
+  echo "Setup complete. Open $FINAL_SERVER_URL/setup"
+else
+  echo "Setup complete. Open http://localhost:3000/setup"
+fi

@@ -40,7 +40,7 @@ SERVER_URL=""
 
 Tijdens `setup.sh` worden lege of ontbrekende waarden voor `NEXTAUTH_SECRET` en `ENCRYPTION_KEY` automatisch veilig gegenereerd. Bestaande waarden worden niet overschreven.
 
-Gebruik `SERVER_URL` wanneer de app achter een reverse proxy op een publieke host draait:
+Tijdens setup wordt gevraagd naar de publieke server-URL. Als je alleen een domeinnaam invult, wordt automatisch `https://` toegevoegd en wordt de waarde direct in `.env` opgeslagen. Gebruik `SERVER_URL` wanneer de app achter een reverse proxy op een publieke host draait:
 
 ```bash
 SERVER_URL="https://portal.example.nl"

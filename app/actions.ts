@@ -10,7 +10,7 @@ import { prisma } from "@/lib/db";
 import { runBackup } from "@/lib/fortigate";
 import { createSession, destroySession } from "@/lib/session";
 import { setSetting } from "@/lib/settings";
-import { customerSchema, fortigateSchema, tenantSchema } from "@/lib/validators";
+import { customerSchema, fortigateSchema, fortigateUpdateSchema, tenantSchema } from "@/lib/validators";
 
 const loginAttempts = new Map<string, { count: number; lockedUntil: number }>();
 
@@ -211,6 +211,77 @@ export async function createFortiGate(formData: FormData) {
     entityId: device.id
   });
   revalidatePath("/fortigates");
+}
+
+export async function updateFortiGate(formData: FormData) {
+  const user = await requireTenantUser();
+  const id = String(formData.get("id"));
+  const existing = await prisma.fortiGate.findUniqueOrThrow({
+    where: { id },
+    include: { customer: true }
+  });
+  assertTenantAccess(user, existing.customer.tenantId);
+  const parsed = fortigateUpdateSchema.parse({
+    customerId: formData.get("customerId"),
+    managementUrl: formData.get("managementUrl"),
+    httpsPort: formData.get("httpsPort"),
+    apiToken: formData.get("apiToken") || undefined,
+    tlsVerify: bool(formData.get("tlsVerify")),
+    vdom: formData.get("vdom") || undefined,
+    scheduleType: formData.get("scheduleType") || "DAILY",
+    cronExpression: formData.get("cronExpression") || undefined
+  });
+  const customer = await prisma.customer.findUniqueOrThrow({ where: { id: parsed.customerId } });
+  assertTenantAccess(user, customer.tenantId);
+
+  const device = await prisma.fortiGate.update({
+    where: { id },
+    data: {
+      customerId: parsed.customerId,
+      managementUrl: parsed.managementUrl,
+      httpsPort: parsed.httpsPort,
+      ...(parsed.apiToken ? { apiTokenEncrypted: encryptSecret(parsed.apiToken) } : {}),
+      tlsVerify: parsed.tlsVerify,
+      vdom: parsed.vdom,
+      scheduleType: parsed.scheduleType,
+      cronExpression: parsed.cronExpression
+    },
+    include: { customer: true }
+  });
+  await auditLog({
+    action: "fortigate.updated",
+    tenantId: device.customer.tenantId,
+    entity: "FortiGate",
+    entityId: device.id,
+    metadata: { tokenUpdated: Boolean(parsed.apiToken) }
+  });
+  revalidatePath("/fortigates");
+  redirect("/fortigates");
+}
+
+export async function deleteFortiGate(formData: FormData) {
+  const user = await requireTenantUser();
+  const id = String(formData.get("id"));
+  const device = await prisma.fortiGate.findUniqueOrThrow({
+    where: { id },
+    include: { customer: true }
+  });
+  assertTenantAccess(user, device.customer.tenantId);
+  await auditLog({
+    action: "fortigate.deleted",
+    tenantId: device.customer.tenantId,
+    entity: "FortiGate",
+    entityId: device.id,
+    metadata: {
+      customerId: device.customerId,
+      managementUrl: device.managementUrl,
+      hostname: device.hostname,
+      serialNumber: device.serialNumber
+    }
+  });
+  await prisma.fortiGate.delete({ where: { id } });
+  revalidatePath("/fortigates");
+  revalidatePath("/backups");
 }
 
 export async function runBackupAction(formData: FormData) {
