@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_DIR="${APP_DIR:-/opt/fortigate-backup}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_DIR="${APP_DIR:-$SCRIPT_DIR}"
 SERVICE_USER="${SERVICE_USER:-fortigate-backup}"
 RELEASE_STAMP="$(date +%Y%m%d%H%M%S)"
 BACKUP_NAME="release-$RELEASE_STAMP.tar.gz"
