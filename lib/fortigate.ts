@@ -88,6 +88,17 @@ function networkErrorMessage(error: unknown, endpoint: string) {
   return `FortiGate API request failed for ${endpoint}: ${error.message}.${cause}`;
 }
 
+function backupEndpoint(device: FortiGate) {
+  const query = new URLSearchParams({ destination: "file" });
+  if (device.vdom) {
+    query.set("scope", "vdom");
+    query.set("vdom", device.vdom);
+  } else {
+    query.set("scope", "global");
+  }
+  return `/api/v2/monitor/system/config/backup?${query.toString()}`;
+}
+
 async function fortigateFetch(device: FortiGate, endpoint: string) {
   const token = decryptSecret(device.apiTokenEncrypted);
   const url = new URL(`${baseUrl(device)}${endpoint}`);
@@ -200,18 +211,16 @@ export async function runBackup(deviceId: string) {
       "Backup gestart."
     );
     await refreshFortiGateInventory(device.id);
-    const scope = device.vdom ? `vdom&vdom=${encodeURIComponent(device.vdom)}` : "global";
+    const scope = device.vdom ? "vdom" : "global";
+    const endpoint = backupEndpoint(device);
     await writeFortiGateLog(
       device.id,
       FortiGateLogLevel.INFO,
       "backup.fetch_config",
       "Configuratie ophalen bij FortiGate.",
-      { scope: device.vdom ? "vdom" : "global", vdom: device.vdom }
+      { destination: "file", scope, vdom: device.vdom, endpoint }
     );
-    const response = await fortigateFetch(
-      device,
-      `/api/v2/monitor/system/config/backup?scope=${scope}`
-    );
+    const response = await fortigateFetch(device, endpoint);
     const config = Buffer.from(await response.arrayBuffer());
     await writeFortiGateLog(
       device.id,
