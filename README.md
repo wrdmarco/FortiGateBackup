@@ -29,15 +29,22 @@ Productiegericht MSP-portaal voor centraal beheer van FortiGate configuratieback
 
 ## Configuratie
 
-Alle applicatie-instellingen worden in de database beheerd. Alleen deze waarden horen in `.env`:
+Alle applicatie-instellingen worden in de database beheerd. Alleen technische bootstrap- en deploymentwaarden horen in `.env`:
 
 ```bash
 DATABASE_URL="file:../data/app.db"
 NEXTAUTH_SECRET=""
 ENCRYPTION_KEY=""
+SERVER_ACTION_ALLOWED_ORIGINS=""
 ```
 
 Tijdens `setup.sh` worden lege of ontbrekende waarden voor `NEXTAUTH_SECRET` en `ENCRYPTION_KEY` automatisch veilig gegenereerd. Bestaande waarden worden niet overschreven.
+
+Gebruik `SERVER_ACTION_ALLOWED_ORIGINS` wanneer de app achter een reverse proxy op een publieke host draait. Vul alleen hostnamen in, zonder protocol. Meerdere hosts scheid je met komma's:
+
+```bash
+SERVER_ACTION_ALLOWED_ORIGINS="portal.example.nl,backup.example.nl"
+```
 
 ## Installatie
 

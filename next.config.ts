@@ -1,11 +1,22 @@
 import type { NextConfig } from "next";
 
+function csvEnv(name: string) {
+  return (process.env[name] ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+const serverActionAllowedOrigins = csvEnv("SERVER_ACTION_ALLOWED_ORIGINS");
+
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   experimental: {
     serverActions: {
       bodySizeLimit: "2mb",
-      allowedOrigins: ["firewallbackup.wrdmarco.nl", "localhost:3000", "127.0.0.1:3000"]
+      ...(serverActionAllowedOrigins.length
+        ? { allowedOrigins: serverActionAllowedOrigins }
+        : {})
     }
   },
   async headers() {
