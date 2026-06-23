@@ -50,7 +50,7 @@ fi
 
 set_env_if_blank "NEXTAUTH_SECRET" "$(generate_secret)"
 set_env_if_blank "ENCRYPTION_KEY" "$(generate_secret)"
-set_env_if_blank "SERVER_ACTION_ALLOWED_ORIGINS" ""
+set_env_if_blank "SERVER_URL" ""
 sudo chown "$SERVICE_USER":"$SERVICE_USER" "$APP_DIR/.env"
 sudo chmod 600 "$APP_DIR/.env"
 echo "Generated missing NEXTAUTH_SECRET and ENCRYPTION_KEY values in $APP_DIR/.env."

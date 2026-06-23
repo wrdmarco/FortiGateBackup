@@ -1,22 +1,23 @@
 import type { NextConfig } from "next";
 
-function csvEnv(name: string) {
-  return (process.env[name] ?? "")
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
+function serverUrlHost() {
+  const value = process.env.SERVER_URL?.trim();
+  if (!value) return null;
+  try {
+    return new URL(value.includes("://") ? value : `https://${value}`).host;
+  } catch {
+    throw new Error("SERVER_URL must be a valid URL or hostname.");
+  }
 }
 
-const serverActionAllowedOrigins = csvEnv("SERVER_ACTION_ALLOWED_ORIGINS");
+const serverHost = serverUrlHost();
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   experimental: {
     serverActions: {
       bodySizeLimit: "2mb",
-      ...(serverActionAllowedOrigins.length
-        ? { allowedOrigins: serverActionAllowedOrigins }
-        : {})
+      ...(serverHost ? { allowedOrigins: [serverHost] } : {})
     }
   },
   async headers() {

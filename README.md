@@ -35,15 +35,15 @@ Alle applicatie-instellingen worden in de database beheerd. Alleen technische bo
 DATABASE_URL="file:../data/app.db"
 NEXTAUTH_SECRET=""
 ENCRYPTION_KEY=""
-SERVER_ACTION_ALLOWED_ORIGINS=""
+SERVER_URL=""
 ```
 
 Tijdens `setup.sh` worden lege of ontbrekende waarden voor `NEXTAUTH_SECRET` en `ENCRYPTION_KEY` automatisch veilig gegenereerd. Bestaande waarden worden niet overschreven.
 
-Gebruik `SERVER_ACTION_ALLOWED_ORIGINS` wanneer de app achter een reverse proxy op een publieke host draait. Vul alleen hostnamen in, zonder protocol. Meerdere hosts scheid je met komma's:
+Gebruik `SERVER_URL` wanneer de app achter een reverse proxy op een publieke host draait:
 
 ```bash
-SERVER_ACTION_ALLOWED_ORIGINS="portal.example.nl,backup.example.nl"
+SERVER_URL="https://portal.example.nl"
 ```
 
 ## Installatie
