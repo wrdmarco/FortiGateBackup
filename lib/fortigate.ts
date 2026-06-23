@@ -7,15 +7,6 @@ import { auditLog } from "@/lib/audit";
 import { decryptSecret, sha256 } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 
-type FortiGateSystemStatus = {
-  hostname?: string;
-  serial?: string;
-  model?: string;
-  version?: string;
-  build?: string | number;
-  uptime?: string;
-};
-
 type RequestOptions = {
   headers: Record<string, string>;
   method?: "GET" | "POST";
@@ -129,6 +120,108 @@ function backupAttempts(device: FortiGate): BackupAttempt[] {
   return attempts;
 }
 
+function objectValue(record: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number") return String(value);
+  }
+  return undefined;
+}
+
+function normalizeSystemStatus(payload: unknown) {
+  const root = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
+  const results = root.results;
+  const status =
+    Array.isArray(results)
+      ? results.find((item) => item && typeof item === "object")
+      : results && typeof results === "object"
+        ? results
+        : root;
+  const record = status && typeof status === "object" ? (status as Record<string, unknown>) : {};
+
+  return {
+    keys: Object.keys(record).sort(),
+    hostname: objectValue(record, ["hostname", "host_name", "name"]),
+    serialNumber: objectValue(record, ["serial", "serial_number", "serialNumber"]),
+    model: objectValue(record, ["model", "model_name", "platform"]),
+    firmwareVersion: normalizeFirmwareVersion(
+      objectValue(record, [
+        "version",
+        "firmware",
+        "firmware_version",
+        "firmwareVersion",
+        "os_version",
+        "osVersion"
+      ])
+    ),
+    firmwareBuild: normalizeBuild(
+      objectValue(record, ["build", "buildno", "build_number", "firmware_build", "firmwareBuild"])
+    ),
+    uptime: objectValue(record, ["uptime", "up_time"])
+  };
+}
+
+function normalizeFirmwareVersion(value?: string) {
+  if (!value) return undefined;
+  const match = value.match(/v?(\d+(?:\.\d+){1,3})/i);
+  return match?.[1] ?? value;
+}
+
+function normalizeBuild(value?: string) {
+  if (!value) return undefined;
+  const match = value.match(/(?:build)?\s*([0-9]+)/i);
+  return match?.[1] ?? value;
+}
+
+function parseFirmwareFromConfig(config: Buffer) {
+  const header = config.toString("utf8", 0, Math.min(config.byteLength, 4096));
+  const configVersion = header.match(/^#config-version=.*?(\d+(?:\.\d+){1,3}).*?(?:FW-)?build([0-9]+)/im);
+  const versionLine = header.match(/^#.*?version=.*?v?(\d+(?:\.\d+){1,3})/im);
+  const buildLine = header.match(/^#\s*buildno=([0-9]+)/im);
+  return {
+    firmwareVersion: configVersion?.[1] ?? versionLine?.[1],
+    firmwareBuild: configVersion?.[2] ?? buildLine?.[1]
+  };
+}
+
+async function updateFirmwareFromConfig(device: FortiGate, config: Buffer) {
+  const parsed = parseFirmwareFromConfig(config);
+  if (!parsed.firmwareVersion && !parsed.firmwareBuild) return device;
+  const updated = await prisma.fortiGate.update({
+    where: { id: device.id },
+    data: {
+      firmwareVersion: parsed.firmwareVersion ?? device.firmwareVersion,
+      firmwareBuild: parsed.firmwareBuild ?? device.firmwareBuild,
+      lastCheckedAt: new Date()
+    }
+  });
+  if (
+    updated.firmwareVersion &&
+    (updated.firmwareVersion !== device.firmwareVersion ||
+      updated.firmwareBuild !== device.firmwareBuild)
+  ) {
+    await prisma.versionHistory.create({
+      data: {
+        fortigateId: updated.id,
+        firmwareVersion: updated.firmwareVersion,
+        firmwareBuild: updated.firmwareBuild
+      }
+    });
+    await writeFortiGateLog(
+      updated.id,
+      FortiGateLogLevel.INFO,
+      "firmware.detected_from_backup",
+      "Firmwareversie uit backup header gedetecteerd.",
+      {
+        firmwareVersion: updated.firmwareVersion,
+        firmwareBuild: updated.firmwareBuild
+      }
+    );
+  }
+  return updated;
+}
+
 async function fortigateFetch(device: FortiGate, endpoint: string, method: "GET" | "POST" = "GET") {
   const token = decryptSecret(device.apiTokenEncrypted);
   const url = new URL(`${baseUrl(device)}${endpoint}`);
@@ -192,16 +285,16 @@ export async function refreshFortiGateInventory(deviceId: string) {
   );
   try {
     const response = await fortigateFetch(device, "/api/v2/monitor/system/status");
-    const payload = (await response.json()) as { results?: FortiGateSystemStatus };
-    const status = payload.results ?? {};
+    const payload = await response.json();
+    const status = normalizeSystemStatus(payload);
     const updated = await prisma.fortiGate.update({
       where: { id: device.id },
       data: {
         hostname: status.hostname ?? device.hostname,
-        serialNumber: status.serial ?? device.serialNumber,
+        serialNumber: status.serialNumber ?? device.serialNumber,
         model: status.model ?? device.model,
-        firmwareVersion: status.version ?? device.firmwareVersion,
-        firmwareBuild: status.build ? String(status.build) : device.firmwareBuild,
+        firmwareVersion: status.firmwareVersion ?? device.firmwareVersion,
+        firmwareBuild: status.firmwareBuild ?? device.firmwareBuild,
         uptime: status.uptime ?? device.uptime,
         lastCheckedAt: new Date()
       }
@@ -249,7 +342,8 @@ export async function refreshFortiGateInventory(deviceId: string) {
         hostname: updated.hostname,
         model: updated.model,
         firmwareVersion: updated.firmwareVersion,
-        firmwareBuild: updated.firmwareBuild
+        firmwareBuild: updated.firmwareBuild,
+        sourceFields: status.keys
       }
     );
 
@@ -275,8 +369,9 @@ export async function runBackup(deviceId: string) {
       "backup.start",
       "Backup gestart."
     );
-    await refreshFortiGateInventory(device.id);
-    const { attempt, config } = await fetchBackupConfig(device);
+    const refreshed = await refreshFortiGateInventory(device.id);
+    const { attempt, config } = await fetchBackupConfig(refreshed);
+    await updateFirmwareFromConfig(refreshed, config);
     await writeFortiGateLog(
       device.id,
       FortiGateLogLevel.INFO,
