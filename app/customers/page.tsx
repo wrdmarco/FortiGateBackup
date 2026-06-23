@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createCustomer } from "@/app/actions";
 import { Button, Field, Shell } from "@/components/ui";
 import { isSuperAdmin } from "@/lib/authz";
@@ -57,6 +58,7 @@ export default async function CustomersPage() {
                 <th className="px-3 py-2">Tenant</th>
                 <th className="px-3 py-2">Contact</th>
                 <th className="px-3 py-2">FortiGates</th>
+                <th className="px-3 py-2">Actie</th>
               </tr>
             </thead>
             <tbody>
@@ -66,6 +68,14 @@ export default async function CustomersPage() {
                   <td className="px-3 py-2">{customer.tenant.name}</td>
                   <td className="px-3 py-2">{customer.email ?? customer.contact ?? "-"}</td>
                   <td className="px-3 py-2">{customer.devices.length}</td>
+                  <td className="px-3 py-2">
+                    <Link
+                      className="rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-muted"
+                      href={`/customers/${customer.id}`}
+                    >
+                      Beheren
+                    </Link>
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Shell } from "@/components/ui";
 import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
@@ -26,6 +27,7 @@ export default async function BackupsPage() {
               <th className="px-3 py-2">Status</th>
               <th className="px-3 py-2">SHA256</th>
               <th className="px-3 py-2">Grootte</th>
+              <th className="px-3 py-2">Acties</th>
             </tr>
           </thead>
           <tbody>
@@ -37,6 +39,26 @@ export default async function BackupsPage() {
                 <td className="px-3 py-2">{backup.status}</td>
                 <td className="px-3 py-2 font-mono text-xs">{backup.sha256 ?? backup.error ?? "-"}</td>
                 <td className="px-3 py-2">{backup.filesize}</td>
+                <td className="flex flex-wrap gap-2 px-3 py-2">
+                  {backup.filename ? (
+                    <>
+                      <Link
+                        className="rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-muted"
+                        href={`/api/backups/${backup.id}/download`}
+                      >
+                        Download
+                      </Link>
+                      <Link
+                        className="rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-muted"
+                        href={`/backups/${backup.id}/diff`}
+                      >
+                        Diff
+                      </Link>
+                    </>
+                  ) : (
+                    <span className="text-muted-foreground">Geen bestand</span>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>

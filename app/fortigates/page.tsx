@@ -142,7 +142,11 @@ export default async function FortiGatesPage({
                 return (
                   <tr key={device.id} className="border-t border-border align-top">
                     <td className="px-3 py-2 font-medium">{device.hostname ?? device.managementUrl}</td>
-                    <td className="px-3 py-2">{device.customer.name}</td>
+                    <td className="px-3 py-2">
+                      <Link className="font-medium hover:underline" href={`/customers/${device.customer.id}`}>
+                        {device.customer.name}
+                      </Link>
+                    </td>
                     <td className="px-3 py-2">{device.model ?? "-"}</td>
                     <td className="px-3 py-2">
                       {[device.firmwareVersion, device.firmwareBuild].filter(Boolean).join(" ") || "-"}
