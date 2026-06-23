@@ -18,6 +18,10 @@ function bool(value: FormDataEntryValue | null) {
   return value === "on" || value === "true";
 }
 
+function boolField(formData: FormData, name: string) {
+  return formData.getAll(name).some((value) => value === "on" || value === "true");
+}
+
 function checkLoginThrottle(email: string) {
   const now = Date.now();
   const attempt = loginAttempts.get(email);
@@ -184,7 +188,7 @@ export async function createFortiGate(formData: FormData) {
     managementUrl: formData.get("managementUrl"),
     httpsPort: formData.get("httpsPort"),
     apiToken: formData.get("apiToken"),
-    tlsVerify: bool(formData.get("tlsVerify")),
+    tlsVerify: boolField(formData, "tlsVerify"),
     vdom: formData.get("vdom") || undefined,
     scheduleType: formData.get("scheduleType") || "DAILY",
     cronExpression: formData.get("cronExpression") || undefined
@@ -226,7 +230,7 @@ export async function updateFortiGate(formData: FormData) {
     managementUrl: formData.get("managementUrl"),
     httpsPort: formData.get("httpsPort"),
     apiToken: formData.get("apiToken") || undefined,
-    tlsVerify: bool(formData.get("tlsVerify")),
+    tlsVerify: boolField(formData, "tlsVerify"),
     vdom: formData.get("vdom") || undefined,
     scheduleType: formData.get("scheduleType") || "DAILY",
     cronExpression: formData.get("cronExpression") || undefined

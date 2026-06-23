@@ -95,7 +95,13 @@ export default async function FortiGatesPage({
             </select>
           </label>
           <label className="flex items-center gap-2 text-sm">
-            <input name="tlsVerify" type="checkbox" defaultChecked={editDevice?.tlsVerify ?? true} />
+            <input name="tlsVerify" type="hidden" value="false" />
+            <input
+              name="tlsVerify"
+              type="checkbox"
+              value="true"
+              defaultChecked={editDevice?.tlsVerify ?? true}
+            />
             TLS verify
           </label>
           <div className="flex flex-wrap gap-2">
