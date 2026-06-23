@@ -37,13 +37,19 @@ enum MailProvider {
   MICROSOFT_GRAPH
 }
 
+enum FortiGateLogLevel {
+  INFO
+  WARN
+  ERROR
+}
+
 model Tenant {
-  id        String     @id @default(cuid())
+  id        String          @id @default(cuid())
   name      String
-  slug      String     @unique
-  active    Boolean    @default(true)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  slug      String          @unique
+  active    Boolean         @default(true)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
   customers Customer[]
   users     User[]
   settings  SystemSetting[]
@@ -51,19 +57,19 @@ model Tenant {
 }
 
 model User {
-  id            String          @id @default(cuid())
+  id            String       @id @default(cuid())
   tenantId      String?
   name          String?
-  email         String          @unique
+  email         String       @unique
   emailVerified DateTime?
   image         String?
   passwordHash  String?
-  role          UserRole        @default(VIEWER)
-  provider      AuthProvider    @default(LOCAL)
-  active        Boolean         @default(true)
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-  tenant        Tenant?         @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  role          UserRole     @default(VIEWER)
+  provider      AuthProvider @default(LOCAL)
+  active        Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  tenant        Tenant?      @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   accounts      Account[]
   sessions      Session[]
   auditLogs     AuditLog[]
@@ -121,29 +127,30 @@ model Customer {
 }
 
 model FortiGate {
-  id                 String           @id @default(cuid())
-  customerId         String
-  hostname           String?
-  serialNumber       String?
-  model              String?
-  firmwareVersion    String?
-  firmwareBuild      String?
-  uptime             String?
-  managementUrl      String
-  httpsPort          Int              @default(443)
-  apiTokenEncrypted  String
-  tlsVerify          Boolean          @default(true)
-  vdom               String?
-  scheduleType       ScheduleType     @default(DAILY)
-  cronExpression     String?
-  nextRunAt          DateTime?
-  lastCheckedAt      DateTime?
-  active             Boolean          @default(true)
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
-  customer           Customer         @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  backups            Backup[]
-  versionHistory     VersionHistory[]
+  id                String           @id @default(cuid())
+  customerId        String
+  hostname          String?
+  serialNumber      String?
+  model             String?
+  firmwareVersion   String?
+  firmwareBuild     String?
+  uptime            String?
+  managementUrl     String
+  httpsPort         Int              @default(443)
+  apiTokenEncrypted String
+  tlsVerify         Boolean          @default(true)
+  vdom              String?
+  scheduleType      ScheduleType     @default(DAILY)
+  cronExpression    String?
+  nextRunAt         DateTime?
+  lastCheckedAt     DateTime?
+  active            Boolean          @default(true)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  customer          Customer         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  backups           Backup[]
+  logs              FortiGateLog[]
+  versionHistory    VersionHistory[]
 
   @@index([customerId, active])
   @@index([nextRunAt])
@@ -154,11 +161,24 @@ model Backup {
   fortigateId String
   filename    String?
   sha256      String?
-  filesize    Int         @default(0)
+  filesize    Int          @default(0)
   status      BackupStatus
   error       String?
-  createdAt   DateTime    @default(now())
-  fortigate   FortiGate   @relation(fields: [fortigateId], references: [id], onDelete: Cascade)
+  createdAt   DateTime     @default(now())
+  fortigate   FortiGate    @relation(fields: [fortigateId], references: [id], onDelete: Cascade)
+
+  @@index([fortigateId, createdAt])
+}
+
+model FortiGateLog {
+  id          String            @id @default(cuid())
+  fortigateId String
+  level       FortiGateLogLevel @default(INFO)
+  event       String
+  message     String
+  metadata    String?
+  createdAt   DateTime          @default(now())
+  fortigate   FortiGate         @relation(fields: [fortigateId], references: [id], onDelete: Cascade)
 
   @@index([fortigateId, createdAt])
 }

@@ -10,7 +10,7 @@ Productiegericht MSP-portaal voor centraal beheer van FortiGate configuratieback
 - Per tenant klanten, FortiGates, backups, instellingen en auditlogs
 - Lokale login met beveiligde sessiecookies
 - FortiGate REST API backupflow met SHA256-deduplicatie
-- Firmwarehistorie en audit logging
+- Firmwarehistorie, audit logging en per-FortiGate backuplogs
 - SMTP en Microsoft Graph mailconfiguratie via database-instellingen
 - Health endpoint voor monitoring
 - Systemd services voor webapp en scheduler-worker
@@ -85,6 +85,20 @@ Na de eerste setup beheert alleen een `SUPER_ADMIN` nieuwe tenants via:
 ```
 
 Bij het aanmaken van een tenant maak je direct de eerste tenantadmin aan. Die gebruiker krijgt rol `ADMIN` en kan uitsluitend data binnen zijn eigen tenant beheren. Directe API-calls en server actions controleren dezelfde tenantgrenzen.
+
+## FortiGate API-token
+
+Voor FortiGate backups gebruikt het portaal een bearer API-token. Je hoeft in het portaal geen aparte API-gebruikersnaam op te geven: de token is op de FortiGate zelf al gekoppeld aan een admin/API-user met het juiste admin profile. Sla alleen de token op in het portaal.
+
+## Backuplogs
+
+Elke FortiGate krijgt eigen operationele logregels voor inventory en backupstappen. In het FortiGate-overzicht zie je de laatste logregel per device. Voor diepere troubleshooting is beschikbaar:
+
+```text
+GET /api/fortigates/{id}/logs?limit=50
+```
+
+De logs bevatten stapnaam, niveau, melding en beperkte metadata zoals bytes, scope en bestandsnaam. API-tokens en configuratie-inhoud worden niet gelogd.
 
 ## Updates
 

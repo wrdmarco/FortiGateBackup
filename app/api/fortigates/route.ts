@@ -26,7 +26,8 @@ const fortigateSelect = {
   createdAt: true,
   updatedAt: true,
   customer: true,
-  backups: { orderBy: { createdAt: "desc" as const }, take: 1 }
+  backups: { orderBy: { createdAt: "desc" as const }, take: 1 },
+  logs: { orderBy: { createdAt: "desc" as const }, take: 5 }
 };
 
 export async function GET() {

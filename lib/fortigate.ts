@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { BackupStatus, FortiGate } from "@prisma/client";
+import { BackupStatus, FortiGate, FortiGateLogLevel } from "@prisma/client";
 import { auditLog } from "@/lib/audit";
 import { decryptSecret, sha256 } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
@@ -20,6 +20,28 @@ function baseUrl(device: FortiGate) {
   return url.toString().replace(/\/$/, "");
 }
 
+async function writeFortiGateLog(
+  fortigateId: string,
+  level: FortiGateLogLevel,
+  event: string,
+  message: string,
+  metadata?: unknown
+) {
+  try {
+    await prisma.fortiGateLog.create({
+      data: {
+        fortigateId,
+        level,
+        event,
+        message,
+        metadata: metadata === undefined ? undefined : JSON.stringify(metadata)
+      }
+    });
+  } catch (error) {
+    console.warn("FortiGate log kon niet worden opgeslagen.", error);
+  }
+}
+
 async function fortigateFetch(device: FortiGate, endpoint: string) {
   const token = decryptSecret(device.apiTokenEncrypted);
   const response = await fetch(`${baseUrl(device)}${endpoint}`, {
@@ -34,58 +56,118 @@ async function fortigateFetch(device: FortiGate, endpoint: string) {
 
 export async function refreshFortiGateInventory(deviceId: string) {
   const device = await prisma.fortiGate.findUniqueOrThrow({ where: { id: deviceId } });
-  const response = await fortigateFetch(device, "/api/v2/monitor/system/status");
-  const payload = (await response.json()) as { results?: FortiGateSystemStatus };
-  const status = payload.results ?? {};
-  const updated = await prisma.fortiGate.update({
-    where: { id: device.id },
-    data: {
-      hostname: status.hostname ?? device.hostname,
-      serialNumber: status.serial ?? device.serialNumber,
-      model: status.model ?? device.model,
-      firmwareVersion: status.version ?? device.firmwareVersion,
-      firmwareBuild: status.build ? String(status.build) : device.firmwareBuild,
-      uptime: status.uptime ?? device.uptime,
-      lastCheckedAt: new Date()
-    }
-  });
-
-  if (
-    updated.firmwareVersion &&
-    (updated.firmwareVersion !== device.firmwareVersion ||
-      updated.firmwareBuild !== device.firmwareBuild)
-  ) {
-    await prisma.versionHistory.create({
+  await writeFortiGateLog(
+    device.id,
+    FortiGateLogLevel.INFO,
+    "inventory.start",
+    "FortiGate inventory ophalen gestart."
+  );
+  try {
+    const response = await fortigateFetch(device, "/api/v2/monitor/system/status");
+    const payload = (await response.json()) as { results?: FortiGateSystemStatus };
+    const status = payload.results ?? {};
+    const updated = await prisma.fortiGate.update({
+      where: { id: device.id },
       data: {
-        fortigateId: updated.id,
+        hostname: status.hostname ?? device.hostname,
+        serialNumber: status.serial ?? device.serialNumber,
+        model: status.model ?? device.model,
+        firmwareVersion: status.version ?? device.firmwareVersion,
+        firmwareBuild: status.build ? String(status.build) : device.firmwareBuild,
+        uptime: status.uptime ?? device.uptime,
+        lastCheckedAt: new Date()
+      }
+    });
+
+    if (
+      updated.firmwareVersion &&
+      (updated.firmwareVersion !== device.firmwareVersion ||
+        updated.firmwareBuild !== device.firmwareBuild)
+    ) {
+      await prisma.versionHistory.create({
+        data: {
+          fortigateId: updated.id,
+          firmwareVersion: updated.firmwareVersion,
+          firmwareBuild: updated.firmwareBuild
+        }
+      });
+      await auditLog({
+        action: "firmware.changed",
+        entity: "FortiGate",
+        entityId: updated.id,
+        metadata: {
+          from: `${device.firmwareVersion ?? "unknown"} ${device.firmwareBuild ?? ""}`.trim(),
+          to: `${updated.firmwareVersion} ${updated.firmwareBuild ?? ""}`.trim()
+        }
+      });
+      await writeFortiGateLog(
+        updated.id,
+        FortiGateLogLevel.INFO,
+        "firmware.changed",
+        "Nieuwe firmwareversie gedetecteerd.",
+        {
+          from: `${device.firmwareVersion ?? "unknown"} ${device.firmwareBuild ?? ""}`.trim(),
+          to: `${updated.firmwareVersion} ${updated.firmwareBuild ?? ""}`.trim()
+        }
+      );
+    }
+
+    await writeFortiGateLog(
+      updated.id,
+      FortiGateLogLevel.INFO,
+      "inventory.success",
+      "FortiGate inventory succesvol bijgewerkt.",
+      {
+        hostname: updated.hostname,
+        model: updated.model,
         firmwareVersion: updated.firmwareVersion,
         firmwareBuild: updated.firmwareBuild
       }
-    });
-    await auditLog({
-      action: "firmware.changed",
-      entity: "FortiGate",
-      entityId: updated.id,
-      metadata: {
-        from: `${device.firmwareVersion ?? "unknown"} ${device.firmwareBuild ?? ""}`.trim(),
-        to: `${updated.firmwareVersion} ${updated.firmwareBuild ?? ""}`.trim()
-      }
-    });
-  }
+    );
 
-  return updated;
+    return updated;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Onbekende inventory fout.";
+    await writeFortiGateLog(
+      device.id,
+      FortiGateLogLevel.ERROR,
+      "inventory.failed",
+      message
+    );
+    throw error;
+  }
 }
 
 export async function runBackup(deviceId: string) {
   const device = await prisma.fortiGate.findUniqueOrThrow({ where: { id: deviceId } });
   try {
+    await writeFortiGateLog(
+      device.id,
+      FortiGateLogLevel.INFO,
+      "backup.start",
+      "Backup gestart."
+    );
     await refreshFortiGateInventory(device.id);
     const scope = device.vdom ? `vdom&vdom=${encodeURIComponent(device.vdom)}` : "global";
+    await writeFortiGateLog(
+      device.id,
+      FortiGateLogLevel.INFO,
+      "backup.fetch_config",
+      "Configuratie ophalen bij FortiGate.",
+      { scope: device.vdom ? "vdom" : "global", vdom: device.vdom }
+    );
     const response = await fortigateFetch(
       device,
       `/api/v2/monitor/system/config/backup?scope=${scope}`
     );
     const config = Buffer.from(await response.arrayBuffer());
+    await writeFortiGateLog(
+      device.id,
+      FortiGateLogLevel.INFO,
+      "backup.config_received",
+      "Configuratie ontvangen.",
+      { bytes: config.byteLength }
+    );
     const digest = sha256(config);
     const latest = await prisma.backup.findFirst({
       where: { fortigateId: device.id, status: BackupStatus.CHANGED },
@@ -93,6 +175,13 @@ export async function runBackup(deviceId: string) {
     });
 
     if (latest?.sha256 === digest) {
+      await writeFortiGateLog(
+        device.id,
+        FortiGateLogLevel.INFO,
+        "backup.unchanged",
+        "Backup voltooid; configuratie is ongewijzigd.",
+        { sha256: digest, bytes: config.byteLength }
+      );
       return prisma.backup.create({
         data: {
           fortigateId: device.id,
@@ -115,6 +204,13 @@ export async function runBackup(deviceId: string) {
       entityId: device.id,
       metadata: { sha256: digest, filename }
     });
+    await writeFortiGateLog(
+      device.id,
+      FortiGateLogLevel.INFO,
+      "backup.saved",
+      "Backup opgeslagen.",
+      { sha256: digest, filename, bytes: config.byteLength }
+    );
     return prisma.backup.create({
       data: {
         fortigateId: device.id,
@@ -132,6 +228,12 @@ export async function runBackup(deviceId: string) {
       entityId: device.id,
       metadata: { error: message }
     });
+    await writeFortiGateLog(
+      device.id,
+      FortiGateLogLevel.ERROR,
+      "backup.failed",
+      message
+    );
     return prisma.backup.create({
       data: {
         fortigateId: device.id,
