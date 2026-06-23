@@ -1,3 +1,5 @@
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { BackupStatus, FortiGate, FortiGateLogLevel } from "@prisma/client";
@@ -12,6 +14,11 @@ type FortiGateSystemStatus = {
   version?: string;
   build?: string | number;
   uptime?: string;
+};
+
+type RequestOptions = {
+  headers: Record<string, string>;
+  rejectUnauthorized?: boolean;
 };
 
 function baseUrl(device: FortiGate) {
@@ -42,12 +49,57 @@ async function writeFortiGateLog(
   }
 }
 
+function requestBuffer(url: URL, options: RequestOptions) {
+  return new Promise<Response>((resolve, reject) => {
+    const request = url.protocol === "http:" ? httpRequest : httpsRequest;
+    const req = request(
+      url,
+      {
+        method: "GET",
+        headers: options.headers,
+        rejectUnauthorized: options.rejectUnauthorized,
+        timeout: 30000
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (chunk: Buffer) => chunks.push(chunk));
+        res.on("end", () => {
+          resolve(
+            new Response(Buffer.concat(chunks), {
+              status: res.statusCode ?? 500,
+              statusText: res.statusMessage,
+              headers: res.headers as HeadersInit
+            })
+          );
+        });
+      }
+    );
+    req.on("timeout", () => {
+      req.destroy(new Error(`FortiGate API timeout after 30000ms for ${url.pathname}.`));
+    });
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+function networkErrorMessage(error: unknown, endpoint: string) {
+  if (!(error instanceof Error)) return `FortiGate API request failed for ${endpoint}.`;
+  const cause = error.cause instanceof Error ? ` Cause: ${error.cause.message}` : "";
+  return `FortiGate API request failed for ${endpoint}: ${error.message}.${cause}`;
+}
+
 async function fortigateFetch(device: FortiGate, endpoint: string) {
   const token = decryptSecret(device.apiTokenEncrypted);
-  const response = await fetch(`${baseUrl(device)}${endpoint}`, {
-    headers: { Authorization: `Bearer ${token}` },
-    cache: "no-store"
-  });
+  const url = new URL(`${baseUrl(device)}${endpoint}`);
+  let response: Response;
+  try {
+    response = await requestBuffer(url, {
+      headers: { Authorization: `Bearer ${token}` },
+      rejectUnauthorized: device.tlsVerify
+    });
+  } catch (error) {
+    throw new Error(networkErrorMessage(error, endpoint));
+  }
   if (!response.ok) {
     throw new Error(`FortiGate API returned ${response.status} for ${endpoint}.`);
   }
