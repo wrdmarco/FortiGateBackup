@@ -57,17 +57,47 @@ export async function previousStoredBackup(backup: BackupWithDevice) {
 }
 
 export function unifiedDiff(oldText: string, newText: string, oldLabel: string, newLabel: string) {
-  const oldLines = oldText.split(/\r?\n/);
-  const newLines = newText.split(/\r?\n/);
+  const oldLines = meaningfulConfigLines(oldText);
+  const newLines = meaningfulConfigLines(newText);
   const maxCells = oldLines.length * newLines.length;
   const body =
     maxCells <= 2_000_000
-      ? lcsDiff(oldLines, newLines)
-      : positionalDiff(oldLines, newLines);
+      ? compactHunks(lcsOperations(oldLines, newLines))
+      : compactHunks(positionalOperations(oldLines, newLines));
+  if (body.length === 0) {
+    return [
+      `--- ${oldLabel}`,
+      `+++ ${newLabel}`,
+      "Geen inhoudelijke wijzigingen gevonden na het negeren van FortiGate export-metadata."
+    ].join("\n");
+  }
   return [`--- ${oldLabel}`, `+++ ${newLabel}`, ...body].join("\n");
 }
 
-function lcsDiff(oldLines: string[], newLines: string[]) {
+type DiffOperation = {
+  type: "same" | "add" | "remove";
+  line: string;
+  oldLine?: number;
+  newLine?: number;
+};
+
+const VOLATILE_CONFIG_LINE_PATTERNS = [
+  /^#\s*config-version=/i,
+  /^#\s*conf_file_ver=/i,
+  /^#\s*buildno=/i,
+  /^#\s*global_vdom=/i,
+  /^#\s*checksum/i,
+  /^#\s*backup(?:\s|-)?time/i,
+  /^#\s*generated/i
+];
+
+function meaningfulConfigLines(text: string) {
+  return text
+    .split(/\r?\n/)
+    .filter((line) => !VOLATILE_CONFIG_LINE_PATTERNS.some((pattern) => pattern.test(line.trim())));
+}
+
+function lcsOperations(oldLines: string[], newLines: string[]) {
   const rows = oldLines.length + 1;
   const cols = newLines.length + 1;
   const table = Array.from({ length: rows }, () => new Uint32Array(cols));
@@ -81,43 +111,82 @@ function lcsDiff(oldLines: string[], newLines: string[]) {
     }
   }
 
-  const lines = ["@@ config @@"];
+  const operations: DiffOperation[] = [];
   let i = 0;
   let j = 0;
   while (i < oldLines.length && j < newLines.length) {
     if (oldLines[i] === newLines[j]) {
-      lines.push(` ${oldLines[i]}`);
+      operations.push({ type: "same", line: oldLines[i], oldLine: i + 1, newLine: j + 1 });
       i += 1;
       j += 1;
     } else if (table[i + 1][j] >= table[i][j + 1]) {
-      lines.push(`-${oldLines[i]}`);
+      operations.push({ type: "remove", line: oldLines[i], oldLine: i + 1 });
       i += 1;
     } else {
-      lines.push(`+${newLines[j]}`);
+      operations.push({ type: "add", line: newLines[j], newLine: j + 1 });
       j += 1;
     }
   }
   while (i < oldLines.length) {
-    lines.push(`-${oldLines[i]}`);
+    operations.push({ type: "remove", line: oldLines[i], oldLine: i + 1 });
     i += 1;
   }
   while (j < newLines.length) {
-    lines.push(`+${newLines[j]}`);
+    operations.push({ type: "add", line: newLines[j], newLine: j + 1 });
     j += 1;
+  }
+  return operations;
+}
+
+function positionalOperations(oldLines: string[], newLines: string[]) {
+  const operations: DiffOperation[] = [];
+  const max = Math.max(oldLines.length, newLines.length);
+  for (let i = 0; i < max; i += 1) {
+    if (oldLines[i] === newLines[i]) {
+      operations.push({ type: "same", line: oldLines[i] ?? "", oldLine: i + 1, newLine: i + 1 });
+    } else {
+      if (oldLines[i] !== undefined) operations.push({ type: "remove", line: oldLines[i], oldLine: i + 1 });
+      if (newLines[i] !== undefined) operations.push({ type: "add", line: newLines[i], newLine: i + 1 });
+    }
+  }
+  return operations;
+}
+
+function compactHunks(operations: DiffOperation[], context = 3) {
+  const changed = operations
+    .map((operation, index) => ({ operation, index }))
+    .filter(({ operation }) => operation.type !== "same")
+    .map(({ index }) => index);
+  if (changed.length === 0) return [];
+
+  const ranges: Array<{ start: number; end: number }> = [];
+  for (const index of changed) {
+    const start = Math.max(0, index - context);
+    const end = Math.min(operations.length - 1, index + context);
+    const previous = ranges[ranges.length - 1];
+    if (previous && start <= previous.end + 1) {
+      previous.end = Math.max(previous.end, end);
+    } else {
+      ranges.push({ start, end });
+    }
+  }
+
+  const lines: string[] = [];
+  for (const range of ranges) {
+    const hunk = operations.slice(range.start, range.end + 1);
+    const oldStart = firstLine(hunk, "oldLine");
+    const newStart = firstLine(hunk, "newLine");
+    const oldCount = hunk.filter((operation) => operation.type !== "add").length;
+    const newCount = hunk.filter((operation) => operation.type !== "remove").length;
+    lines.push(`@@ -${oldStart},${oldCount} +${newStart},${newCount} @@`);
+    for (const operation of hunk) {
+      const prefix = operation.type === "add" ? "+" : operation.type === "remove" ? "-" : " ";
+      lines.push(`${prefix}${operation.line}`);
+    }
   }
   return lines;
 }
 
-function positionalDiff(oldLines: string[], newLines: string[]) {
-  const lines = ["@@ config (large file positional diff) @@"];
-  const max = Math.max(oldLines.length, newLines.length);
-  for (let i = 0; i < max; i += 1) {
-    if (oldLines[i] === newLines[i]) {
-      lines.push(` ${oldLines[i] ?? ""}`);
-    } else {
-      if (oldLines[i] !== undefined) lines.push(`-${oldLines[i]}`);
-      if (newLines[i] !== undefined) lines.push(`+${newLines[i]}`);
-    }
-  }
-  return lines;
+function firstLine(hunk: DiffOperation[], key: "oldLine" | "newLine") {
+  return hunk.find((operation) => operation[key] !== undefined)?.[key] ?? 1;
 }
