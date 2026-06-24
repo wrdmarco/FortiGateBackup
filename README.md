@@ -41,6 +41,8 @@ SERVER_URL=""
 
 Tijdens `setup.sh` worden lege of ontbrekende waarden voor `NEXTAUTH_SECRET` en `ENCRYPTION_KEY` automatisch veilig gegenereerd. Bestaande waarden worden niet overschreven.
 
+Per tenant kan een eigen publieke portal-URL in de database worden ingesteld via `Instellingen` > `Configuratie` > `Portal`. Laat deze leeg om terug te vallen op de globale portal-URL of `SERVER_URL`.
+
 Tijdens setup wordt gevraagd naar de publieke server-URL. Als je alleen een domeinnaam invult, wordt automatisch `https://` toegevoegd en wordt de waarde direct in `.env` opgeslagen. Gebruik `SERVER_URL` wanneer de app achter een reverse proxy op een publieke host draait:
 
 ```bash

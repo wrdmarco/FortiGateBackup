@@ -36,3 +36,9 @@ export async function setSetting(
     }
   });
 }
+
+export async function deleteSetting(key: string, tenantId?: string | null) {
+  return prisma.systemSetting.deleteMany({
+    where: { tenantId: tenantId ?? null, key }
+  });
+}

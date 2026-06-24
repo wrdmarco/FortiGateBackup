@@ -28,6 +28,8 @@ export default async function SettingsPage({
   const tenantId = selectedTenantId || null;
 
   const [
+    portalSiteUrl,
+    effectiveSiteUrl,
     mailProvider,
     smtpHost,
     smtpPort,
@@ -42,6 +44,8 @@ export default async function SettingsPage({
     savedSecrets,
     updateStatus
   ] = await Promise.all([
+    getSetting("portal.siteUrl", tenantId),
+    tenantId ? getSetting("portal.siteUrl", null) : Promise.resolve(process.env.SERVER_URL ?? ""),
     getSetting("mail.provider", tenantId),
     getSetting("smtp.host", tenantId),
     getSetting("smtp.port", tenantId),
@@ -83,6 +87,8 @@ export default async function SettingsPage({
                   tenants={tenants}
                   selectedTenantId={selectedTenantId}
                   values={{
+                    portalSiteUrl: portalSiteUrl ?? "",
+                    effectiveSiteUrl: portalSiteUrl ?? effectiveSiteUrl ?? "",
                     mailProvider: mailProvider === "MICROSOFT_GRAPH" ? "MICROSOFT_GRAPH" : "SMTP",
                     smtpHost: smtpHost ?? "",
                     smtpPort: smtpPort ?? "587",

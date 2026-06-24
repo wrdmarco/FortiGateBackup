@@ -10,7 +10,8 @@ import { encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 import { runBackup } from "@/lib/fortigate";
 import { createSession, destroySession } from "@/lib/session";
-import { setSetting } from "@/lib/settings";
+import { deleteSetting, setSetting } from "@/lib/settings";
+import { normalizeSiteUrl } from "@/lib/site-url";
 import { mainTenantId } from "@/lib/tenant-main";
 import { startAppUpdate } from "@/lib/app-update";
 import { customerSchema, fortigateSchema, fortigateUpdateSchema, tenantSchema } from "@/lib/validators";
@@ -33,6 +34,11 @@ function checkLoginThrottle(email: string) {
   }
 }
 
+
+function normalizeOptionalSiteUrl(value: FormDataEntryValue | null) {
+  const raw = String(value ?? "").trim();
+  return raw ? normalizeSiteUrl(raw) : "";
+}
 function recordLoginFailure(email: string) {
   const now = Date.now();
   const attempt = loginAttempts.get(email);
@@ -537,6 +543,11 @@ export async function saveSettings(formData: FormData) {
   const user = await requireTenantUser();
   const requestedTenantId = String(formData.get("tenantId") || "") || null;
   const tenantId = isSuperAdmin(user) ? requestedTenantId : user.tenantId;
+  const portalSiteUrl = normalizeOptionalSiteUrl(formData.get("portal.siteUrl"));
+  if (formData.has("portal.siteUrl")) {
+    if (portalSiteUrl) await setSetting("portal.siteUrl", portalSiteUrl, { tenantId });
+    else await deleteSetting("portal.siteUrl", tenantId);
+  }
   const entries = [
     ["mail.provider", formData.get("mail.provider")],
     ["smtp.host", formData.get("smtp.host")],

@@ -9,6 +9,8 @@ type TenantOption = {
 };
 
 type SettingsValues = {
+  portalSiteUrl: string;
+  effectiveSiteUrl: string;
   mailProvider: "SMTP" | "MICROSOFT_GRAPH";
   smtpHost: string;
   smtpPort: string;
@@ -26,6 +28,7 @@ type SettingsValues = {
 };
 
 const tabs = [
+  { id: "portal", label: "Portal" },
   { id: "mail", label: "Mail" },
   { id: "sso", label: "SSO" }
 ] as const;
@@ -41,7 +44,7 @@ export function SettingsForm({
   selectedTenantId: string;
   values: SettingsValues;
 }) {
-  const [activeTab, setActiveTab] = useState<(typeof tabs)[number]["id"]>("mail");
+  const [activeTab, setActiveTab] = useState<(typeof tabs)[number]["id"]>("portal");
   const [mailProvider, setMailProvider] = useState(values.mailProvider);
   const [entraEnabled, setEntraEnabled] = useState(values.entraEnabled);
   const scopeLabel = useMemo(
@@ -105,6 +108,22 @@ export function SettingsForm({
           ))}
         </div>
       </div>
+
+      <section hidden={activeTab !== "portal"} className="grid gap-4 rounded-md border border-border bg-surface-soft p-4">
+        <div>
+          <h2 className="font-semibold">Tenant site URL</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Stel de publieke URL in die deze tenant gebruikt voor links, notificaties en portalverwijzingen.
+          </p>
+        </div>
+        <TextField
+          label="Site URL"
+          name="portal.siteUrl"
+          type="text"
+          defaultValue={values.portalSiteUrl}
+          help={values.effectiveSiteUrl ? `Actieve URL: ${values.effectiveSiteUrl}` : "Laat leeg om de globale SERVER_URL of globale portal URL te gebruiken."}
+        />
+      </section>
 
       <section hidden={activeTab !== "mail"} className="grid gap-4 rounded-md border border-border bg-surface-soft p-4">
         <div>
