@@ -217,6 +217,10 @@ export async function setTenantActive(formData: FormData) {
   const user = await requireSuperAdmin();
   const id = String(formData.get("id"));
   const active = bool(formData.get("active"));
+  const mainTenant = await prisma.tenant.findFirst({ orderBy: { createdAt: "asc" }, select: { id: true } });
+  if (!active && mainTenant?.id === id) {
+    throw new Error("De main tenant kan niet gedeactiveerd worden.");
+  }
   const tenant = await prisma.tenant.update({ where: { id }, data: { active } });
   await auditLog({
     action: active ? "tenant.activated" : "tenant.deactivated",

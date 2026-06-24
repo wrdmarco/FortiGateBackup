@@ -180,11 +180,15 @@ export default async function TenantsPage() {
                             </section>
                           </div>
                         </Modal>
-                        <form action={setTenantActive}>
-                          <input type="hidden" name="id" value={tenant.id} />
-                          <input type="hidden" name="active" value={tenant.active ? "false" : "true"} />
-                          <Button>{tenant.active ? "Deactiveren" : "Activeren"}</Button>
-                        </form>
+                        {isMainTenant ? (
+                          <Button variant="secondary" disabled>Main tenant actief</Button>
+                        ) : (
+                          <form action={setTenantActive}>
+                            <input type="hidden" name="id" value={tenant.id} />
+                            <input type="hidden" name="active" value={tenant.active ? "false" : "true"} />
+                            <Button>{tenant.active ? "Deactiveren" : "Activeren"}</Button>
+                          </form>
+                        )}
                         {isMainTenant ? (
                           <Button variant="secondary" disabled>Main beschermd</Button>
                         ) : (
