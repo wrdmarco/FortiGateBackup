@@ -13,6 +13,7 @@ export const customerSchema = z.object({
   email: z.string().email().optional().or(z.literal("")),
   phone: z.string().optional(),
   notes: z.string().optional(),
+  itGlueOrganizationId: z.string().optional(),
   active: z.boolean().default(true)
 });
 
@@ -24,7 +25,8 @@ export const fortigateSchema = z.object({
   tlsVerify: z.boolean().default(false),
   vdom: z.string().optional(),
   scheduleType: z.enum(["HOURLY", "DAILY", "WEEKLY", "MONTHLY", "CRON"]).default("DAILY"),
-  cronExpression: z.string().optional()
+  cronExpression: z.string().optional(),
+  itGlueConfigurationId: z.string().optional()
 });
 
 export const fortigateUpdateSchema = fortigateSchema.omit({ apiToken: true }).extend({

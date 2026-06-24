@@ -93,6 +93,22 @@ Bij het aanmaken van een tenant maak je direct de eerste tenantadmin aan. Die ge
 
 Voor FortiGate backups gebruikt het portaal een bearer API-token. Je hoeft in het portaal geen aparte API-gebruikersnaam op te geven: de token is op de FortiGate zelf al gekoppeld aan een admin/API-user met het juiste admin profile. Sla alleen de token op in het portaal.
 
+## IT Glue integratie
+
+IT Glue wordt per scope ingesteld via:
+
+```text
+Instellingen > Configuratie > IT Glue
+```
+
+Vul daar de API base URL en API key in. De API key wordt versleuteld in de database opgeslagen en komt niet in `.env` of GitHub terecht.
+
+Wanneer IT Glue actief is, zijn extra koppelingen verplicht:
+
+- Bij klanten: `IT Glue organization ID`
+- Bij FortiGates: `IT Glue configuration ID`
+
+Bij iedere backup met status `CHANGED` uploadt het portaal het nieuwe configuratiebestand als bijlage naar de gekoppelde IT Glue configuration. Als IT Glue de upload weigert of niet bereikbaar is, blijft de lokale backup behouden en verschijnt de fout in de FortiGate logs.
 ## Backuplogs
 
 Elke FortiGate krijgt eigen operationele logregels voor inventory en backupstappen. In het FortiGate-overzicht zie je de laatste logregel per device. Voor diepere troubleshooting is beschikbaar:

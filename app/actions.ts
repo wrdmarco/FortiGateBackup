@@ -11,6 +11,7 @@ import { prisma } from "@/lib/db";
 import { runBackup } from "@/lib/fortigate";
 import { createSession, destroySession } from "@/lib/session";
 import { deleteSetting, setSetting } from "@/lib/settings";
+import { isItGlueEnabled } from "@/lib/itglue";
 import { normalizeSiteUrl } from "@/lib/site-url";
 import { mainTenantId } from "@/lib/tenant-main";
 import { startAppUpdate } from "@/lib/app-update";
@@ -355,9 +356,13 @@ export async function createCustomer(formData: FormData) {
     email: formData.get("email") || undefined,
     phone: formData.get("phone") || undefined,
     notes: formData.get("notes") || undefined,
+    itGlueOrganizationId: formData.get("itGlueOrganizationId") || undefined,
     active: true
   });
   assertTenantAccess(user, data.tenantId);
+  if ((await isItGlueEnabled(data.tenantId)) && !data.itGlueOrganizationId) {
+    throw new Error("IT Glue organization ID is verplicht wanneer IT Glue actief is voor deze tenant.");
+  }
   const customer = await prisma.customer.create({ data });
   await auditLog({
     action: "customer.created",
@@ -421,10 +426,14 @@ export async function createFortiGate(formData: FormData) {
     tlsVerify: boolField(formData, "tlsVerify"),
     vdom: formData.get("vdom") || undefined,
     scheduleType: formData.get("scheduleType") || "DAILY",
-    cronExpression: formData.get("cronExpression") || undefined
+    cronExpression: formData.get("cronExpression") || undefined,
+    itGlueConfigurationId: formData.get("itGlueConfigurationId") || undefined
   });
   const customer = await prisma.customer.findUniqueOrThrow({ where: { id: parsed.customerId } });
   assertTenantAccess(user, customer.tenantId);
+  if ((await isItGlueEnabled(customer.tenantId)) && !parsed.itGlueConfigurationId) {
+    throw new Error("IT Glue configuration ID is verplicht wanneer IT Glue actief is voor deze tenant.");
+  }
   const device = await prisma.fortiGate.create({
     data: {
       customerId: parsed.customerId,
@@ -434,7 +443,8 @@ export async function createFortiGate(formData: FormData) {
       tlsVerify: parsed.tlsVerify,
       vdom: parsed.vdom,
       scheduleType: parsed.scheduleType,
-      cronExpression: parsed.cronExpression
+      cronExpression: parsed.cronExpression,
+      itGlueConfigurationId: parsed.itGlueConfigurationId
     },
     include: { customer: true }
   });
@@ -463,10 +473,14 @@ export async function updateFortiGate(formData: FormData) {
     tlsVerify: boolField(formData, "tlsVerify"),
     vdom: formData.get("vdom") || undefined,
     scheduleType: formData.get("scheduleType") || "DAILY",
-    cronExpression: formData.get("cronExpression") || undefined
+    cronExpression: formData.get("cronExpression") || undefined,
+    itGlueConfigurationId: formData.get("itGlueConfigurationId") || undefined
   });
   const customer = await prisma.customer.findUniqueOrThrow({ where: { id: parsed.customerId } });
   assertTenantAccess(user, customer.tenantId);
+  if ((await isItGlueEnabled(customer.tenantId)) && !parsed.itGlueConfigurationId) {
+    throw new Error("IT Glue configuration ID is verplicht wanneer IT Glue actief is voor deze tenant.");
+  }
 
   const device = await prisma.fortiGate.update({
     where: { id },
@@ -478,7 +492,8 @@ export async function updateFortiGate(formData: FormData) {
       tlsVerify: parsed.tlsVerify,
       vdom: parsed.vdom,
       scheduleType: parsed.scheduleType,
-      cronExpression: parsed.cronExpression
+      cronExpression: parsed.cronExpression,
+      itGlueConfigurationId: parsed.itGlueConfigurationId
     },
     include: { customer: true }
   });
@@ -549,6 +564,7 @@ export async function saveSettings(formData: FormData) {
     else await deleteSetting("portal.siteUrl", tenantId);
   }
   const entries = [
+    ["itglue.baseUrl", formData.get("itglue.baseUrl")],
     ["mail.provider", formData.get("mail.provider")],
     ["smtp.host", formData.get("smtp.host")],
     ["smtp.port", formData.get("smtp.port")],
@@ -557,18 +573,23 @@ export async function saveSettings(formData: FormData) {
     ["graph.from", formData.get("graph.from")],
     ["graph.tenantId", formData.get("graph.tenantId")],
     ["graph.clientId", formData.get("graph.clientId")],
-    ["entra.enabled", formData.get("entra.enabled")],
     ["entra.tenantId", formData.get("entra.tenantId")],
     ["entra.clientId", formData.get("entra.clientId")]
   ] as const;
+  await setSetting("itglue.enabled", boolField(formData, "itglue.enabled") ? "true" : "false", { tenantId });
+  await setSetting("entra.enabled", boolField(formData, "entra.enabled") ? "true" : "false", { tenantId });
   for (const [key, value] of entries) {
     if (value) await setSetting(key, String(value), { tenantId });
   }
   const smtpPassword = formData.get("smtp.password");
+  const itGlueApiKey = formData.get("itglue.apiKey");
   const graphToken = formData.get("graph.accessToken");
+  const graphClientSecret = formData.get("graph.clientSecret");
   const entraSecret = formData.get("entra.clientSecret");
   if (smtpPassword) await setSetting("smtp.password", String(smtpPassword), { tenantId, encrypted: true });
+  if (itGlueApiKey) await setSetting("itglue.apiKey", String(itGlueApiKey), { tenantId, encrypted: true });
   if (graphToken) await setSetting("graph.accessToken", String(graphToken), { tenantId, encrypted: true });
+  if (graphClientSecret) await setSetting("graph.clientSecret", String(graphClientSecret), { tenantId, encrypted: true });
   if (entraSecret) await setSetting("entra.clientSecret", String(entraSecret), { tenantId, encrypted: true });
   await auditLog({ action: "settings.updated", tenantId });
   revalidatePath("/settings");

@@ -10,7 +10,7 @@ import { requireUser } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
-const settingKeys = ["smtp.password", "graph.accessToken", "graph.clientSecret", "entra.clientSecret"] as const;
+const settingKeys = ["smtp.password", "itglue.apiKey", "graph.accessToken", "graph.clientSecret", "entra.clientSecret"] as const;
 
 export default async function SettingsPage({
   searchParams
@@ -30,6 +30,8 @@ export default async function SettingsPage({
   const [
     portalSiteUrl,
     effectiveSiteUrl,
+    itGlueEnabled,
+    itGlueBaseUrl,
     mailProvider,
     smtpHost,
     smtpPort,
@@ -46,6 +48,8 @@ export default async function SettingsPage({
   ] = await Promise.all([
     getSetting("portal.siteUrl", tenantId),
     tenantId ? getSetting("portal.siteUrl", null) : Promise.resolve(process.env.SERVER_URL ?? ""),
+    getSetting("itglue.enabled", tenantId),
+    getSetting("itglue.baseUrl", tenantId),
     getSetting("mail.provider", tenantId),
     getSetting("smtp.host", tenantId),
     getSetting("smtp.port", tenantId),
@@ -89,6 +93,9 @@ export default async function SettingsPage({
                   values={{
                     portalSiteUrl: portalSiteUrl ?? "",
                     effectiveSiteUrl: portalSiteUrl ?? effectiveSiteUrl ?? "",
+                    itGlueEnabled: itGlueEnabled === "true",
+                    itGlueBaseUrl: itGlueBaseUrl ?? "https://api.itglue.com",
+                    hasItGlueApiKey: secretKeys.has("itglue.apiKey"),
                     mailProvider: mailProvider === "MICROSOFT_GRAPH" ? "MICROSOFT_GRAPH" : "SMTP",
                     smtpHost: smtpHost ?? "",
                     smtpPort: smtpPort ?? "587",

@@ -11,6 +11,9 @@ type TenantOption = {
 type SettingsValues = {
   portalSiteUrl: string;
   effectiveSiteUrl: string;
+  itGlueEnabled: boolean;
+  itGlueBaseUrl: string;
+  hasItGlueApiKey: boolean;
   mailProvider: "SMTP" | "MICROSOFT_GRAPH";
   smtpHost: string;
   smtpPort: string;
@@ -29,6 +32,7 @@ type SettingsValues = {
 
 const tabs = [
   { id: "portal", label: "Portal" },
+  { id: "itglue", label: "IT Glue" },
   { id: "mail", label: "Mail" },
   { id: "sso", label: "SSO" }
 ] as const;
@@ -123,6 +127,34 @@ export function SettingsForm({
           defaultValue={values.portalSiteUrl}
           help={values.effectiveSiteUrl ? `Actieve URL: ${values.effectiveSiteUrl}` : "Laat leeg om de globale SERVER_URL of globale portal URL te gebruiken."}
         />
+      </section>
+
+      <section hidden={activeTab !== "itglue"} className="grid gap-4 rounded-md border border-border bg-surface-soft p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-semibold">IT Glue integratie</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Upload gewijzigde FortiGate configbestanden als bijlage op de juiste IT Glue configuration.
+            </p>
+          </div>
+          <label className="flex items-center gap-2 rounded-md border border-border bg-surface px-3 py-2 text-sm">
+            <input name="itglue.enabled" type="hidden" value="false" />
+            <input name="itglue.enabled" type="checkbox" value="true" defaultChecked={values.itGlueEnabled} />
+            IT Glue actief
+          </label>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <TextField label="API base URL" name="itglue.baseUrl" defaultValue={values.itGlueBaseUrl || "https://api.itglue.com"} />
+          <TextField
+            label={values.hasItGlueApiKey ? "Nieuwe API key" : "API key"}
+            name="itglue.apiKey"
+            type="password"
+            help={values.hasItGlueApiKey ? "Er is al een IT Glue API key opgeslagen. Laat leeg om deze te behouden." : "De API key wordt versleuteld opgeslagen."}
+          />
+        </div>
+        <div className="rounded-md border border-border bg-surface p-3 text-sm text-muted-foreground">
+          Vul bij klanten het IT Glue organization ID in en bij FortiGates het IT Glue configuration ID. Bij elke gewijzigde backup wordt het configbestand daar als bijlage verwerkt.
+        </div>
       </section>
 
       <section hidden={activeTab !== "mail"} className="grid gap-4 rounded-md border border-border bg-surface-soft p-4">

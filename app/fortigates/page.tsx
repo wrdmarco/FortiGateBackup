@@ -104,6 +104,7 @@ export default async function FortiGatesPage({
             </p>
           ) : null}
           <Field label="VDOM" name="vdom" defaultValue={editDevice?.vdom ?? ""} />
+          <Field label="IT Glue configuration ID" name="itGlueConfigurationId" defaultValue={editDevice?.itGlueConfigurationId ?? ""} />
           <label className="grid gap-1 text-sm">
             <span className="font-medium">Schema</span>
             <select

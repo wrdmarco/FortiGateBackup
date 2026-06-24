@@ -50,6 +50,7 @@ export default async function CustomersPage() {
               <Field label="Contactpersoon" name="contact" />
               <Field label="E-mail" name="email" type="email" />
               <Field label="Telefoon" name="phone" />
+              <Field label="IT Glue organization ID" name="itGlueOrganizationId" />
               <label className="grid gap-1 text-sm">
                 <span className="font-medium">Notities</span>
                 <textarea className="min-h-24 rounded-md border border-border bg-surface px-3 py-2 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15" name="notes" />

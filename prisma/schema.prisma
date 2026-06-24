@@ -117,6 +117,7 @@ model Customer {
   email     String?
   phone     String?
   notes     String?
+  itGlueOrganizationId String?
   active    Boolean     @default(true)
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
@@ -137,6 +138,7 @@ model FortiGate {
   uptime            String?
   externalIpAddresses String?
   licenseInfo       String?
+  itGlueConfigurationId String?
   managementUrl     String
   httpsPort         Int              @default(443)
   apiTokenEncrypted String
@@ -166,6 +168,9 @@ model Backup {
   filesize    Int          @default(0)
   status      BackupStatus
   error       String?
+  itGlueAttachmentId String?
+  itGlueUploadedAt DateTime?
+  itGlueError String?
   createdAt   DateTime     @default(now())
   fortigate   FortiGate    @relation(fields: [fortigateId], references: [id], onDelete: Cascade)
 

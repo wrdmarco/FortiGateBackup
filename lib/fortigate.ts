@@ -6,6 +6,7 @@ import { BackupStatus, FortiGate, FortiGateLogLevel } from "@prisma/client";
 import { auditLog } from "@/lib/audit";
 import { decryptSecret, sha256 } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
+import { uploadBackupToItGlue } from "@/lib/itglue";
 
 type RequestOptions = {
   headers: Record<string, string>;
@@ -525,7 +526,7 @@ export async function runBackup(deviceId: string) {
       "Backup opgeslagen.",
       { sha256: digest, filename, bytes: config.byteLength }
     );
-    return prisma.backup.create({
+    const backup = await prisma.backup.create({
       data: {
         fortigateId: device.id,
         filename: path.relative(process.cwd(), fullPath),
@@ -534,6 +535,49 @@ export async function runBackup(deviceId: string) {
         status: BackupStatus.CHANGED
       }
     });
+    const uploadTarget = await prisma.fortiGate.findUniqueOrThrow({
+      where: { id: device.id },
+      include: { customer: true }
+    });
+    try {
+      const upload = await uploadBackupToItGlue({
+        tenantId: uploadTarget.customer.tenantId,
+        device: uploadTarget,
+        backup,
+        config,
+        filename
+      });
+      if (!upload.skipped) {
+        await writeFortiGateLog(
+          device.id,
+          FortiGateLogLevel.INFO,
+          "itglue.uploaded",
+          "Backupconfiguratie als IT Glue bijlage verwerkt.",
+          { attachmentId: upload.attachmentId, configurationId: uploadTarget.itGlueConfigurationId }
+        );
+        return prisma.backup.update({
+          where: { id: backup.id },
+          data: {
+            itGlueAttachmentId: upload.attachmentId,
+            itGlueUploadedAt: new Date(),
+            itGlueError: null
+          }
+        });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Onbekende IT Glue upload fout.";
+      await writeFortiGateLog(
+        device.id,
+        FortiGateLogLevel.WARN,
+        "itglue.upload_failed",
+        message
+      );
+      return prisma.backup.update({
+        where: { id: backup.id },
+        data: { itGlueError: message }
+      });
+    }
+    return backup;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown backup error.";
     await auditLog({
