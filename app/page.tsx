@@ -41,7 +41,7 @@ export default async function DashboardPage() {
         <Card title="Fouten" value={failures} />
         <Card
           title="Applicatie"
-          value={updateStatus?.updateAvailable ? "Update" : updateStatus?.updateRunning ? "Bezig" : updateStatus?.currentVersion ?? "0.1.2"}
+          value={updateStatus?.updateAvailable ? "Update" : updateStatus?.updateRunning ? "Bezig" : updateStatus?.currentVersion ?? "0.1.3"}
           detail={updateStatus?.updateAvailable ? "Nieuwe GitHub versie beschikbaar" : updateStatus?.updateRunning ? "Update draait" : "Actueel"}
         />
       </div>
