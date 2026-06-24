@@ -9,11 +9,15 @@ const config: Config = {
         border: "hsl(var(--border))",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
+        surface: "hsl(var(--surface))",
+        "surface-soft": "hsl(var(--surface-soft))",
         muted: "hsl(var(--muted))",
         "muted-foreground": "hsl(var(--muted-foreground))",
         primary: "hsl(var(--primary))",
         "primary-foreground": "hsl(var(--primary-foreground))",
-        danger: "hsl(var(--danger))"
+        danger: "hsl(var(--danger))",
+        success: "hsl(var(--success))",
+        warning: "hsl(var(--warning))"
       }
     }
   },

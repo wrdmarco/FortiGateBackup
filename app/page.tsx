@@ -1,5 +1,5 @@
 import { BackupStatus } from "@prisma/client";
-import { Card, Shell } from "@/components/ui";
+import { Card, PageHeader, Shell, TableShell } from "@/components/ui";
 import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
@@ -27,14 +27,10 @@ export default async function DashboardPage() {
 
   return (
     <Shell>
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-semibold">Dashboard</h1>
-          <p className="mt-1 text-muted-foreground">
-            Centrale status van tenants, FortiGates, backups en firmwaremeldingen.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="Dashboard"
+        description="Centrale status van tenants, FortiGates, backups en firmwaremeldingen."
+      />
       <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
         <Card title={isSuperAdmin(user) ? "Tenants" : "Tenant"} value={tenants} />
         <Card title="Klanten" value={customers} />
@@ -45,9 +41,9 @@ export default async function DashboardPage() {
       </div>
       <section className="mt-8">
         <h2 className="mb-3 text-xl font-semibold">Recente activiteiten</h2>
-        <div className="overflow-hidden rounded-md border border-border">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-muted">
+        <TableShell>
+          <table className="table-pro w-full text-left text-sm">
+            <thead className="bg-surface-soft">
               <tr>
                 <th className="px-3 py-2">Actie</th>
                 <th className="px-3 py-2">Entiteit</th>
@@ -64,7 +60,7 @@ export default async function DashboardPage() {
               ))}
             </tbody>
           </table>
-        </div>
+        </TableShell>
       </section>
     </Shell>
   );

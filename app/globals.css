@@ -3,34 +3,80 @@
 @tailwind utilities;
 
 :root {
-  --background: 210 24% 98%;
-  --foreground: 222 28% 14%;
-  --muted: 210 16% 92%;
-  --muted-foreground: 215 13% 42%;
-  --border: 214 20% 84%;
-  --primary: 215 48% 26%;
+  --background: 210 30% 97%;
+  --foreground: 222 24% 12%;
+  --surface: 0 0% 100%;
+  --surface-soft: 210 29% 95%;
+  --muted: 210 18% 92%;
+  --muted-foreground: 215 12% 40%;
+  --border: 214 18% 84%;
+  --primary: 197 78% 31%;
   --primary-foreground: 0 0% 100%;
   --danger: 0 72% 46%;
+  --success: 150 66% 30%;
+  --warning: 38 92% 40%;
 }
 
 .dark {
-  --background: 220 24% 10%;
+  --background: 222 18% 10%;
   --foreground: 210 24% 96%;
-  --muted: 220 17% 18%;
+  --surface: 222 16% 13%;
+  --surface-soft: 220 14% 17%;
+  --muted: 220 13% 18%;
   --muted-foreground: 215 15% 68%;
-  --border: 220 15% 26%;
+  --border: 220 12% 26%;
   --primary: 196 100% 43%;
   --primary-foreground: 220 24% 10%;
   --danger: 0 84% 60%;
+  --success: 150 68% 44%;
+  --warning: 42 92% 58%;
 }
 
 body {
   background: hsl(var(--background));
   color: hsl(var(--foreground));
+  font-feature-settings: "rlig" 1, "calt" 1;
 }
 
 input,
 select,
 textarea {
-  background: hsl(var(--background));
+  background: hsl(var(--surface));
+}
+
+::selection {
+  background: hsl(var(--primary) / 0.18);
+}
+
+@layer base {
+  table {
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  th {
+    font-weight: 650;
+  }
+}
+
+@layer components {
+  .table-pro th {
+    padding: 0.75rem 1rem;
+    color: hsl(var(--muted-foreground));
+    font-size: 0.75rem;
+    letter-spacing: 0;
+    text-transform: uppercase;
+  }
+
+  .table-pro td {
+    padding: 0.875rem 1rem;
+  }
+
+  .table-pro tbody tr {
+    transition: background-color 150ms ease;
+  }
+
+  .table-pro tbody tr:hover {
+    background: hsl(var(--surface-soft) / 0.72);
+  }
 }

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { createFortiGate, deleteFortiGate, runBackupAction, updateFortiGate } from "@/app/actions";
 import { FirmwareStatus } from "@/components/firmware-status";
-import { Button, Field, Shell } from "@/components/ui";
+import { Badge, Button, Field, PageHeader, Panel, Shell, TableShell } from "@/components/ui";
 import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
@@ -34,17 +34,21 @@ export default async function FortiGatesPage({
 
   return (
     <Shell>
-      <h1 className="text-3xl font-semibold">FortiGates</h1>
+      <PageHeader
+        title="FortiGates"
+        description="Beheer API-toegang, backupstatus, firmware en diagnose per firewall."
+      />
       <div className="mt-6 grid gap-6 xl:grid-cols-[380px_1fr]">
-        <form action={formAction} className="grid gap-4 rounded-md border border-border p-4">
-          <h2 className="text-lg font-semibold">
-            {editDevice ? "FortiGate bewerken" : "FortiGate toevoegen"}
-          </h2>
+        <Panel
+          title={editDevice ? "FortiGate bewerken" : "FortiGate toevoegen"}
+          description={editDevice ? "Wijzig connectiegegevens zonder bestaande token te tonen." : "Voeg een firewall toe aan een klantkaart."}
+        >
+        <form action={formAction} className="grid gap-4">
           {editDevice ? <input type="hidden" name="id" value={editDevice.id} /> : null}
           <label className="grid gap-1 text-sm">
             <span className="font-medium">Klant</span>
             <select
-              className="rounded-md border border-border px-3 py-2"
+              className="rounded-md border border-border bg-surface px-3 py-2"
               name="customerId"
               defaultValue={editDevice?.customerId}
               required
@@ -84,7 +88,7 @@ export default async function FortiGatesPage({
           <label className="grid gap-1 text-sm">
             <span className="font-medium">Schema</span>
             <select
-              className="rounded-md border border-border px-3 py-2"
+              className="rounded-md border border-border bg-surface px-3 py-2"
               name="scheduleType"
               defaultValue={editDevice?.scheduleType ?? "DAILY"}
             >
@@ -109,7 +113,7 @@ export default async function FortiGatesPage({
             <Button>{editDevice ? "Wijzigingen opslaan" : "Opslaan"}</Button>
             {editDevice ? (
               <Link
-                className="rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-muted"
+                className="rounded-md border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-muted"
                 href="/fortigates"
               >
                 Annuleren
@@ -117,9 +121,10 @@ export default async function FortiGatesPage({
             ) : null}
           </div>
         </form>
-        <div className="overflow-auto rounded-md border border-border">
-          <table className="w-full min-w-[1180px] text-left text-sm">
-            <thead className="bg-muted">
+        </Panel>
+        <TableShell>
+          <table className="table-pro w-full min-w-[1180px] text-left text-sm">
+            <thead className="bg-surface-soft">
               <tr>
                 <th className="px-3 py-2">Hostname</th>
                 <th className="px-3 py-2">Klant</th>
@@ -155,7 +160,15 @@ export default async function FortiGatesPage({
                         <FirmwareStatus version={device.firmwareVersion} />
                       </div>
                     </td>
-                    <td className="px-3 py-2">{device.backups[0]?.status ?? "nog niet uitgevoerd"}</td>
+                    <td className="px-3 py-2">
+                      {device.backups[0]?.status ? (
+                        <Badge tone={device.backups[0].status === "FAILED" ? "danger" : device.backups[0].status === "CHANGED" ? "warning" : "success"}>
+                          {device.backups[0].status}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground">nog niet uitgevoerd</span>
+                      )}
+                    </td>
                     <td className="max-w-[360px] px-3 py-2">
                       {latestLog ? (
                         <div className="grid gap-1">
@@ -177,16 +190,16 @@ export default async function FortiGatesPage({
                         <Button>Backup</Button>
                       </form>
                       <Link
-                        className="rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-muted"
+                        className="rounded-md border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-muted"
                         href={`/fortigates?edit=${device.id}`}
                       >
                         Edit
                       </Link>
                       <form action={deleteFortiGate}>
                         <input type="hidden" name="id" value={device.id} />
-                        <button className="rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950">
+                        <Button variant="danger">
                           Delete
-                        </button>
+                        </Button>
                       </form>
                     </td>
                   </tr>
@@ -194,7 +207,7 @@ export default async function FortiGatesPage({
               })}
             </tbody>
           </table>
-        </div>
+        </TableShell>
       </div>
     </Shell>
   );

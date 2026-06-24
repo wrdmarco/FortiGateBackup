@@ -1,5 +1,5 @@
 import { createManagedTenant, setTenantActive } from "@/app/actions";
-import { Button, Field, Shell } from "@/components/ui";
+import { Badge, Button, Field, PageHeader, Panel, Shell, TableShell } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 
@@ -20,17 +20,14 @@ export default async function TenantsPage() {
 
   return (
     <Shell>
-      <div className="mb-6">
-        <h1 className="text-3xl font-semibold">Tenants</h1>
-        <p className="mt-1 max-w-3xl text-muted-foreground">
-          Alleen platformbeheerders kunnen tenants aanmaken. Tenantadmins beheren daarna uitsluitend
-          hun eigen klanten, FortiGates, backups en instellingen.
-        </p>
-      </div>
+      <PageHeader
+        title="Tenants"
+        description="Alleen platformbeheerders kunnen tenants aanmaken. Tenantadmins beheren daarna uitsluitend hun eigen klanten, FortiGates, backups en instellingen."
+      />
 
       <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
-        <form action={createManagedTenant} className="grid gap-4 rounded-md border border-border p-4">
-          <h2 className="text-lg font-semibold">Tenant aanmaken</h2>
+        <Panel title="Tenant aanmaken" description="Maak direct een eerste tenantadmin aan.">
+          <form action={createManagedTenant} className="grid gap-4">
           <Field label="Tenantnaam" name="name" required />
           <Field label="Slug" name="slug" required />
           <div className="border-t border-border pt-4">
@@ -42,11 +39,12 @@ export default async function TenantsPage() {
             </div>
           </div>
           <Button>Tenant en admin maken</Button>
-        </form>
+          </form>
+        </Panel>
 
-        <div className="overflow-auto rounded-md border border-border">
-          <table className="w-full min-w-[860px] text-left text-sm">
-            <thead className="bg-muted">
+        <TableShell>
+          <table className="table-pro w-full min-w-[860px] text-left text-sm">
+            <thead className="bg-surface-soft">
               <tr>
                 <th className="px-3 py-2">Tenant</th>
                 <th className="px-3 py-2">Slug</th>
@@ -61,7 +59,9 @@ export default async function TenantsPage() {
                 <tr key={tenant.id} className="border-t border-border">
                   <td className="px-3 py-2 font-medium">{tenant.name}</td>
                   <td className="px-3 py-2 font-mono text-xs">{tenant.slug}</td>
-                  <td className="px-3 py-2">{tenant.active ? "Actief" : "Inactief"}</td>
+                  <td className="px-3 py-2">
+                    <Badge tone={tenant.active ? "success" : "danger"}>{tenant.active ? "Actief" : "Inactief"}</Badge>
+                  </td>
                   <td className="px-3 py-2">{tenant.customers.length}</td>
                   <td className="px-3 py-2">
                     {tenant.users.length
@@ -79,7 +79,7 @@ export default async function TenantsPage() {
               ))}
             </tbody>
           </table>
-        </div>
+        </TableShell>
       </div>
     </Shell>
   );

@@ -1,5 +1,5 @@
 import { saveSettings } from "@/app/actions";
-import { Button, Field, Shell } from "@/components/ui";
+import { Button, Field, PageHeader, Panel, Shell } from "@/components/ui";
 import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
@@ -13,12 +13,16 @@ export default async function SettingsPage() {
     : [];
   return (
     <Shell>
-      <h1 className="text-3xl font-semibold">Instellingen</h1>
-      <form action={saveSettings} className="mt-6 grid max-w-3xl gap-6 rounded-md border border-border p-4">
+      <PageHeader
+        title="Instellingen"
+        description="Beheer mail, Microsoft Entra ID en tenantgebonden integratie-instellingen."
+      />
+      <Panel className="max-w-4xl">
+      <form action={saveSettings} className="grid gap-6">
         {isSuperAdmin(user) ? (
           <label className="grid gap-1 text-sm">
             <span className="font-medium">Tenant</span>
-            <select className="rounded-md border border-border px-3 py-2" name="tenantId">
+            <select className="rounded-md border border-border bg-surface px-3 py-2" name="tenantId">
               <option value="">Globaal</option>
               {tenants.map((tenant) => (
                 <option key={tenant.id} value={tenant.id}>
@@ -31,10 +35,10 @@ export default async function SettingsPage() {
           <input type="hidden" name="tenantId" value={user.tenantId ?? ""} />
         )}
         <section className="grid gap-4">
-          <h2 className="text-lg font-semibold">Mail</h2>
+          <h2 className="border-b border-border pb-2 text-lg font-semibold">Mail</h2>
           <label className="grid gap-1 text-sm">
             <span className="font-medium">Provider</span>
-            <select className="rounded-md border border-border px-3 py-2" name="mail.provider">
+            <select className="rounded-md border border-border bg-surface px-3 py-2" name="mail.provider">
               <option value="SMTP">SMTP</option>
               <option value="MICROSOFT_GRAPH">Microsoft Graph</option>
             </select>
@@ -50,7 +54,7 @@ export default async function SettingsPage() {
           </div>
         </section>
         <section className="grid gap-4">
-          <h2 className="text-lg font-semibold">Microsoft Entra ID</h2>
+          <h2 className="border-b border-border pb-2 text-lg font-semibold">Microsoft Entra ID</h2>
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="Tenant ID" name="entra.tenantId" />
             <Field label="Client ID" name="entra.clientId" />
@@ -61,6 +65,7 @@ export default async function SettingsPage() {
           <Button>Instellingen opslaan</Button>
         </div>
       </form>
+      </Panel>
     </Shell>
   );
 }

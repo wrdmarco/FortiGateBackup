@@ -1,5 +1,5 @@
 import { createTenant } from "@/app/actions";
-import { Button, Field, Shell } from "@/components/ui";
+import { Button, Field, PageHeader, Panel, Shell } from "@/components/ui";
 import { prisma } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -9,13 +9,19 @@ export default async function SetupPage() {
   return (
     <Shell>
       <div className="max-w-2xl">
-        <h1 className="text-3xl font-semibold">Eerste inrichting</h1>
+        <PageHeader
+          title="Eerste inrichting"
+          description="Maak de eerste tenant en super-admin aan om het portaal te activeren."
+        />
         {tenantCount > 0 ? (
-          <p className="mt-3 text-muted-foreground">
+          <Panel>
+          <p className="text-sm text-muted-foreground">
             De setup is al uitgevoerd. Beheer tenants en instellingen via het portaal.
           </p>
+          </Panel>
         ) : (
-          <form action={createTenant} className="mt-6 grid gap-4 rounded-md border border-border p-4">
+          <Panel>
+          <form action={createTenant} className="grid gap-4">
             <Field label="Tenantnaam" name="name" required />
             <Field label="Slug" name="slug" required />
             <Field label="Admin naam" name="adminName" required />
@@ -26,6 +32,7 @@ export default async function SetupPage() {
               <Button>Tenant aanmaken</Button>
             </div>
           </form>
+          </Panel>
         )}
       </div>
     </Shell>

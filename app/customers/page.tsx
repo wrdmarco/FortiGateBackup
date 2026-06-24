@@ -1,6 +1,5 @@
-import Link from "next/link";
 import { createCustomer } from "@/app/actions";
-import { Button, Field, Shell } from "@/components/ui";
+import { ActionLink, Badge, Button, Field, PageHeader, Panel, Shell, TableShell } from "@/components/ui";
 import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
@@ -22,14 +21,17 @@ export default async function CustomersPage() {
 
   return (
     <Shell>
-      <h1 className="text-3xl font-semibold">Klanten</h1>
+      <PageHeader
+        title="Klanten"
+        description="Beheer klanten als startpunt voor FortiGates, backups, downloads en configuratiediffs."
+      />
       <div className="mt-6 grid gap-6 lg:grid-cols-[360px_1fr]">
-        <form action={createCustomer} className="grid gap-4 rounded-md border border-border p-4">
-          <h2 className="text-lg font-semibold">Klant toevoegen</h2>
+        <Panel title="Klant toevoegen" description="Maak een klantkaart aan voor beheer en rapportage.">
+          <form action={createCustomer} className="grid gap-4">
           {isSuperAdmin(user) ? (
             <label className="grid gap-1 text-sm">
               <span className="font-medium">Tenant</span>
-              <select className="rounded-md border border-border px-3 py-2" name="tenantId" required>
+              <select className="rounded-md border border-border bg-surface px-3 py-2" name="tenantId" required>
                 {tenants.map((tenant) => (
                   <option key={tenant.id} value={tenant.id}>
                     {tenant.name}
@@ -46,13 +48,14 @@ export default async function CustomersPage() {
           <Field label="Telefoon" name="phone" />
           <label className="grid gap-1 text-sm">
             <span className="font-medium">Notities</span>
-            <textarea className="min-h-24 rounded-md border border-border px-3 py-2" name="notes" />
+            <textarea className="min-h-24 rounded-md border border-border bg-surface px-3 py-2 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15" name="notes" />
           </label>
           <Button>Opslaan</Button>
-        </form>
-        <div className="overflow-hidden rounded-md border border-border">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-muted">
+          </form>
+        </Panel>
+        <TableShell>
+          <table className="table-pro w-full text-left text-sm">
+            <thead className="bg-surface-soft">
               <tr>
                 <th className="px-3 py-2">Klant</th>
                 <th className="px-3 py-2">Tenant</th>
@@ -67,20 +70,15 @@ export default async function CustomersPage() {
                   <td className="px-3 py-2 font-medium">{customer.name}</td>
                   <td className="px-3 py-2">{customer.tenant.name}</td>
                   <td className="px-3 py-2">{customer.email ?? customer.contact ?? "-"}</td>
-                  <td className="px-3 py-2">{customer.devices.length}</td>
+                  <td className="px-3 py-2"><Badge>{customer.devices.length}</Badge></td>
                   <td className="px-3 py-2">
-                    <Link
-                      className="rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-muted"
-                      href={`/customers/${customer.id}`}
-                    >
-                      Beheren
-                    </Link>
+                    <ActionLink href={`/customers/${customer.id}`}>Beheren</ActionLink>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </TableShell>
       </div>
     </Shell>
   );

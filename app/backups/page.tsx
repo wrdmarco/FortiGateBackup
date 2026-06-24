@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { Shell } from "@/components/ui";
+import { ActionLink, Badge, PageHeader, Shell, TableShell } from "@/components/ui";
 import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
@@ -16,10 +15,13 @@ export default async function BackupsPage() {
   });
   return (
     <Shell>
-      <h1 className="text-3xl font-semibold">Backups</h1>
-      <div className="mt-6 overflow-auto rounded-md border border-border">
-        <table className="w-full min-w-[900px] text-left text-sm">
-          <thead className="bg-muted">
+      <PageHeader
+        title="Backups"
+        description="Controleer backupresultaten, download configuraties en vergelijk wijzigingen."
+      />
+      <TableShell className="mt-6">
+        <table className="table-pro w-full min-w-[980px] text-left text-sm">
+          <thead className="bg-surface-soft">
             <tr>
               <th className="px-3 py-2">Datum</th>
               <th className="px-3 py-2">Klant</th>
@@ -36,24 +38,18 @@ export default async function BackupsPage() {
                 <td className="px-3 py-2">{backup.createdAt.toLocaleString("nl-NL")}</td>
                 <td className="px-3 py-2">{backup.fortigate.customer.name}</td>
                 <td className="px-3 py-2">{backup.fortigate.hostname ?? backup.fortigate.managementUrl}</td>
-                <td className="px-3 py-2">{backup.status}</td>
+                <td className="px-3 py-2">
+                  <Badge tone={backup.status === "FAILED" ? "danger" : backup.status === "CHANGED" ? "warning" : "success"}>
+                    {backup.status}
+                  </Badge>
+                </td>
                 <td className="px-3 py-2 font-mono text-xs">{backup.sha256 ?? backup.error ?? "-"}</td>
                 <td className="px-3 py-2">{backup.filesize}</td>
                 <td className="flex flex-wrap gap-2 px-3 py-2">
                   {backup.filename ? (
                     <>
-                      <Link
-                        className="rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-muted"
-                        href={`/api/backups/${backup.id}/download`}
-                      >
-                        Download
-                      </Link>
-                      <Link
-                        className="rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-muted"
-                        href={`/backups/${backup.id}/diff`}
-                      >
-                        Diff
-                      </Link>
+                      <ActionLink href={`/api/backups/${backup.id}/download`}>Download</ActionLink>
+                      <ActionLink href={`/backups/${backup.id}/diff`}>Diff</ActionLink>
                     </>
                   ) : (
                     <span className="text-muted-foreground">Geen bestand</span>
@@ -63,7 +59,7 @@ export default async function BackupsPage() {
             ))}
           </tbody>
         </table>
-      </div>
+      </TableShell>
     </Shell>
   );
 }

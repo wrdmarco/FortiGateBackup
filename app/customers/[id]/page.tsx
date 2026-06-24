@@ -1,8 +1,7 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { runBackupAction } from "@/app/actions";
 import { FirmwareStatus } from "@/components/firmware-status";
-import { Button, Card, Shell } from "@/components/ui";
+import { ActionLink, Badge, Button, Card, PageHeader, Shell, TableShell } from "@/components/ui";
 import { assertTenantAccess, requireTenantUser } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 
@@ -38,25 +37,16 @@ export default async function CustomerDetailPage({
 
   return (
     <Shell>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-semibold">{customer.name}</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {customer.tenant.name} - {customer.email ?? customer.contact ?? "Geen contactgegevens"}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Link className="rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-muted" href="/customers">
-            Klanten
-          </Link>
-          <Link
-            className="rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-muted"
-            href="/fortigates"
-          >
-            FortiGate toevoegen
-          </Link>
-        </div>
-      </div>
+      <PageHeader
+        title={customer.name}
+        description={`${customer.tenant.name} - ${customer.email ?? customer.contact ?? "Geen contactgegevens"}`}
+        actions={
+          <>
+            <ActionLink href="/customers">Klanten</ActionLink>
+            <ActionLink href="/fortigates" variant="primary">FortiGate toevoegen</ActionLink>
+          </>
+        }
+      />
 
       <div className="mt-6 grid gap-4 md:grid-cols-4">
         <Card title="FortiGates" value={customer.devices.length} detail="Bij deze klant" />
@@ -71,9 +61,9 @@ export default async function CustomerDetailPage({
 
       <section className="mt-8">
         <h2 className="text-xl font-semibold">FortiGates</h2>
-        <div className="mt-4 overflow-auto rounded-md border border-border">
-          <table className="w-full min-w-[1100px] text-left text-sm">
-            <thead className="bg-muted">
+        <TableShell className="mt-4">
+          <table className="table-pro w-full min-w-[1100px] text-left text-sm">
+            <thead className="bg-surface-soft">
               <tr>
                 <th className="px-3 py-2">FortiGate</th>
                 <th className="px-3 py-2">Model</th>
@@ -99,7 +89,11 @@ export default async function CustomerDetailPage({
                         <FirmwareStatus version={device.firmwareVersion} />
                       </div>
                     </td>
-                    <td className="px-3 py-2">{device.tlsVerify ? "Aan" : "Uit"}</td>
+                    <td className="px-3 py-2">
+                      <Badge tone={device.tlsVerify ? "warning" : "success"}>
+                        {device.tlsVerify ? "Aan" : "Uit"}
+                      </Badge>
+                    </td>
                     <td className="max-w-[360px] px-3 py-2">
                       {latestLog ? (
                         <div>
@@ -118,26 +112,21 @@ export default async function CustomerDetailPage({
                         <input type="hidden" name="id" value={device.id} />
                         <Button>Backup</Button>
                       </form>
-                      <Link
-                        className="rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-muted"
-                        href={`/fortigates?edit=${device.id}`}
-                      >
-                        Edit
-                      </Link>
+                      <ActionLink href={`/fortigates?edit=${device.id}`}>Edit</ActionLink>
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-        </div>
+        </TableShell>
       </section>
 
       <section className="mt-8">
         <h2 className="text-xl font-semibold">Backups</h2>
-        <div className="mt-4 overflow-auto rounded-md border border-border">
-          <table className="w-full min-w-[1100px] text-left text-sm">
-            <thead className="bg-muted">
+        <TableShell className="mt-4">
+          <table className="table-pro w-full min-w-[1100px] text-left text-sm">
+            <thead className="bg-surface-soft">
               <tr>
                 <th className="px-3 py-2">Datum</th>
                 <th className="px-3 py-2">FortiGate</th>
@@ -154,24 +143,18 @@ export default async function CustomerDetailPage({
                   <tr key={backup.id} className="border-t border-border align-top">
                     <td className="px-3 py-2">{backup.createdAt.toLocaleString("nl-NL")}</td>
                     <td className="px-3 py-2">{backup.device.hostname ?? backup.device.managementUrl}</td>
-                    <td className="px-3 py-2">{backup.status}</td>
+                    <td className="px-3 py-2">
+                      <Badge tone={backup.status === "FAILED" ? "danger" : backup.status === "CHANGED" ? "warning" : "success"}>
+                        {backup.status}
+                      </Badge>
+                    </td>
                     <td className="max-w-[360px] truncate px-3 py-2 font-mono text-xs">{backup.sha256 ?? backup.error ?? "-"}</td>
                     <td className="px-3 py-2">{backup.filesize}</td>
                     <td className="flex flex-wrap gap-2 px-3 py-2">
                       {backup.filename ? (
                         <>
-                          <Link
-                            className="rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-muted"
-                            href={`/api/backups/${backup.id}/download`}
-                          >
-                            Download
-                          </Link>
-                          <Link
-                            className="rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-muted"
-                            href={`/backups/${backup.id}/diff`}
-                          >
-                            Diff
-                          </Link>
+                          <ActionLink href={`/api/backups/${backup.id}/download`}>Download</ActionLink>
+                          <ActionLink href={`/backups/${backup.id}/diff`}>Diff</ActionLink>
                         </>
                       ) : (
                         <span className="text-muted-foreground">Geen bestand</span>
@@ -181,7 +164,7 @@ export default async function CustomerDetailPage({
                 ))}
             </tbody>
           </table>
-        </div>
+        </TableShell>
       </section>
     </Shell>
   );
