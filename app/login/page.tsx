@@ -1,7 +1,14 @@
+import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/login-form";
 import { Panel, Shell } from "@/components/ui";
+import { prisma } from "@/lib/db";
 
-export default function LoginPage() {
+export const dynamic = "force-dynamic";
+
+export default async function LoginPage() {
+  const tenantCount = await prisma.tenant.count();
+  if (tenantCount === 0) redirect("/setup");
+
   return (
     <Shell>
       <div className="mx-auto max-w-md pt-8">

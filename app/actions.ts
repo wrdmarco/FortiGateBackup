@@ -46,7 +46,7 @@ function recordLoginFailure(email: string) {
 export async function createTenant(formData: FormData) {
   const existingTenants = await prisma.tenant.count();
   if (existingTenants > 0) {
-    await requireSuperAdmin();
+    throw new Error("Setup is al uitgevoerd. Maak extra tenants aan via het Tenants menu.");
   }
   const data = tenantSchema.parse({
     name: formData.get("name"),
