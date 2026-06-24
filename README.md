@@ -107,7 +107,7 @@ De logs bevatten stapnaam, niveau, melding en beperkte metadata zoals bytes, sco
 ./update.sh
 ```
 
-De updateflow maakt eerst een self-backup, voert daarna `git pull`, `pnpm install`, Prisma migrations, build en service restart uit.
+De updateflow maakt eerst een self-backup, voert daarna `git pull`, `pnpm install`, Prisma migrations, build en service restart uit. Als de updateknop vanuit het portaal geen rechten heeft om systemd te herstarten, rondt `update.sh` de pull/build af en toont hij welke `systemctl` commands je eenmalig als root moet uitvoeren.
 
 ## Rollback
 
