@@ -4,6 +4,7 @@ import { Modal } from "@/components/modal";
 import { Badge, Button, Field, PageHeader, Shell, TableShell } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
+import { mainTenantId } from "@/lib/tenant-main";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,7 @@ export default async function TenantsPage() {
       },
       orderBy: { name: "asc" }
     }),
-    prisma.tenant.findFirst({ orderBy: { createdAt: "asc" }, select: { id: true } })
+    mainTenantId()
   ]);
 
   return (
@@ -71,7 +72,7 @@ export default async function TenantsPage() {
             </thead>
             <tbody>
               {tenants.map((tenant) => {
-                const isMainTenant = tenant.id === mainTenant?.id;
+                const isMainTenant = tenant.id === mainTenant;
                 const deviceCount = tenant.customers.reduce((count, customer) => count + customer.devices.length, 0);
 
                 return (

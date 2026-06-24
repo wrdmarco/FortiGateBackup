@@ -11,6 +11,7 @@ import { prisma } from "@/lib/db";
 import { runBackup } from "@/lib/fortigate";
 import { createSession, destroySession } from "@/lib/session";
 import { setSetting } from "@/lib/settings";
+import { mainTenantId } from "@/lib/tenant-main";
 import { startAppUpdate } from "@/lib/app-update";
 import { customerSchema, fortigateSchema, fortigateUpdateSchema, tenantSchema } from "@/lib/validators";
 
@@ -217,8 +218,8 @@ export async function setTenantActive(formData: FormData) {
   const user = await requireSuperAdmin();
   const id = String(formData.get("id"));
   const active = bool(formData.get("active"));
-  const mainTenant = await prisma.tenant.findFirst({ orderBy: { createdAt: "asc" }, select: { id: true } });
-  if (!active && mainTenant?.id === id) {
+  const mainTenant = await mainTenantId();
+  if (!active && mainTenant === id) {
     throw new Error("De main tenant kan niet gedeactiveerd worden.");
   }
   const tenant = await prisma.tenant.update({ where: { id }, data: { active } });
@@ -252,10 +253,10 @@ export async function deleteTenant(formData: FormData) {
         _count: { select: { customers: true, users: true } }
       }
     }),
-    prisma.tenant.findFirst({ orderBy: { createdAt: "asc" }, select: { id: true } })
+    mainTenantId()
   ]);
 
-  if (mainTenant?.id === tenant.id) {
+  if (mainTenant === tenant.id) {
     throw new Error("De main tenant kan niet verwijderd worden.");
   }
   if (confirmSlug !== tenant.slug) {
