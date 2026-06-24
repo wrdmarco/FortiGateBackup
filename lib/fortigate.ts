@@ -128,6 +128,20 @@ function objectValue(record: Record<string, unknown>, keys: string[]) {
   }
   return undefined;
 }
+function flattenObjectValues(value: unknown) {
+  const flat: Record<string, unknown> = {};
+  function visit(node: unknown) {
+    if (!node || typeof node !== "object") return;
+    for (const [key, item] of Object.entries(node as Record<string, unknown>)) {
+      if (flat[key] === undefined && (typeof item === "string" || typeof item === "number")) {
+        flat[key] = item;
+      }
+      if (item && typeof item === "object") visit(item);
+    }
+  }
+  visit(value);
+  return flat;
+}
 
 function normalizeSystemStatus(payload: unknown) {
   const root = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
@@ -139,26 +153,30 @@ function normalizeSystemStatus(payload: unknown) {
         ? results
         : root;
   const record = status && typeof status === "object" ? (status as Record<string, unknown>) : {};
+  const flat = { ...flattenObjectValues(root), ...flattenObjectValues(record) };
+  const keys = Array.from(new Set([...Object.keys(root), ...Object.keys(record), ...Object.keys(flat)])).sort();
 
   return {
-    keys: Object.keys(record).sort(),
-    hostname: objectValue(record, ["hostname", "host_name", "name"]),
-    serialNumber: objectValue(record, ["serial", "serial_number", "serialNumber"]),
-    model: objectValue(record, ["model", "model_name", "platform"]),
+    keys,
+    hostname: objectValue(flat, ["hostname", "host_name", "host-name", "name", "system_name"]),
+    serialNumber: objectValue(flat, ["serial", "serial_number", "serialNumber", "serial-number", "serial_no", "serialno"]),
+    model: objectValue(flat, ["model", "model_name", "model-name", "platform", "platform_name", "platform-name", "hardware_model"]),
     firmwareVersion: normalizeFirmwareVersion(
-      objectValue(record, [
+      objectValue(flat, [
         "version",
         "firmware",
         "firmware_version",
         "firmwareVersion",
         "os_version",
-        "osVersion"
+        "osVersion",
+        "build_version",
+        "fortios_version"
       ])
     ),
     firmwareBuild: normalizeBuild(
-      objectValue(record, ["build", "buildno", "build_number", "firmware_build", "firmwareBuild"])
+      objectValue(flat, ["build", "buildno", "build_number", "build-number", "firmware_build", "firmwareBuild", "mr"])
     ),
-    uptime: objectValue(record, ["uptime", "up_time"])
+    uptime: objectValue(flat, ["uptime", "up_time", "up-time", "system_uptime"])
   };
 }
 
@@ -425,6 +443,7 @@ export async function refreshFortiGateInventory(deviceId: string) {
         model: updated.model,
         firmwareVersion: updated.firmwareVersion,
         firmwareBuild: updated.firmwareBuild,
+        serialNumber: updated.serialNumber,
         externalIpAddresses: externalIpAddresses.length,
         licenseInfo: Boolean(licenseInfo),
         sourceFields: status.keys

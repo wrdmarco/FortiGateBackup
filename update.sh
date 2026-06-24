@@ -23,12 +23,12 @@ sudo -u "$SERVICE_USER" tar \
   --exclude data/temp \
   -czf "$TMP_BACKUP" .
 sudo -u "$SERVICE_USER" mv "$TMP_BACKUP" "$BACKUP_DIR/$BACKUP_NAME"
-sudo -u "$SERVICE_USER" git fetch --all --prune
-sudo -u "$SERVICE_USER" git pull --ff-only
+sudo -u "$SERVICE_USER" git -c core.filemode=false fetch --all --prune
+sudo -u "$SERVICE_USER" git -c core.filemode=false pull --ff-only
 UPDATE_SCRIPT_SUM_AFTER="$(cksum "$SCRIPT_DIR/update.sh" 2>/dev/null || true)"
 if [ "${FORTIGATE_UPDATE_REEXECED:-0}" != "1" ] && [ "$UPDATE_SCRIPT_SUM_BEFORE" != "$UPDATE_SCRIPT_SUM_AFTER" ]; then
   echo "update.sh changed during pull. Restarting update with the new script."
-  FORTIGATE_UPDATE_REEXECED=1 exec "$SCRIPT_DIR/update.sh"
+  FORTIGATE_UPDATE_REEXECED=1 exec bash "$SCRIPT_DIR/update.sh"
 fi
 sudo -u "$SERVICE_USER" corepack enable
 sudo -u "$SERVICE_USER" pnpm install --frozen-lockfile

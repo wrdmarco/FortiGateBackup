@@ -87,8 +87,9 @@ async function latestFortiOsVersion(sourceUrl: string, branch: string) {
   }
   const html = await response.text();
   const releaseSection = html.match(/Release Information[\s\S]*?Release Notes([\s\S]*?)(?:Last updated|<\/body>)/i)?.[1] ?? html;
-  const versions = Array.from(releaseSection.matchAll(new RegExp(`\\b${escapeRegExp(branch)}\\.\\d+\\b`, "g")))
-    .map((match) => match[0])
+  const versions = Array.from(releaseSection.matchAll(new RegExp(`\\b${escapeRegExp(branch)}(?:\\.\\d+)?\\b`, "g")))
+    .map((match) => normalizeVersion(match[0]))
+    .filter((version): version is string => Boolean(version))
     .filter((version, index, all) => all.indexOf(version) === index)
     .sort(compareVersions)
     .reverse();

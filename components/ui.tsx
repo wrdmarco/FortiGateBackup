@@ -35,6 +35,8 @@ export async function Shell({ children }: { children: React.ReactNode }) {
                 </Link>
                 <Link className="rounded px-3 py-1.5 hover:bg-surface hover:text-foreground" href="/backups">
                   Backups
+                </Link>                <Link className="rounded px-3 py-1.5 hover:bg-surface hover:text-foreground" href="/alerts">
+                  Alerts
                 </Link>
                 {canManageTenants ? (
                   <Link className="rounded px-3 py-1.5 hover:bg-surface hover:text-foreground" href="/tenants">

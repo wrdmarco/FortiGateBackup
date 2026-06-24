@@ -14,11 +14,13 @@ type SettingsValues = {
   smtpUser: string;
   smtpFrom: string;
   graphFrom: string;
+  graphTenantId: string;
+  graphClientId: string;
   entraEnabled: boolean;
   entraTenantId: string;
   entraClientId: string;
   hasSmtpPassword: boolean;
-  hasGraphToken: boolean;
+  hasGraphClientSecret: boolean;
   hasEntraSecret: boolean;
 };
 
@@ -112,11 +114,13 @@ export function SettingsForm({
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
             <TextField label="Graph afzender" name="graph.from" type="email" defaultValue={values.graphFrom} required />
+            <TextField label="Tenant ID" name="graph.tenantId" defaultValue={values.graphTenantId} required />
+            <TextField label="App / client ID" name="graph.clientId" defaultValue={values.graphClientId} required />
             <TextField
-              label={values.hasGraphToken ? "Nieuw Graph access token" : "Graph access token"}
-              name="graph.accessToken"
+              label={values.hasGraphClientSecret ? "Nieuw client secret" : "Client secret"}
+              name="graph.clientSecret"
               type="password"
-              help={values.hasGraphToken ? "Er is al een token opgeslagen. Laat leeg om dit te behouden." : undefined}
+              help={values.hasGraphClientSecret ? "Er is al een Graph client secret opgeslagen. Laat leeg om dit te behouden." : "Gebruik de secret value uit Microsoft Entra, niet de secret ID."}
             />
           </div>
         )}

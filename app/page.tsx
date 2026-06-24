@@ -1,5 +1,6 @@
 import { BackupStatus } from "@prisma/client";
-import { Card, PageHeader, Shell, TableShell } from "@/components/ui";
+import { ActionLink, Badge, Card, PageHeader, Shell, TableShell } from "@/components/ui";
+import { getAppUpdateStatus } from "@/lib/app-update";
 import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
@@ -8,37 +9,62 @@ export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const user = await requireUser();
-  const tenantId = isSuperAdmin(user) ? undefined : user.tenantId ?? undefined;
+  const canManagePlatform = isSuperAdmin(user);
+  const tenantId = canManagePlatform ? undefined : user.tenantId ?? undefined;
   const customerWhere = tenantId ? { tenantId } : {};
   const fortigateWhere = tenantId ? { customer: { tenantId } } : {};
   const backupWhere = tenantId ? { fortigate: { customer: { tenantId } } } : {};
   const auditWhere = tenantId ? { tenantId } : {};
-  const [tenants, customers, fortigates, backups, failures, latestAudit] = await Promise.all([
-    isSuperAdmin(user) ? prisma.tenant.count() : Promise.resolve(1),
+  const [tenants, customers, fortigates, backups, failures, latestAudit, changed, updateStatus] = await Promise.all([
+    canManagePlatform ? prisma.tenant.count() : Promise.resolve(1),
     prisma.customer.count({ where: customerWhere }),
     prisma.fortiGate.count({ where: fortigateWhere }),
     prisma.backup.count({ where: backupWhere }),
     prisma.backup.count({ where: { ...backupWhere, status: BackupStatus.FAILED } }),
-    prisma.auditLog.findMany({ where: auditWhere, orderBy: { createdAt: "desc" }, take: 8 })
+    prisma.auditLog.findMany({ where: auditWhere, orderBy: { createdAt: "desc" }, take: 8 }),
+    prisma.backup.count({ where: { ...backupWhere, status: BackupStatus.CHANGED } }),
+    canManagePlatform ? getAppUpdateStatus() : Promise.resolve(null)
   ]);
-  const changed = await prisma.backup.count({
-    where: { ...backupWhere, status: BackupStatus.CHANGED }
-  });
 
   return (
     <Shell>
       <PageHeader
         title="Dashboard"
-        description="Centrale status van tenants, FortiGates, backups en firmwaremeldingen."
+        description="Centrale status van tenants, FortiGates, backups, alerts en applicatie-updates."
+        actions={<ActionLink href="/alerts" variant="secondary">Alerts bekijken</ActionLink>}
       />
       <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
-        <Card title={isSuperAdmin(user) ? "Tenants" : "Tenant"} value={tenants} />
+        <Card title={canManagePlatform ? "Tenants" : "Tenant"} value={tenants} />
         <Card title="Klanten" value={customers} />
         <Card title="FortiGates" value={fortigates} />
         <Card title="Backups" value={backups} detail={`${changed} gewijzigd`} />
         <Card title="Fouten" value={failures} />
-        <Card title="Versie" value="0.1.2" detail="Applicatie" />
+        <Card
+          title="Applicatie"
+          value={updateStatus?.updateAvailable ? "Update" : updateStatus?.updateRunning ? "Bezig" : updateStatus?.currentVersion ?? "0.1.2"}
+          detail={updateStatus?.updateAvailable ? "Nieuwe GitHub versie beschikbaar" : updateStatus?.updateRunning ? "Update draait" : "Actueel"}
+        />
       </div>
+
+      {updateStatus?.updateAvailable || updateStatus?.updateRunning ? (
+        <section className="mt-6 rounded-md border border-border bg-surface p-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">Applicatie update</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Lokale commit {shortSha(updateStatus.localCommit)} tegenover GitHub {shortSha(updateStatus.remoteCommit)}.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge tone={updateStatus.updateRunning ? "warning" : "danger"}>
+                {updateStatus.updateRunning ? "Update draait" : "Update beschikbaar"}
+              </Badge>
+              <ActionLink href="/settings" variant="primary">Naar updateknop</ActionLink>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       <section className="mt-8">
         <h2 className="mb-3 text-xl font-semibold">Recente activiteiten</h2>
         <TableShell>
@@ -64,4 +90,8 @@ export default async function DashboardPage() {
       </section>
     </Shell>
   );
+}
+
+function shortSha(value: string | null | undefined) {
+  return value ? value.slice(0, 12) : "onbekend";
 }

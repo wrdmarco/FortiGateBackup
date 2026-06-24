@@ -11,6 +11,7 @@ import { prisma } from "@/lib/db";
 import { runBackup } from "@/lib/fortigate";
 import { createSession, destroySession } from "@/lib/session";
 import { setSetting } from "@/lib/settings";
+import { startAppUpdate } from "@/lib/app-update";
 import { customerSchema, fortigateSchema, fortigateUpdateSchema, tenantSchema } from "@/lib/validators";
 
 const loginAttempts = new Map<string, { count: number; lockedUntil: number }>();
@@ -168,6 +169,16 @@ export async function deleteTenantUser(formData: FormData) {
     throw new Error("Deze gebruiker is niet aan een tenant gekoppeld.");
   }
 
+  const tenantUsers = await prisma.user.count({
+    where: {
+      tenantId: target.tenantId,
+      active: true
+    }
+  });
+  if (tenantUsers <= 1) {
+    throw new Error("De laatste gebruiker van een tenant kan niet los verwijderd worden. Verwijder de tenant als alles weg mag.");
+  }
+
   if (target.role === "SUPER_ADMIN") {
     const superAdmins = await prisma.user.count({ where: { role: "SUPER_ADMIN", active: true } });
     if (superAdmins <= 1) throw new Error("De laatste superadmin kan niet verwijderd worden.");
@@ -220,6 +231,7 @@ export async function deleteTenant(formData: FormData) {
   const user = await requireSuperAdmin();
   const id = String(formData.get("id"));
   const confirmSlug = String(formData.get("confirmSlug") ?? "").trim();
+  const confirmDelete = String(formData.get("confirmDelete") ?? "").trim();
   const [tenant, mainTenant] = await Promise.all([
     prisma.tenant.findUniqueOrThrow({
       where: { id },
@@ -244,6 +256,9 @@ export async function deleteTenant(formData: FormData) {
   }
   if (confirmSlug !== tenant.slug) {
     throw new Error("Bevestiging mislukt. Typ de tenant slug exact over.");
+  }
+  if (confirmDelete !== "Delete") {
+    throw new Error('Bevestiging mislukt. Typ exact "Delete" om de tenant definitief te verwijderen.');
   }
 
   await auditLog({
@@ -283,22 +298,31 @@ export async function deleteTenant(formData: FormData) {
   revalidatePath("/backups");
 }
 
-export async function loginAction(formData: FormData) {
-  const email = String(formData.get("email") ?? "").toLowerCase();
+export type LoginState = { error?: string };
+
+export async function loginAction(_state: LoginState, formData: FormData): Promise<LoginState> {
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
-  checkLoginThrottle(email);
+  const genericError = "De opgegeven gegevens zijn niet juist.";
+  try {
+    checkLoginThrottle(email);
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Te veel mislukte pogingen. Probeer het later opnieuw."
+    };
+  }
   const user = await prisma.user.findUnique({ where: { email }, include: { tenant: true } });
   if (!user?.passwordHash || !user.active) {
-    recordLoginFailure(email);
-    throw new Error("Ongeldige inloggegevens.");
+    if (email) recordLoginFailure(email);
+    return { error: genericError };
   }
   const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) {
     recordLoginFailure(email);
-    throw new Error("Ongeldige inloggegevens.");
+    return { error: genericError };
   }
   if (!isSuperAdmin(user) && !user.tenant?.active) {
-    throw new Error("Deze tenant is niet actief.");
+    return { error: genericError };
   }
   loginAttempts.delete(email);
   await createSession(user.id);
@@ -515,6 +539,8 @@ export async function saveSettings(formData: FormData) {
     ["smtp.user", formData.get("smtp.user")],
     ["smtp.from", formData.get("smtp.from")],
     ["graph.from", formData.get("graph.from")],
+    ["graph.tenantId", formData.get("graph.tenantId")],
+    ["graph.clientId", formData.get("graph.clientId")],
     ["entra.enabled", formData.get("entra.enabled")],
     ["entra.tenantId", formData.get("entra.tenantId")],
     ["entra.clientId", formData.get("entra.clientId")]
@@ -529,5 +555,22 @@ export async function saveSettings(formData: FormData) {
   if (graphToken) await setSetting("graph.accessToken", String(graphToken), { tenantId, encrypted: true });
   if (entraSecret) await setSetting("entra.clientSecret", String(entraSecret), { tenantId, encrypted: true });
   await auditLog({ action: "settings.updated", tenantId });
+  revalidatePath("/settings");
+}
+
+
+
+
+export async function startAppUpdateAction() {
+  const user = await requireSuperAdmin();
+  const result = await startAppUpdate();
+  await auditLog({
+    action: "app.update.started",
+    tenantId: user.tenantId,
+    userId: user.id,
+    entity: "System",
+    metadata: result
+  });
+  revalidatePath("/");
   revalidatePath("/settings");
 }

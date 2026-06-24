@@ -1,4 +1,5 @@
 import { createManagedTenant, createTenantUser, deleteTenant, deleteTenantUser, setTenantActive } from "@/app/actions";
+import { DeleteConfirmInput } from "@/components/delete-confirm-input";
 import { Modal } from "@/components/modal";
 import { Badge, Button, Field, PageHeader, Shell, TableShell } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/authz";
@@ -194,14 +195,20 @@ export default async function TenantsPage() {
                           >
                             <form action={deleteTenant} className="grid gap-4">
                               <input type="hidden" name="id" value={tenant.id} />
-                              <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-950 dark:border-red-900 dark:bg-red-950 dark:text-red-100">
-                                <p className="font-semibold">Definitieve verwijdering</p>
-                                <p className="mt-2">
+                              <div className="grid gap-3 rounded-md border border-red-300 bg-red-50 p-4 text-sm text-red-950 dark:border-red-800 dark:bg-red-950 dark:text-red-100">
+                                <p className="text-base font-semibold">Let op: dit verwijdert de volledige tenant definitief</p>
+                                <p>
                                   Hiermee verdwijnen {tenant.customers.length} klanten, {deviceCount} FortiGates,
-                                  alle backuprecords en alle opgeslagen configuratiebestanden voor deze tenant.
+                                  alle gebruikers, alle backuprecords en alle opgeslagen configuratiebestanden voor deze tenant.
                                 </p>
+                                <p>
+                                  Dit is de enige manier om ook de laatste gebruiker van een tenant te verwijderen. Losse user-delete
+                                  blokkeert bewust zodra er maar een gebruiker over is.
+                                </p>
+                                <p className="font-semibold">Deze actie kan niet ongedaan gemaakt worden.</p>
                               </div>
                               <Field label={`Typ de slug "${tenant.slug}" ter bevestiging`} name="confirmSlug" required />
+                              <DeleteConfirmInput />
                               <Button variant="danger">Tenant definitief verwijderen</Button>
                             </form>
                           </Modal>
