@@ -1,5 +1,6 @@
 import { saveSettings, startAppUpdateAction } from "@/app/actions";
 import { SettingsForm } from "@/components/settings-form";
+import { SettingsTabs } from "@/components/settings-tabs";
 import { Badge, Button, PageHeader, Panel, Shell } from "@/components/ui";
 import { getAppUpdateStatus } from "@/lib/app-update";
 import { isSuperAdmin } from "@/lib/authz";
@@ -69,60 +70,77 @@ export default async function SettingsPage({
         title="Instellingen"
         description="Beheer alleen de actieve mailprovider, SSO-velden en applicatie-updates die voor deze scope nodig zijn."
       />
-      <div className="grid gap-6">
-        <Panel className="max-w-4xl">
-          <SettingsForm
-            action={saveSettings}
-            tenants={tenants}
-            selectedTenantId={selectedTenantId}
-            values={{
-              mailProvider: mailProvider === "MICROSOFT_GRAPH" ? "MICROSOFT_GRAPH" : "SMTP",
-              smtpHost: smtpHost ?? "",
-              smtpPort: smtpPort ?? "587",
-              smtpUser: smtpUser ?? "",
-              smtpFrom: smtpFrom ?? "",
-              graphFrom: graphFrom ?? "",
-              graphTenantId: graphTenantId ?? "",
-              graphClientId: graphClientId ?? "",
-              entraEnabled: entraEnabled === "true",
-              entraTenantId: entraTenantId ?? "",
-              entraClientId: entraClientId ?? "",
-              hasSmtpPassword: secretKeys.has("smtp.password"),
-              hasGraphClientSecret: secretKeys.has("graph.clientSecret") || secretKeys.has("graph.accessToken"),
-              hasEntraSecret: secretKeys.has("entra.clientSecret")
-            }}
-          />
-        </Panel>
-
-        {updateStatus ? (
-          <Panel title="Applicatie update" description="Controleer GitHub op een nieuwe versie en start de serverupdate direct vanaf het portaal." className="max-w-4xl">
-            <div className="grid gap-4">
-              <div className="grid gap-3 text-sm md:grid-cols-2">
-                <Info label="Huidige versie" value={updateStatus.currentVersion} />
-                <Info label="Branch" value={updateStatus.branch ?? "Onbekend"} />
-                <Info label="Lokale commit" value={shortSha(updateStatus.localCommit)} mono />
-                <Info label="GitHub commit" value={shortSha(updateStatus.remoteCommit)} mono />
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge tone={updateStatus.updateRunning ? "warning" : updateStatus.updateAvailable ? "danger" : "success"}>
-                  {updateStatus.updateRunning ? "Update draait" : updateStatus.updateAvailable ? "Update beschikbaar" : "Actueel"}
-                </Badge>
-                {updateStatus.error ? <span className="text-sm text-red-600 dark:text-red-300">{updateStatus.error}</span> : null}
-              </div>
-              {updateStatus.lastLog ? (
-                <pre className="max-h-48 overflow-auto rounded-md border border-border bg-muted p-3 text-xs text-muted-foreground">
-                  {updateStatus.lastLog}
-                </pre>
-              ) : null}
-              <form action={startAppUpdateAction}>
-                <Button disabled={updateStatus.updateRunning} variant={updateStatus.updateAvailable ? "primary" : "secondary"}>
-                  {updateStatus.updateAvailable ? "Check en update nu" : "Opnieuw checken / update starten"}
-                </Button>
-              </form>
-            </div>
-          </Panel>
-        ) : null}
-      </div>
+      <SettingsTabs
+        tabs={[
+          {
+            id: "configuratie",
+            label: "Configuratie",
+            description: "Beheer mail en SSO per scope zonder door een lange instellingenpagina te scrollen.",
+            content: (
+              <Panel className="max-w-4xl">
+                <SettingsForm
+                  action={saveSettings}
+                  tenants={tenants}
+                  selectedTenantId={selectedTenantId}
+                  values={{
+                    mailProvider: mailProvider === "MICROSOFT_GRAPH" ? "MICROSOFT_GRAPH" : "SMTP",
+                    smtpHost: smtpHost ?? "",
+                    smtpPort: smtpPort ?? "587",
+                    smtpUser: smtpUser ?? "",
+                    smtpFrom: smtpFrom ?? "",
+                    graphFrom: graphFrom ?? "",
+                    graphTenantId: graphTenantId ?? "",
+                    graphClientId: graphClientId ?? "",
+                    entraEnabled: entraEnabled === "true",
+                    entraTenantId: entraTenantId ?? "",
+                    entraClientId: entraClientId ?? "",
+                    hasSmtpPassword: secretKeys.has("smtp.password"),
+                    hasGraphClientSecret: secretKeys.has("graph.clientSecret") || secretKeys.has("graph.accessToken"),
+                    hasEntraSecret: secretKeys.has("entra.clientSecret")
+                  }}
+                />
+              </Panel>
+            )
+          },
+          ...(updateStatus
+            ? [
+                {
+                  id: "updates",
+                  label: "Updates",
+                  description: "Controleer GitHub op een nieuwe versie en start de serverupdate direct vanaf het portaal.",
+                  content: (
+                    <Panel title="Applicatie update" className="max-w-4xl">
+                      <div className="grid gap-4">
+                        <div className="grid gap-3 text-sm md:grid-cols-2">
+                          <Info label="Huidige versie" value={updateStatus.currentVersion} />
+                          <Info label="Branch" value={updateStatus.branch ?? "Onbekend"} />
+                          <Info label="Lokale commit" value={shortSha(updateStatus.localCommit)} mono />
+                          <Info label="GitHub commit" value={shortSha(updateStatus.remoteCommit)} mono />
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge tone={updateStatus.updateRunning ? "warning" : updateStatus.updateAvailable ? "danger" : "success"}>
+                            {updateStatus.updateRunning ? "Update draait" : updateStatus.updateAvailable ? "Update beschikbaar" : "Actueel"}
+                          </Badge>
+                          {updateStatus.error ? <span className="text-sm text-red-600 dark:text-red-300">{updateStatus.error}</span> : null}
+                        </div>
+                        {updateStatus.lastLog ? (
+                          <pre className="max-h-48 overflow-auto rounded-md border border-border bg-muted p-3 text-xs text-muted-foreground">
+                            {updateStatus.lastLog}
+                          </pre>
+                        ) : null}
+                        <form action={startAppUpdateAction}>
+                          <Button disabled={updateStatus.updateRunning} variant={updateStatus.updateAvailable ? "primary" : "secondary"}>
+                            {updateStatus.updateAvailable ? "Check en update nu" : "Opnieuw checken / update starten"}
+                          </Button>
+                        </form>
+                      </div>
+                    </Panel>
+                  )
+                }
+              ]
+            : [])
+        ]}
+      />
     </Shell>
   );
 }

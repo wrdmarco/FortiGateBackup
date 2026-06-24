@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { clsx } from "clsx";
 
 type TenantOption = {
   id: string;
@@ -24,6 +25,11 @@ type SettingsValues = {
   hasEntraSecret: boolean;
 };
 
+const tabs = [
+  { id: "mail", label: "Mail" },
+  { id: "sso", label: "SSO" }
+] as const;
+
 export function SettingsForm({
   action,
   tenants,
@@ -35,6 +41,7 @@ export function SettingsForm({
   selectedTenantId: string;
   values: SettingsValues;
 }) {
+  const [activeTab, setActiveTab] = useState<(typeof tabs)[number]["id"]>("mail");
   const [mailProvider, setMailProvider] = useState(values.mailProvider);
   const [entraEnabled, setEntraEnabled] = useState(values.entraEnabled);
   const scopeLabel = useMemo(
@@ -44,14 +51,14 @@ export function SettingsForm({
 
   return (
     <form action={action} className="grid gap-6">
-      {tenants.length ? (
-        <section className="grid gap-3 rounded-md border border-border bg-surface-soft p-4">
-          <div>
-            <h2 className="font-semibold">Configuratiescope</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Je bewerkt nu instellingen voor <strong>{scopeLabel}</strong>.
-            </p>
-          </div>
+      <section className="grid gap-3 rounded-md border border-border bg-surface-soft p-4">
+        <div>
+          <h2 className="font-semibold">Configuratiescope</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Je bewerkt nu instellingen voor <strong>{scopeLabel}</strong>.
+          </p>
+        </div>
+        {tenants.length ? (
           <label className="grid gap-1 text-sm">
             <span className="font-medium">Tenant</span>
             <select
@@ -71,14 +78,35 @@ export function SettingsForm({
               ))}
             </select>
           </label>
-        </section>
-      ) : (
-        <input type="hidden" name="tenantId" value={selectedTenantId} />
-      )}
+        ) : (
+          <input type="hidden" name="tenantId" value={selectedTenantId} />
+        )}
+        {tenants.length ? <input type="hidden" name="tenantId" value={selectedTenantId} /> : null}
+      </section>
 
-      {tenants.length ? <input type="hidden" name="tenantId" value={selectedTenantId} /> : null}
+      <div className="overflow-x-auto rounded-md border border-border bg-surface p-1">
+        <div className="flex min-w-max gap-1" role="tablist" aria-label="Configuratie tabs">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              className={clsx(
+                "rounded px-4 py-2 text-sm font-medium transition",
+                activeTab === tab.id
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              )}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
-      <section className="grid gap-4 rounded-md border border-border bg-surface-soft p-4">
+      <section hidden={activeTab !== "mail"} className="grid gap-4 rounded-md border border-border bg-surface-soft p-4">
         <div>
           <h2 className="font-semibold">Mailprovider</h2>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -126,7 +154,7 @@ export function SettingsForm({
         )}
       </section>
 
-      <section className="grid gap-4 rounded-md border border-border bg-surface-soft p-4">
+      <section hidden={activeTab !== "sso"} className="grid gap-4 rounded-md border border-border bg-surface-soft p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="font-semibold">Microsoft Entra ID SSO</h2>
