@@ -36,7 +36,7 @@ export function Modal({
       </span>
       <dialog
         ref={dialogRef}
-        className="w-[min(94vw,820px)] rounded-lg border border-border bg-surface p-0 text-foreground shadow-2xl backdrop:bg-slate-950/60 backdrop:backdrop-blur-sm"
+        className="w-[min(94vw,1040px)] rounded-lg border border-border bg-surface p-0 text-foreground shadow-2xl backdrop:bg-slate-950/60 backdrop:backdrop-blur-sm"
         onClick={(event) => {
           if (event.target === dialogRef.current) dialogRef.current?.close();
         }}

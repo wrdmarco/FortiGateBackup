@@ -43,7 +43,7 @@ export default async function CustomerDetailPage({
         actions={
           <>
             <ActionLink href="/customers">Klanten</ActionLink>
-            <ActionLink href="/fortigates" variant="primary">FortiGate toevoegen</ActionLink>
+            <ActionLink href={`/fortigates?add=1&customerId=${customer.id}`} variant="primary">FortiGate toevoegen</ActionLink>
           </>
         }
       />

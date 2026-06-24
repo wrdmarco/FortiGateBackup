@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 export default async function FortiGatesPage({
   searchParams
 }: {
-  searchParams?: Promise<{ edit?: string }>;
+  searchParams?: Promise<{ add?: string; customerId?: string; edit?: string }>;
 }) {
   const user = await requireUser();
   const params = await searchParams;
@@ -33,6 +33,10 @@ export default async function FortiGatesPage({
   ]);
   const editDevice = devices.find((device) => device.id === params?.edit);
   const formAction = editDevice ? updateFortiGate : createFortiGate;
+  const selectedCustomerId = customers.some((customer) => customer.id === params?.customerId)
+    ? params?.customerId
+    : undefined;
+  const shouldOpenAddWizard = params?.add === "1" || Boolean(selectedCustomerId);
 
   return (
     <Shell>
@@ -43,9 +47,10 @@ export default async function FortiGatesPage({
           <Modal
             title="FortiGate toevoegen"
             description="Begeleide setup voor REST API-token, connectiegegevens en backupschema."
+            defaultOpen={shouldOpenAddWizard}
             trigger={<Button>FortiGate toevoegen</Button>}
           >
-            <FortiGateWizard customers={customers} action={createFortiGate} />
+            <FortiGateWizard customers={customers} action={createFortiGate} defaultCustomerId={selectedCustomerId} />
           </Modal>
         }
       />
