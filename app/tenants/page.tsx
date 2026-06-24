@@ -1,4 +1,4 @@
-import { createManagedTenant, deleteTenant, setTenantActive } from "@/app/actions";
+import { createManagedTenant, createTenantUser, deleteTenant, deleteTenantUser, setTenantActive } from "@/app/actions";
 import { Modal } from "@/components/modal";
 import { Badge, Button, Field, PageHeader, Shell, TableShell } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/authz";
@@ -7,13 +7,13 @@ import { prisma } from "@/lib/db";
 export const dynamic = "force-dynamic";
 
 export default async function TenantsPage() {
-  await requireSuperAdmin();
+  const currentUser = await requireSuperAdmin();
   const [tenants, mainTenant] = await Promise.all([
     prisma.tenant.findMany({
       include: {
         users: {
-          where: { active: true },
-          select: { id: true, name: true, email: true, role: true }
+          select: { id: true, name: true, email: true, role: true, active: true, createdAt: true },
+          orderBy: { email: "asc" }
         },
         customers: {
           select: {
@@ -90,12 +90,95 @@ export default async function TenantsPage() {
                       <div className="text-xs text-muted-foreground">{deviceCount} FortiGates</div>
                     </td>
                     <td className="px-3 py-2">
-                      {tenant.users.length
-                        ? tenant.users.map((item) => item.email).join(", ")
-                        : "Geen actieve gebruikers"}
+                      <div className="grid gap-1">
+                        <div>{tenant.users.filter((item) => item.active).length} actief</div>
+                        <div className="max-w-[280px] truncate text-xs text-muted-foreground">
+                          {tenant.users.length
+                            ? tenant.users.map((item) => item.email).join(", ")
+                            : "Geen gebruikers"}
+                        </div>
+                      </div>
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex flex-wrap gap-2">
+                        <Modal
+                          title={`Gebruikers beheren - ${tenant.name}`}
+                          description="Voeg tenantgebruikers toe, kies hun rol en verwijder accounts die geen toegang meer nodig hebben."
+                          trigger={<Button variant="secondary">Gebruikers</Button>}
+                        >
+                          <div className="grid gap-6">
+                            <section>
+                              <h3 className="font-semibold">Nieuwe gebruiker</h3>
+                              <form action={createTenantUser} className="mt-3 grid gap-4">
+                                <input type="hidden" name="tenantId" value={tenant.id} />
+                                <div className="grid gap-4 md:grid-cols-2">
+                                  <Field label="Naam" name="name" />
+                                  <Field label="E-mail" name="email" type="email" required />
+                                </div>
+                                <div className="grid gap-4 md:grid-cols-2">
+                                  <label className="grid gap-1 text-sm">
+                                    <span className="font-medium">Rol</span>
+                                    <select className="rounded-md border border-border bg-surface px-3 py-2" name="role" defaultValue="VIEWER">
+                                      <option value="ADMIN">Admin</option>
+                                      <option value="VIEWER">Viewer</option>
+                                    </select>
+                                  </label>
+                                  <Field label="Tijdelijk wachtwoord" name="password" type="password" required />
+                                </div>
+                                <div className="rounded-md border border-border bg-surface-soft p-3 text-sm text-muted-foreground">
+                                  Admins kunnen klanten, FortiGates en backups binnen deze tenant beheren. Viewers zijn bedoeld voor meekijken en controle.
+                                </div>
+                                <Button>Gebruiker toevoegen</Button>
+                              </form>
+                            </section>
+
+                            <section className="border-t border-border pt-5">
+                              <h3 className="font-semibold">Bestaande gebruikers</h3>
+                              <div className="mt-3 overflow-hidden rounded-md border border-border">
+                                <table className="w-full text-left text-sm">
+                                  <thead className="bg-surface-soft text-muted-foreground">
+                                    <tr>
+                                      <th className="px-3 py-2">Gebruiker</th>
+                                      <th className="px-3 py-2">Rol</th>
+                                      <th className="px-3 py-2">Status</th>
+                                      <th className="px-3 py-2">Actie</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {tenant.users.map((tenantUser) => (
+                                      <tr key={tenantUser.id} className="border-t border-border">
+                                        <td className="px-3 py-2">
+                                          <div className="font-medium">{tenantUser.name ?? tenantUser.email}</div>
+                                          <div className="text-xs text-muted-foreground">{tenantUser.email}</div>
+                                        </td>
+                                        <td className="px-3 py-2">
+                                          <Badge tone={tenantUser.role === "ADMIN" || tenantUser.role === "SUPER_ADMIN" ? "warning" : "neutral"}>
+                                            {tenantUser.role}
+                                          </Badge>
+                                        </td>
+                                        <td className="px-3 py-2">
+                                          <Badge tone={tenantUser.active ? "success" : "danger"}>
+                                            {tenantUser.active ? "Actief" : "Inactief"}
+                                          </Badge>
+                                        </td>
+                                        <td className="px-3 py-2">
+                                          {tenantUser.id === currentUser.id ? (
+                                            <Button variant="secondary" disabled>Eigen account</Button>
+                                          ) : (
+                                            <form action={deleteTenantUser}>
+                                              <input type="hidden" name="id" value={tenantUser.id} />
+                                              <Button variant="danger">Verwijderen</Button>
+                                            </form>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </section>
+                          </div>
+                        </Modal>
                         <form action={setTenantActive}>
                           <input type="hidden" name="id" value={tenant.id} />
                           <input type="hidden" name="active" value={tenant.active ? "false" : "true"} />

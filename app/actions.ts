@@ -117,6 +117,91 @@ export async function createManagedTenant(formData: FormData) {
   revalidatePath("/tenants");
 }
 
+export async function createTenantUser(formData: FormData) {
+  const user = await requireSuperAdmin();
+  const tenantId = String(formData.get("tenantId") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const password = String(formData.get("password") ?? "");
+  const roleInput = String(formData.get("role") ?? "VIEWER");
+  const role = roleInput === "ADMIN" ? "ADMIN" : "VIEWER";
+
+  if (!tenantId) throw new Error("Tenant is verplicht.");
+  if (!email.includes("@")) throw new Error("Vul een geldig e-mailadres in.");
+  if (password.length < 12) throw new Error("Het tijdelijke wachtwoord moet minimaal 12 tekens zijn.");
+
+  const tenant = await prisma.tenant.findUniqueOrThrow({ where: { id: tenantId } });
+  const created = await prisma.user.create({
+    data: {
+      tenantId: tenant.id,
+      name: name || null,
+      email,
+      passwordHash: await bcrypt.hash(password, 12),
+      role,
+      provider: "LOCAL"
+    }
+  });
+
+  await auditLog({
+    action: "user.created",
+    tenantId: tenant.id,
+    userId: user.id,
+    entity: "User",
+    entityId: created.id,
+    metadata: { email: created.email, role: created.role }
+  });
+  revalidatePath("/tenants");
+}
+
+export async function deleteTenantUser(formData: FormData) {
+  const user = await requireSuperAdmin();
+  const id = String(formData.get("id") ?? "");
+  const target = await prisma.user.findUniqueOrThrow({
+    where: { id },
+    include: { tenant: true }
+  });
+
+  if (target.id === user.id) {
+    throw new Error("Je kunt je eigen gebruiker niet verwijderen.");
+  }
+  if (!target.tenantId) {
+    throw new Error("Deze gebruiker is niet aan een tenant gekoppeld.");
+  }
+
+  if (target.role === "SUPER_ADMIN") {
+    const superAdmins = await prisma.user.count({ where: { role: "SUPER_ADMIN", active: true } });
+    if (superAdmins <= 1) throw new Error("De laatste superadmin kan niet verwijderd worden.");
+  }
+
+  if (target.role === "ADMIN" || target.role === "SUPER_ADMIN") {
+    const tenantAdmins = await prisma.user.count({
+      where: {
+        tenantId: target.tenantId,
+        active: true,
+        role: { in: ["ADMIN", "SUPER_ADMIN"] }
+      }
+    });
+    if (tenantAdmins <= 1) throw new Error("De laatste beheerder van deze tenant kan niet verwijderd worden.");
+  }
+
+  await auditLog({
+    action: "user.deleted",
+    tenantId: target.tenantId,
+    userId: user.id,
+    entity: "User",
+    entityId: target.id,
+    metadata: { email: target.email, role: target.role }
+  });
+
+  await prisma.$transaction(async (tx) => {
+    await tx.session.deleteMany({ where: { userId: target.id } });
+    await tx.account.deleteMany({ where: { userId: target.id } });
+    await tx.user.delete({ where: { id: target.id } });
+  });
+
+  revalidatePath("/tenants");
+}
+
 export async function setTenantActive(formData: FormData) {
   const user = await requireSuperAdmin();
   const id = String(formData.get("id"));
@@ -430,6 +515,7 @@ export async function saveSettings(formData: FormData) {
     ["smtp.user", formData.get("smtp.user")],
     ["smtp.from", formData.get("smtp.from")],
     ["graph.from", formData.get("graph.from")],
+    ["entra.enabled", formData.get("entra.enabled")],
     ["entra.tenantId", formData.get("entra.tenantId")],
     ["entra.clientId", formData.get("entra.clientId")]
   ] as const;
