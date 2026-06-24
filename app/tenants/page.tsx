@@ -1,5 +1,6 @@
 import { createManagedTenant, setTenantActive } from "@/app/actions";
-import { Badge, Button, Field, PageHeader, Panel, Shell, TableShell } from "@/components/ui";
+import { Modal } from "@/components/modal";
+import { Badge, Button, Field, PageHeader, Shell, TableShell } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 
@@ -23,25 +24,30 @@ export default async function TenantsPage() {
       <PageHeader
         title="Tenants"
         description="Alleen platformbeheerders kunnen tenants aanmaken. Tenantadmins beheren daarna uitsluitend hun eigen klanten, FortiGates, backups en instellingen."
+        actions={
+          <Modal
+            title="Tenant aanmaken"
+            description="Maak een tenant inclusief eerste tenantadmin."
+            trigger={<Button>Tenant aanmaken</Button>}
+          >
+            <form action={createManagedTenant} className="grid gap-4">
+              <Field label="Tenantnaam" name="name" required />
+              <Field label="Slug" name="slug" required />
+              <div className="border-t border-border pt-4">
+                <h3 className="mb-3 font-semibold">Eerste tenantadmin</h3>
+                <div className="grid gap-4">
+                  <Field label="Admin naam" name="adminName" required />
+                  <Field label="Admin e-mail" name="adminEmail" type="email" required />
+                  <Field label="Tijdelijk wachtwoord" name="adminPassword" type="password" required />
+                </div>
+              </div>
+              <Button>Tenant en admin maken</Button>
+            </form>
+          </Modal>
+        }
       />
 
-      <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
-        <Panel title="Tenant aanmaken" description="Maak direct een eerste tenantadmin aan.">
-          <form action={createManagedTenant} className="grid gap-4">
-          <Field label="Tenantnaam" name="name" required />
-          <Field label="Slug" name="slug" required />
-          <div className="border-t border-border pt-4">
-            <h3 className="mb-3 font-semibold">Eerste tenantadmin</h3>
-            <div className="grid gap-4">
-              <Field label="Admin naam" name="adminName" required />
-              <Field label="Admin e-mail" name="adminEmail" type="email" required />
-              <Field label="Tijdelijk wachtwoord" name="adminPassword" type="password" required />
-            </div>
-          </div>
-          <Button>Tenant en admin maken</Button>
-          </form>
-        </Panel>
-
+      <div className="grid gap-6">
         <TableShell>
           <table className="table-pro w-full min-w-[860px] text-left text-sm">
             <thead className="bg-surface-soft">

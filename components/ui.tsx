@@ -158,19 +158,27 @@ export function Badge({
 export function Button({
   children,
   variant = "primary",
-  className
+  className,
+  ...props
 }: {
   children: React.ReactNode;
   variant?: "primary" | "secondary" | "danger";
   className?: string;
-}) {
+} & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   const variants = {
     primary: "bg-primary text-primary-foreground hover:bg-primary/90",
     secondary: "border border-border bg-surface text-foreground hover:bg-muted",
     danger: "border border-red-300 bg-surface text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950"
   };
   return (
-    <button className={clsx("rounded-md px-4 py-2 text-sm font-medium transition", variants[variant], className)}>
+    <button
+      className={clsx(
+        "rounded-md px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-45",
+        variants[variant],
+        className
+      )}
+      {...props}
+    >
       {children}
     </button>
   );

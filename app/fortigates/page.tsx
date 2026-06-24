@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { createFortiGate, deleteFortiGate, runBackupAction, updateFortiGate } from "@/app/actions";
+import { FortiGateWizard } from "@/components/fortigate-wizard";
 import { FirmwareStatus } from "@/components/firmware-status";
-import { Badge, Button, Field, PageHeader, Panel, Shell, TableShell } from "@/components/ui";
+import { Modal } from "@/components/modal";
+import { Badge, Button, Field, PageHeader, Shell, TableShell } from "@/components/ui";
 import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
@@ -37,11 +39,22 @@ export default async function FortiGatesPage({
       <PageHeader
         title="FortiGates"
         description="Beheer API-toegang, backupstatus, firmware en diagnose per firewall."
+        actions={
+          <Modal
+            title="FortiGate toevoegen"
+            description="Begeleide setup voor REST API-token, connectiegegevens en backupschema."
+            trigger={<Button>FortiGate toevoegen</Button>}
+          >
+            <FortiGateWizard customers={customers} action={createFortiGate} />
+          </Modal>
+        }
       />
-      <div className="mt-6 grid gap-6 xl:grid-cols-[380px_1fr]">
-        <Panel
-          title={editDevice ? "FortiGate bewerken" : "FortiGate toevoegen"}
-          description={editDevice ? "Wijzig connectiegegevens zonder bestaande token te tonen." : "Voeg een firewall toe aan een klantkaart."}
+      {editDevice ? (
+        <Modal
+          title="FortiGate bewerken"
+          description="Wijzig connectiegegevens zonder de bestaande API-token te tonen."
+          defaultOpen
+          trigger={<span />}
         >
         <form action={formAction} className="grid gap-4">
           {editDevice ? <input type="hidden" name="id" value={editDevice.id} /> : null}
@@ -121,7 +134,9 @@ export default async function FortiGatesPage({
             ) : null}
           </div>
         </form>
-        </Panel>
+        </Modal>
+      ) : null}
+      <div className="mt-6">
         <TableShell>
           <table className="table-pro w-full min-w-[1180px] text-left text-sm">
             <thead className="bg-surface-soft">
