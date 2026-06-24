@@ -63,6 +63,17 @@ EOF
 }
 
 cd "$APP_DIR"
+run_as_service_user git -c core.filemode=false fetch --all --prune
+LOCAL_REV="$(run_as_service_user git rev-parse HEAD)"
+UPSTREAM_REF="$(run_as_service_user git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || echo origin/main)"
+REMOTE_REV="$(run_as_service_user git rev-parse "$UPSTREAM_REF")"
+
+if [ "$LOCAL_REV" = "$REMOTE_REV" ]; then
+  echo "Already up to date. No update needed."
+  exit 0
+fi
+
+echo "Update available: ${LOCAL_REV:0:12} -> ${REMOTE_REV:0:12}. Starting update."
 run_as_service_user mkdir -p "$BACKUP_DIR"
 run_as_service_user tar \
   --exclude node_modules \
@@ -73,7 +84,6 @@ run_as_service_user tar \
   --exclude data/temp \
   -czf "$TMP_BACKUP" .
 run_as_service_user mv "$TMP_BACKUP" "$BACKUP_DIR/$BACKUP_NAME"
-run_as_service_user git -c core.filemode=false fetch --all --prune
 run_as_service_user git -c core.filemode=false pull --ff-only
 UPDATE_SCRIPT_SUM_AFTER="$(cksum "$SCRIPT_DIR/update.sh" 2>/dev/null || true)"
 if [ "${FORTIGATE_UPDATE_REEXECED:-0}" != "1" ] && [ "$UPDATE_SCRIPT_SUM_BEFORE" != "$UPDATE_SCRIPT_SUM_AFTER" ]; then
