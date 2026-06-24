@@ -12,6 +12,7 @@ HEALTH_RETRIES="${HEALTH_RETRIES:-30}"
 HEALTH_DELAY="${HEALTH_DELAY:-2}"
 SYSTEMCTL="${SYSTEMCTL:-$(command -v systemctl || echo /usr/bin/systemctl)}"
 UPDATE_SCRIPT_SUM_BEFORE="$(cksum "$SCRIPT_DIR/update.sh" 2>/dev/null || true)"
+MIN_FREE_KB="${MIN_FREE_KB:-262144}"
 
 run_as_service_user() {
   if [ "$(id -un)" = "$SERVICE_USER" ]; then
@@ -32,6 +33,46 @@ run_systemctl() {
   fi
 }
 
+
+fail_preflight() {
+  cat >&2 <<EOF
+Update cannot continue: $1
+
+Recommended checks on the server:
+
+  df -h "$APP_DIR"
+  ls -ld "$APP_DIR" "$APP_DIR/.git" "$APP_DIR/.git/objects"
+
+If ownership is wrong because files were created as root, run as root:
+
+  chown -R $SERVICE_USER:$SERVICE_USER "$APP_DIR"
+  chmod -R u+rwX "$APP_DIR/.git"
+
+Then start the update again.
+EOF
+  exit 1
+}
+
+check_free_space() {
+  local available_kb
+  available_kb="$(df -Pk "$APP_DIR" | awk 'NR==2 {print $4}')"
+  if [ -z "$available_kb" ]; then
+    fail_preflight "could not determine free disk space for $APP_DIR."
+  fi
+  if [ "$available_kb" -lt "$MIN_FREE_KB" ]; then
+    fail_preflight "only ${available_kb}KB free on the filesystem, need at least ${MIN_FREE_KB}KB before pulling updates."
+  fi
+}
+
+check_repository_writable() {
+  run_as_service_user test -d "$APP_DIR/.git" || fail_preflight "$APP_DIR is not a Git repository."
+  run_as_service_user test -d "$APP_DIR/.git/objects" || fail_preflight "$APP_DIR/.git/objects does not exist."
+  run_as_service_user test -w "$APP_DIR/.git/objects" || fail_preflight "$SERVICE_USER cannot write to $APP_DIR/.git/objects."
+  local probe="$APP_DIR/.git/objects/.fortigate-update-write-test-$$"
+  if ! run_as_service_user sh -c 'touch "$1" && rm -f "$1"' sh "$probe"; then
+    fail_preflight "$SERVICE_USER cannot create files in $APP_DIR/.git/objects."
+  fi
+}
 restart_services_or_explain() {
   if run_systemctl daemon-reload && run_systemctl restart fortigate-backup; then
     for attempt in $(seq 1 "$HEALTH_RETRIES"); do
@@ -63,6 +104,8 @@ EOF
 }
 
 cd "$APP_DIR"
+check_free_space
+check_repository_writable
 run_as_service_user git -c core.filemode=false fetch --all --prune
 LOCAL_REV="$(run_as_service_user git rev-parse HEAD)"
 UPSTREAM_REF="$(run_as_service_user git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || echo origin/main)"
