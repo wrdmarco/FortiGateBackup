@@ -1,7 +1,9 @@
 import { notFound } from "next/navigation";
-import { runBackupAction } from "@/app/actions";
+import { deleteCustomer, runBackupAction } from "@/app/actions";
 import { FirmwareStatus } from "@/components/firmware-status";
-import { ActionLink, Badge, Button, Card, PageHeader, Shell, TableShell } from "@/components/ui";
+import { FortiGateSummary } from "@/components/fortigate-summary";
+import { Modal } from "@/components/modal";
+import { ActionLink, Badge, Button, Card, Field, PageHeader, Shell, TableShell } from "@/components/ui";
 import { assertTenantAccess, requireTenantUser } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 
@@ -44,6 +46,24 @@ export default async function CustomerDetailPage({
           <>
             <ActionLink href="/customers">Klanten</ActionLink>
             <ActionLink href={`/fortigates?add=1&customerId=${customer.id}`} variant="primary">FortiGate toevoegen</ActionLink>
+            <Modal
+              title="Klant verwijderen"
+              description="Verwijder de klant inclusief FortiGates, backuprecords en opgeslagen configbestanden."
+              trigger={<Button variant="danger">Klant verwijderen</Button>}
+            >
+              <form action={deleteCustomer} className="grid gap-4">
+                <input type="hidden" name="id" value={customer.id} />
+                <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-950 dark:border-red-900 dark:bg-red-950 dark:text-red-100">
+                  <p className="font-semibold">Definitieve verwijdering</p>
+                  <p className="mt-2">
+                    Hiermee verdwijnen {customer.devices.length} FortiGates, {backups.length} backuprecords
+                    en alle opgeslagen configuratiebestanden voor deze klant.
+                  </p>
+                </div>
+                <Field label={`Typ de klantnaam "${customer.name}" ter bevestiging`} name="confirmName" required />
+                <Button variant="danger">Klant definitief verwijderen</Button>
+              </form>
+            </Modal>
           </>
         }
       />
@@ -108,6 +128,13 @@ export default async function CustomerDetailPage({
                       )}
                     </td>
                     <td className="flex flex-wrap gap-2 px-3 py-2">
+                      <Modal
+                        title="FortiGate informatie"
+                        description="Technische summary, bereikbaarheid, licenties, backups en diagnose."
+                        trigger={<Button variant="secondary">Info</Button>}
+                      >
+                        <FortiGateSummary device={device} />
+                      </Modal>
                       <form action={runBackupAction}>
                         <input type="hidden" name="id" value={device.id} />
                         <Button>Backup</Button>

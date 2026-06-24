@@ -1,4 +1,4 @@
-import { createManagedTenant, setTenantActive } from "@/app/actions";
+import { createManagedTenant, deleteTenant, setTenantActive } from "@/app/actions";
 import { Modal } from "@/components/modal";
 import { Badge, Button, Field, PageHeader, Shell, TableShell } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/authz";
@@ -8,16 +8,24 @@ export const dynamic = "force-dynamic";
 
 export default async function TenantsPage() {
   await requireSuperAdmin();
-  const tenants = await prisma.tenant.findMany({
-    include: {
-      users: {
-        where: { active: true },
-        select: { id: true, name: true, email: true, role: true }
+  const [tenants, mainTenant] = await Promise.all([
+    prisma.tenant.findMany({
+      include: {
+        users: {
+          where: { active: true },
+          select: { id: true, name: true, email: true, role: true }
+        },
+        customers: {
+          select: {
+            id: true,
+            devices: { select: { id: true } }
+          }
+        }
       },
-      customers: { select: { id: true } }
-    },
-    orderBy: { name: "asc" }
-  });
+      orderBy: { name: "asc" }
+    }),
+    prisma.tenant.findFirst({ orderBy: { createdAt: "asc" }, select: { id: true } })
+  ]);
 
   return (
     <Shell>
@@ -61,28 +69,65 @@ export default async function TenantsPage() {
               </tr>
             </thead>
             <tbody>
-              {tenants.map((tenant) => (
-                <tr key={tenant.id} className="border-t border-border">
-                  <td className="px-3 py-2 font-medium">{tenant.name}</td>
-                  <td className="px-3 py-2 font-mono text-xs">{tenant.slug}</td>
-                  <td className="px-3 py-2">
-                    <Badge tone={tenant.active ? "success" : "danger"}>{tenant.active ? "Actief" : "Inactief"}</Badge>
-                  </td>
-                  <td className="px-3 py-2">{tenant.customers.length}</td>
-                  <td className="px-3 py-2">
-                    {tenant.users.length
-                      ? tenant.users.map((item) => item.email).join(", ")
-                      : "Geen actieve gebruikers"}
-                  </td>
-                  <td className="px-3 py-2">
-                    <form action={setTenantActive}>
-                      <input type="hidden" name="id" value={tenant.id} />
-                      <input type="hidden" name="active" value={tenant.active ? "false" : "true"} />
-                      <Button>{tenant.active ? "Deactiveren" : "Activeren"}</Button>
-                    </form>
-                  </td>
-                </tr>
-              ))}
+              {tenants.map((tenant) => {
+                const isMainTenant = tenant.id === mainTenant?.id;
+                const deviceCount = tenant.customers.reduce((count, customer) => count + customer.devices.length, 0);
+
+                return (
+                  <tr key={tenant.id} className="border-t border-border">
+                    <td className="px-3 py-2 font-medium">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {tenant.name}
+                        {isMainTenant ? <Badge>Main tenant</Badge> : null}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 font-mono text-xs">{tenant.slug}</td>
+                    <td className="px-3 py-2">
+                      <Badge tone={tenant.active ? "success" : "danger"}>{tenant.active ? "Actief" : "Inactief"}</Badge>
+                    </td>
+                    <td className="px-3 py-2">
+                      <div>{tenant.customers.length}</div>
+                      <div className="text-xs text-muted-foreground">{deviceCount} FortiGates</div>
+                    </td>
+                    <td className="px-3 py-2">
+                      {tenant.users.length
+                        ? tenant.users.map((item) => item.email).join(", ")
+                        : "Geen actieve gebruikers"}
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex flex-wrap gap-2">
+                        <form action={setTenantActive}>
+                          <input type="hidden" name="id" value={tenant.id} />
+                          <input type="hidden" name="active" value={tenant.active ? "false" : "true"} />
+                          <Button>{tenant.active ? "Deactiveren" : "Activeren"}</Button>
+                        </form>
+                        {isMainTenant ? (
+                          <Button variant="secondary" disabled>Main beschermd</Button>
+                        ) : (
+                          <Modal
+                            title="Tenant verwijderen"
+                            description="Deze actie verwijdert de tenant, gebruikers, klanten, FortiGates en opgeslagen configbestanden."
+                            trigger={<Button variant="danger">Verwijderen</Button>}
+                          >
+                            <form action={deleteTenant} className="grid gap-4">
+                              <input type="hidden" name="id" value={tenant.id} />
+                              <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-950 dark:border-red-900 dark:bg-red-950 dark:text-red-100">
+                                <p className="font-semibold">Definitieve verwijdering</p>
+                                <p className="mt-2">
+                                  Hiermee verdwijnen {tenant.customers.length} klanten, {deviceCount} FortiGates,
+                                  alle backuprecords en alle opgeslagen configuratiebestanden voor deze tenant.
+                                </p>
+                              </div>
+                              <Field label={`Typ de slug "${tenant.slug}" ter bevestiging`} name="confirmSlug" required />
+                              <Button variant="danger">Tenant definitief verwijderen</Button>
+                            </form>
+                          </Modal>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </TableShell>

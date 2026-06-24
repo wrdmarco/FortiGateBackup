@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
 import { auditLog } from "@/lib/audit";
+import { removeBackupFiles } from "@/lib/backup-cleanup";
 import { assertTenantAccess, isSuperAdmin, requireSuperAdmin, requireTenantUser } from "@/lib/authz";
 import { encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
@@ -130,6 +131,72 @@ export async function setTenantActive(formData: FormData) {
   });
   revalidatePath("/tenants");
 }
+export async function deleteTenant(formData: FormData) {
+  const user = await requireSuperAdmin();
+  const id = String(formData.get("id"));
+  const confirmSlug = String(formData.get("confirmSlug") ?? "").trim();
+  const [tenant, mainTenant] = await Promise.all([
+    prisma.tenant.findUniqueOrThrow({
+      where: { id },
+      include: {
+        customers: {
+          include: {
+            devices: {
+              include: {
+                backups: { select: { filename: true } }
+              }
+            }
+          }
+        },
+        _count: { select: { customers: true, users: true } }
+      }
+    }),
+    prisma.tenant.findFirst({ orderBy: { createdAt: "asc" }, select: { id: true } })
+  ]);
+
+  if (mainTenant?.id === tenant.id) {
+    throw new Error("De main tenant kan niet verwijderd worden.");
+  }
+  if (confirmSlug !== tenant.slug) {
+    throw new Error("Bevestiging mislukt. Typ de tenant slug exact over.");
+  }
+
+  await auditLog({
+    action: "tenant.deleted",
+    tenantId: tenant.id,
+    userId: user.id,
+    entity: "Tenant",
+    entityId: tenant.id,
+    metadata: {
+      name: tenant.name,
+      slug: tenant.slug,
+      customers: tenant._count.customers,
+      users: tenant._count.users
+    }
+  });
+
+  const devices = tenant.customers.flatMap((customer) => customer.devices);
+  await removeBackupFiles({
+    deviceIds: devices.map((device) => device.id),
+    filenames: devices.flatMap((device) => device.backups.map((backup) => backup.filename))
+  });
+
+  await prisma.$transaction(async (tx) => {
+    const users = await tx.user.findMany({ where: { tenantId: tenant.id }, select: { id: true } });
+    const userIds = users.map((item) => item.id);
+    if (userIds.length) {
+      await tx.session.deleteMany({ where: { userId: { in: userIds } } });
+      await tx.account.deleteMany({ where: { userId: { in: userIds } } });
+      await tx.user.deleteMany({ where: { id: { in: userIds } } });
+    }
+    await tx.tenant.delete({ where: { id: tenant.id } });
+  });
+
+  revalidatePath("/tenants");
+  revalidatePath("/customers");
+  revalidatePath("/fortigates");
+  revalidatePath("/backups");
+}
 
 export async function loginAction(formData: FormData) {
   const email = String(formData.get("email") ?? "").toLowerCase();
@@ -179,6 +246,49 @@ export async function createCustomer(formData: FormData) {
     entityId: customer.id
   });
   revalidatePath("/customers");
+}
+export async function deleteCustomer(formData: FormData) {
+  const user = await requireTenantUser();
+  const id = String(formData.get("id"));
+  const confirmName = String(formData.get("confirmName") ?? "").trim();
+  const customer = await prisma.customer.findUniqueOrThrow({
+    where: { id },
+    include: {
+      devices: {
+        include: {
+          backups: { select: { filename: true } }
+        }
+      }
+    }
+  });
+  assertTenantAccess(user, customer.tenantId);
+  if (confirmName !== customer.name) {
+    throw new Error("Bevestiging mislukt. Typ de klantnaam exact over.");
+  }
+
+  await auditLog({
+    action: "customer.deleted",
+    tenantId: customer.tenantId,
+    userId: user.id,
+    entity: "Customer",
+    entityId: customer.id,
+    metadata: {
+      name: customer.name,
+      devices: customer.devices.length,
+      backupFiles: customer.devices.reduce((count, device) => count + device.backups.filter((backup) => backup.filename).length, 0)
+    }
+  });
+
+  await removeBackupFiles({
+    deviceIds: customer.devices.map((device) => device.id),
+    filenames: customer.devices.flatMap((device) => device.backups.map((backup) => backup.filename))
+  });
+
+  await prisma.customer.delete({ where: { id: customer.id } });
+  revalidatePath("/customers");
+  revalidatePath("/fortigates");
+  revalidatePath("/backups");
+  redirect("/customers");
 }
 
 export async function createFortiGate(formData: FormData) {
@@ -268,7 +378,10 @@ export async function deleteFortiGate(formData: FormData) {
   const id = String(formData.get("id"));
   const device = await prisma.fortiGate.findUniqueOrThrow({
     where: { id },
-    include: { customer: true }
+    include: {
+      customer: true,
+      backups: { select: { filename: true } }
+    }
   });
   assertTenantAccess(user, device.customer.tenantId);
   await auditLog({
@@ -283,8 +396,13 @@ export async function deleteFortiGate(formData: FormData) {
       serialNumber: device.serialNumber
     }
   });
+  await removeBackupFiles({
+    deviceIds: [device.id],
+    filenames: device.backups.map((backup) => backup.filename)
+  });
   await prisma.fortiGate.delete({ where: { id } });
   revalidatePath("/fortigates");
+  revalidatePath("/customers");
   revalidatePath("/backups");
 }
 

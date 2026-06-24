@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createFortiGate, deleteFortiGate, runBackupAction, updateFortiGate } from "@/app/actions";
 import { FortiGateWizard } from "@/components/fortigate-wizard";
+import { FortiGateSummary } from "@/components/fortigate-summary";
 import { FirmwareStatus } from "@/components/firmware-status";
 import { Modal } from "@/components/modal";
 import { Badge, Button, Field, PageHeader, Shell, TableShell } from "@/components/ui";
@@ -25,8 +26,8 @@ export default async function FortiGatesPage({
       where: fortigateWhere,
       include: {
         customer: true,
-        backups: { orderBy: { createdAt: "desc" }, take: 1 },
-        logs: { orderBy: { createdAt: "desc" }, take: 1 }
+        backups: { orderBy: { createdAt: "desc" }, take: 5 },
+        logs: { orderBy: { createdAt: "desc" }, take: 3 }
       },
       orderBy: { createdAt: "desc" }
     })
@@ -205,6 +206,13 @@ export default async function FortiGatesPage({
                       )}
                     </td>
                     <td className="flex flex-wrap gap-2 px-3 py-2">
+                      <Modal
+                        title="FortiGate informatie"
+                        description="Technische summary, bereikbaarheid, licenties, backups en diagnose."
+                        trigger={<Button variant="secondary">Info</Button>}
+                      >
+                        <FortiGateSummary device={device} />
+                      </Modal>
                       <form action={runBackupAction}>
                         <input type="hidden" name="id" value={device.id} />
                         <Button>Backup</Button>

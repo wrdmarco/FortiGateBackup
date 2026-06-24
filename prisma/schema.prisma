@@ -135,6 +135,8 @@ model FortiGate {
   firmwareVersion   String?
   firmwareBuild     String?
   uptime            String?
+  externalIpAddresses String?
+  licenseInfo       String?
   managementUrl     String
   httpsPort         Int              @default(443)
   apiTokenEncrypted String

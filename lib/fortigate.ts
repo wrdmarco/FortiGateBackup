@@ -162,6 +162,80 @@ function normalizeSystemStatus(payload: unknown) {
   };
 }
 
+
+function payloadResults(payload: unknown) {
+  const root = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
+  return root.results ?? root;
+}
+
+function isPublicIpAddress(value: string) {
+  const ip = value.split("/")[0];
+  const parts = ip.split(".").map((part) => Number(part));
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return false;
+  const [a, b] = parts;
+  if (a === 10 || a === 127 || a === 0 || a >= 224) return false;
+  if (a === 172 && b >= 16 && b <= 31) return false;
+  if (a === 192 && b === 168) return false;
+  if (a === 169 && b === 254) return false;
+  if (a === 100 && b >= 64 && b <= 127) return false;
+  return true;
+}
+
+function normalizeExternalIpAddresses(payload: unknown) {
+  const results = payloadResults(payload);
+  const records = Array.isArray(results)
+    ? results.map((item, index) => ({ name: `interface-${index + 1}`, value: item }))
+    : results && typeof results === "object"
+      ? Object.entries(results as Record<string, unknown>).map(([name, value]) => ({ name, value }))
+      : [];
+
+  return records
+    .flatMap(({ name, value }) => {
+      if (!value || typeof value !== "object") return [];
+      const record = value as Record<string, unknown>;
+      const candidates = ["ip", "ip_address", "address", "public_ip", "publicIp", "external_ip", "externalIp"]
+        .map((key) => record[key])
+        .filter((item): item is string => typeof item === "string" && isPublicIpAddress(item));
+      return candidates.map((address) => ({ interface: String(record.name ?? record.interface ?? name), address }));
+    })
+    .filter((item, index, items) => items.findIndex((other) => other.address === item.address) === index);
+}
+
+function normalizeLicenseInfo(payload: unknown) {
+  const results = payloadResults(payload);
+  if (!results || typeof results !== "object") return undefined;
+  const record = results as Record<string, unknown>;
+  const entries = Object.entries(record)
+    .filter(([, value]) => value !== null && value !== undefined && typeof value !== "object")
+    .slice(0, 16);
+  const services = Object.entries(record)
+    .filter(([, value]) => value && typeof value === "object")
+    .slice(0, 12)
+    .map(([name, value]) => {
+      const service = value as Record<string, unknown>;
+      return {
+        name,
+        status: service.status ?? service.license_status ?? service.contract_status ?? service.type ?? "unknown",
+        expires: service.expires ?? service.expiry ?? service.expiration ?? service.end_date ?? null
+      };
+    });
+  return { summary: Object.fromEntries(entries), services };
+}
+
+async function fetchOptionalJson(device: FortiGate, endpoint: string, event: string) {
+  try {
+    const response = await fortigateFetch(device, endpoint);
+    return await response.json();
+  } catch (error) {
+    await writeFortiGateLog(
+      device.id,
+      FortiGateLogLevel.WARN,
+      event,
+      error instanceof Error ? error.message : "Optionele FortiGate inventory endpoint mislukt."
+    );
+    return undefined;
+  }
+}
 function normalizeFirmwareVersion(value?: string) {
   if (!value) return undefined;
   const match = value.match(/v?(\d+(?:\.\d+){1,3})/i);
@@ -287,6 +361,12 @@ export async function refreshFortiGateInventory(deviceId: string) {
     const response = await fortigateFetch(device, "/api/v2/monitor/system/status");
     const payload = await response.json();
     const status = normalizeSystemStatus(payload);
+    const [interfacePayload, licensePayload] = await Promise.all([
+      fetchOptionalJson(device, "/api/v2/monitor/system/interface", "inventory.interfaces_unavailable"),
+      fetchOptionalJson(device, "/api/v2/monitor/license/status", "inventory.license_unavailable")
+    ]);
+    const externalIpAddresses = interfacePayload ? normalizeExternalIpAddresses(interfacePayload) : [];
+    const licenseInfo = licensePayload ? normalizeLicenseInfo(licensePayload) : undefined;
     const updated = await prisma.fortiGate.update({
       where: { id: device.id },
       data: {
@@ -296,6 +376,8 @@ export async function refreshFortiGateInventory(deviceId: string) {
         firmwareVersion: status.firmwareVersion ?? device.firmwareVersion,
         firmwareBuild: status.firmwareBuild ?? device.firmwareBuild,
         uptime: status.uptime ?? device.uptime,
+        externalIpAddresses: externalIpAddresses.length ? JSON.stringify(externalIpAddresses) : device.externalIpAddresses,
+        licenseInfo: licenseInfo ? JSON.stringify(licenseInfo) : device.licenseInfo,
         lastCheckedAt: new Date()
       }
     });
@@ -343,6 +425,8 @@ export async function refreshFortiGateInventory(deviceId: string) {
         model: updated.model,
         firmwareVersion: updated.firmwareVersion,
         firmwareBuild: updated.firmwareBuild,
+        externalIpAddresses: externalIpAddresses.length,
+        licenseInfo: Boolean(licenseInfo),
         sourceFields: status.keys
       }
     );
