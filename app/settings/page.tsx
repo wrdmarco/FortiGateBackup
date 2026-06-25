@@ -15,7 +15,7 @@ const settingKeys = ["smtp.password", "itglue.apiKey", "graph.accessToken", "gra
 export default async function SettingsPage({
   searchParams
 }: {
-  searchParams?: Promise<{ tenantId?: string }>;
+  searchParams?: Promise<{ tenantId?: string; tab?: string }>;
 }) {
   const user = await requireUser();
   const canUpdateApp = isSuperAdmin(user);
@@ -93,6 +93,8 @@ export default async function SettingsPage({
     hasEntraSecret: secretKeys.has("entra.clientSecret")
   };
   const formProps = { action: saveSettings, tenants, selectedTenantId, values };
+  const tabIds = ["portal", "itglue", "mail", "sso", ...(updateStatus ? ["updates"] : [])];
+  const activeTab = params?.tab && tabIds.includes(params.tab) ? params.tab : "portal";
 
   return (
     <Shell>
@@ -101,10 +103,12 @@ export default async function SettingsPage({
         description="Beheer portal, IT Glue, mail, SSO en applicatie-updates per tenant of globaal."
       />
       <SettingsTabs
+        activeTab={activeTab}
         tabs={[
           {
             id: "portal",
             label: "Portal",
+            href: settingsHref("portal", selectedTenantId),
             description: "Beheer de publieke URL per tenant voor links, notificaties en portalverwijzingen.",
             content: (
               <Panel className="max-w-4xl">
@@ -115,6 +119,7 @@ export default async function SettingsPage({
           {
             id: "itglue",
             label: "IT Glue",
+            href: settingsHref("itglue", selectedTenantId),
             description: "Koppel FortiGate backups aan IT Glue organizations en configurations.",
             content: (
               <Panel className="max-w-4xl">
@@ -125,6 +130,7 @@ export default async function SettingsPage({
           {
             id: "mail",
             label: "Mail",
+            href: settingsHref("mail", selectedTenantId),
             description: "Beheer SMTP of Microsoft Graph mailconfiguratie voor deze scope.",
             content: (
               <Panel className="max-w-4xl">
@@ -135,6 +141,7 @@ export default async function SettingsPage({
           {
             id: "sso",
             label: "SSO",
+            href: settingsHref("sso", selectedTenantId),
             description: "Beheer Microsoft Entra ID login voor deze tenant.",
             content: (
               <Panel className="max-w-4xl">
@@ -147,6 +154,7 @@ export default async function SettingsPage({
                 {
                   id: "updates",
                   label: "Updates",
+                  href: settingsHref("updates", selectedTenantId),
                   description: "Controleer GitHub op een nieuwe versie en start de serverupdate direct vanaf het portaal.",
                   content: (
                     <Panel title="Applicatie update" className="max-w-4xl">
@@ -196,4 +204,9 @@ function Info({ label, value, mono = false }: { label: string; value: string; mo
 
 function shortSha(value: string | null) {
   return value ? value.slice(0, 12) : "Onbekend";
+}
+function settingsHref(tab: string, tenantId: string) {
+  const params = new URLSearchParams({ tab });
+  if (tenantId) params.set("tenantId", tenantId);
+  return `/settings?${params.toString()}`;
 }
