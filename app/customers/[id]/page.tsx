@@ -68,10 +68,11 @@ export default async function CustomerDetailPage({
         }
       />
 
-      <div className="mt-6 grid gap-4 md:grid-cols-4">
+      <div className="mt-6 grid gap-4 md:grid-cols-5">
         <Card title="FortiGates" value={customer.devices.length} detail="Bij deze klant" />
         <Card title="Backups" value={backups.length} detail="Laatste records" />
         <Card title="Downloadbaar" value={changedBackups.length} detail="Opgeslagen configbestanden" />
+        <Card title="IT Glue" value={customer.itGlueOrganizationId ? "Gekoppeld" : "Niet gekoppeld"} detail={customer.itGlueOrganizationId ? `Org ${customer.itGlueOrganizationId}` : "Geen organization ID"} />
         <Card
           title="Laatste backup"
           value={latestBackup?.status ?? "-"}
@@ -89,6 +90,7 @@ export default async function CustomerDetailPage({
                 <th className="px-3 py-2">Model</th>
                 <th className="px-3 py-2">Firmware</th>
                 <th className="px-3 py-2">TLS verify</th>
+                <th className="px-3 py-2">IT Glue</th>
                 <th className="px-3 py-2">Laatste log</th>
                 <th className="px-3 py-2">Acties</th>
               </tr>
@@ -113,6 +115,9 @@ export default async function CustomerDetailPage({
                       <Badge tone={device.tlsVerify ? "warning" : "success"}>
                         {device.tlsVerify ? "Aan" : "Uit"}
                       </Badge>
+                    </td>
+                    <td className="px-3 py-2">
+                      {device.itGlueConfigurationId ? <Badge tone="success">Config {device.itGlueConfigurationId}</Badge> : <Badge>Niet gekoppeld</Badge>}
                     </td>
                     <td className="max-w-[360px] px-3 py-2">
                       {latestLog ? (
@@ -160,6 +165,7 @@ export default async function CustomerDetailPage({
                 <th className="px-3 py-2">Status</th>
                 <th className="px-3 py-2">SHA256 / fout</th>
                 <th className="px-3 py-2">Grootte</th>
+                <th className="px-3 py-2">IT Glue</th>
                 <th className="px-3 py-2">Acties</th>
               </tr>
             </thead>
@@ -177,6 +183,9 @@ export default async function CustomerDetailPage({
                     </td>
                     <td className="max-w-[360px] truncate px-3 py-2 font-mono text-xs">{backup.sha256 ?? backup.error ?? "-"}</td>
                     <td className="px-3 py-2">{backup.filesize}</td>
+                    <td className="px-3 py-2">
+                      {backup.itGlueUploadedAt ? <Badge tone="success">Geupload</Badge> : backup.itGlueError ? <Badge tone="warning">Fout</Badge> : <Badge>-</Badge>}
+                    </td>
                     <td className="flex flex-wrap gap-2 px-3 py-2">
                       {backup.filename ? (
                         <>

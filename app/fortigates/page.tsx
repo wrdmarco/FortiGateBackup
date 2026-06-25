@@ -153,6 +153,7 @@ export default async function FortiGatesPage({
                 <th className="px-3 py-2">Model</th>
                 <th className="px-3 py-2">Firmware</th>
                 <th className="px-3 py-2">Laatste backup</th>
+                <th className="px-3 py-2">IT Glue</th>
                 <th className="px-3 py-2">Laatste log</th>
                 <th className="px-3 py-2">Actie</th>
               </tr>
@@ -190,6 +191,9 @@ export default async function FortiGatesPage({
                       ) : (
                         <span className="text-muted-foreground">nog niet uitgevoerd</span>
                       )}
+                    </td>
+                    <td className="px-3 py-2">
+                      {device.itGlueConfigurationId ? <Badge tone="success">Config {device.itGlueConfigurationId}</Badge> : <Badge>Niet gekoppeld</Badge>}
                     </td>
                     <td className="max-w-[360px] px-3 py-2">
                       {latestLog ? (

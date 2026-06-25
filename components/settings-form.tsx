@@ -30,31 +30,40 @@ type SettingsValues = {
   hasEntraSecret: boolean;
 };
 
-const tabs = [
+type SettingsTabId = "portal" | "itglue" | "mail" | "sso";
+
+const tabs: { id: SettingsTabId; label: string }[] = [
   { id: "portal", label: "Portal" },
   { id: "itglue", label: "IT Glue" },
   { id: "mail", label: "Mail" },
   { id: "sso", label: "SSO" }
-] as const;
+];
 
 export function SettingsForm({
   action,
   tenants,
   selectedTenantId,
-  values
+  values,
+  visibleTabs,
+  initialTab = "portal"
 }: {
   action: (formData: FormData) => void | Promise<void>;
   tenants: TenantOption[];
   selectedTenantId: string;
   values: SettingsValues;
+  visibleTabs?: SettingsTabId[];
+  initialTab?: SettingsTabId;
 }) {
-  const [activeTab, setActiveTab] = useState<(typeof tabs)[number]["id"]>("portal");
+  const availableTabs = visibleTabs?.length ? tabs.filter((tab) => visibleTabs.includes(tab.id)) : tabs;
+  const firstTab = availableTabs.some((tab) => tab.id === initialTab) ? initialTab : availableTabs[0]?.id ?? "portal";
+  const [activeTab, setActiveTab] = useState<SettingsTabId>(firstTab);
   const [mailProvider, setMailProvider] = useState(values.mailProvider);
   const [entraEnabled, setEntraEnabled] = useState(values.entraEnabled);
   const scopeLabel = useMemo(
     () => tenants.find((tenant) => tenant.id === selectedTenantId)?.name ?? "Globaal",
     [selectedTenantId, tenants]
   );
+  const showTab = (id: SettingsTabId) => availableTabs.some((tab) => tab.id === id);
 
   return (
     <form action={action} className="grid gap-6">
@@ -91,154 +100,164 @@ export function SettingsForm({
         {tenants.length ? <input type="hidden" name="tenantId" value={selectedTenantId} /> : null}
       </section>
 
-      <div className="overflow-x-auto rounded-md border border-border bg-surface p-1">
-        <div className="flex min-w-max gap-1" role="tablist" aria-label="Configuratie tabs">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              aria-selected={activeTab === tab.id}
-              className={clsx(
-                "rounded px-4 py-2 text-sm font-medium transition",
-                activeTab === tab.id
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
-              )}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              {tab.label}
-            </button>
-          ))}
+      {availableTabs.length > 1 ? (
+        <div className="overflow-x-auto rounded-md border border-border bg-surface p-1">
+          <div className="flex min-w-max gap-1" role="tablist" aria-label="Configuratie tabs">
+            {availableTabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === tab.id}
+                className={clsx(
+                  "rounded px-4 py-2 text-sm font-medium transition",
+                  activeTab === tab.id
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+                onClick={() => setActiveTab(tab.id)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      ) : null}
 
-      <section hidden={activeTab !== "portal"} className="grid gap-4 rounded-md border border-border bg-surface-soft p-4">
-        <div>
-          <h2 className="font-semibold">Tenant site URL</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Stel de publieke URL in die deze tenant gebruikt voor links, notificaties en portalverwijzingen.
-          </p>
-        </div>
-        <TextField
-          label="Site URL"
-          name="portal.siteUrl"
-          type="text"
-          defaultValue={values.portalSiteUrl}
-          help={values.effectiveSiteUrl ? `Actieve URL: ${values.effectiveSiteUrl}` : "Laat leeg om de globale SERVER_URL of globale portal URL te gebruiken."}
-        />
-      </section>
-
-      <section hidden={activeTab !== "itglue"} className="grid gap-4 rounded-md border border-border bg-surface-soft p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+      {showTab("portal") ? (
+        <section hidden={activeTab !== "portal"} className="grid gap-4 rounded-md border border-border bg-surface-soft p-4">
           <div>
-            <h2 className="font-semibold">IT Glue integratie</h2>
+            <h2 className="font-semibold">Tenant site URL</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Upload gewijzigde FortiGate configbestanden als bijlage op de juiste IT Glue configuration.
+              Stel de publieke URL in die deze tenant gebruikt voor links, notificaties en portalverwijzingen.
             </p>
           </div>
-          <label className="flex items-center gap-2 rounded-md border border-border bg-surface px-3 py-2 text-sm">
-            <input name="itglue.enabled" type="hidden" value="false" />
-            <input name="itglue.enabled" type="checkbox" value="true" defaultChecked={values.itGlueEnabled} />
-            IT Glue actief
-          </label>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          <TextField label="API base URL" name="itglue.baseUrl" defaultValue={values.itGlueBaseUrl || "https://api.itglue.com"} />
           <TextField
-            label={values.hasItGlueApiKey ? "Nieuwe API key" : "API key"}
-            name="itglue.apiKey"
-            type="password"
-            help={values.hasItGlueApiKey ? "Er is al een IT Glue API key opgeslagen. Laat leeg om deze te behouden." : "De API key wordt versleuteld opgeslagen."}
+            label="Site URL"
+            name="portal.siteUrl"
+            type="text"
+            defaultValue={values.portalSiteUrl}
+            help={values.effectiveSiteUrl ? `Actieve URL: ${values.effectiveSiteUrl}` : "Laat leeg om de globale SERVER_URL of globale portal URL te gebruiken."}
           />
-        </div>
-        <div className="rounded-md border border-border bg-surface p-3 text-sm text-muted-foreground">
-          Vul bij klanten het IT Glue organization ID in en bij FortiGates het IT Glue configuration ID. Bij elke gewijzigde backup wordt het configbestand daar als bijlage verwerkt.
-        </div>
-      </section>
+        </section>
+      ) : null}
 
-      <section hidden={activeTab !== "mail"} className="grid gap-4 rounded-md border border-border bg-surface-soft p-4">
-        <div>
-          <h2 className="font-semibold">Mailprovider</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Kies de actieve mailmethode. Alleen de velden voor deze provider worden getoond en opgeslagen.
-          </p>
-        </div>
-        <label className="grid gap-1 text-sm">
-          <span className="font-medium">Provider</span>
-          <select
-            className="rounded-md border border-border bg-surface px-3 py-2"
-            name="mail.provider"
-            value={mailProvider}
-            onChange={(event) => setMailProvider(event.target.value as SettingsValues["mailProvider"])}
-          >
-            <option value="SMTP">SMTP</option>
-            <option value="MICROSOFT_GRAPH">Microsoft Graph</option>
-          </select>
-        </label>
-
-        {mailProvider === "SMTP" ? (
-          <div className="grid gap-4 md:grid-cols-2">
-            <TextField label="SMTP host" name="smtp.host" defaultValue={values.smtpHost} required />
-            <TextField label="SMTP poort" name="smtp.port" type="number" defaultValue={values.smtpPort || "587"} required />
-            <TextField label="SMTP gebruiker" name="smtp.user" defaultValue={values.smtpUser} />
-            <TextField
-              label={values.hasSmtpPassword ? "Nieuw SMTP wachtwoord" : "SMTP wachtwoord"}
-              name="smtp.password"
-              type="password"
-              help={values.hasSmtpPassword ? "Er is al een wachtwoord opgeslagen. Laat leeg om dit te behouden." : undefined}
-            />
-            <TextField label="SMTP afzender" name="smtp.from" type="email" defaultValue={values.smtpFrom} required />
+      {showTab("itglue") ? (
+        <section hidden={activeTab !== "itglue"} className="grid gap-4 rounded-md border border-border bg-surface-soft p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">IT Glue integratie</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Upload gewijzigde FortiGate configbestanden als bijlage op de juiste IT Glue configuration.
+              </p>
+            </div>
+            <label className="flex items-center gap-2 rounded-md border border-border bg-surface px-3 py-2 text-sm">
+              <input name="itglue.enabled" type="hidden" value="false" />
+              <input name="itglue.enabled" type="checkbox" value="true" defaultChecked={values.itGlueEnabled} />
+              IT Glue actief
+            </label>
           </div>
-        ) : (
           <div className="grid gap-4 md:grid-cols-2">
-            <TextField label="Graph afzender" name="graph.from" type="email" defaultValue={values.graphFrom} required />
-            <TextField label="Tenant ID" name="graph.tenantId" defaultValue={values.graphTenantId} required />
-            <TextField label="App / client ID" name="graph.clientId" defaultValue={values.graphClientId} required />
+            <TextField label="API base URL" name="itglue.baseUrl" defaultValue={values.itGlueBaseUrl || "https://api.itglue.com"} />
             <TextField
-              label={values.hasGraphClientSecret ? "Nieuw client secret" : "Client secret"}
-              name="graph.clientSecret"
+              label={values.hasItGlueApiKey ? "Nieuwe API key" : "API key"}
+              name="itglue.apiKey"
               type="password"
-              help={values.hasGraphClientSecret ? "Er is al een Graph client secret opgeslagen. Laat leeg om dit te behouden." : "Gebruik de secret value uit Microsoft Entra, niet de secret ID."}
+              help={values.hasItGlueApiKey ? "Er is al een IT Glue API key opgeslagen. Laat leeg om deze te behouden." : "De API key wordt versleuteld opgeslagen."}
             />
           </div>
-        )}
-      </section>
+          <div className="rounded-md border border-border bg-surface p-3 text-sm text-muted-foreground">
+            Vul bij klanten het IT Glue organization ID in en bij FortiGates het IT Glue configuration ID. Bij elke gewijzigde backup wordt het configbestand daar als bijlage verwerkt.
+          </div>
+        </section>
+      ) : null}
 
-      <section hidden={activeTab !== "sso"} className="grid gap-4 rounded-md border border-border bg-surface-soft p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+      {showTab("mail") ? (
+        <section hidden={activeTab !== "mail"} className="grid gap-4 rounded-md border border-border bg-surface-soft p-4">
           <div>
-            <h2 className="font-semibold">Microsoft Entra ID SSO</h2>
+            <h2 className="font-semibold">Mailprovider</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Zet SSO alleen aan wanneer deze tenant via Microsoft Entra mag inloggen.
+              Kies de actieve mailmethode. Alleen de velden voor deze provider worden getoond en opgeslagen.
             </p>
           </div>
-          <label className="flex items-center gap-2 rounded-md border border-border bg-surface px-3 py-2 text-sm">
-            <input name="entra.enabled" type="hidden" value="false" />
-            <input
-              name="entra.enabled"
-              type="checkbox"
-              value="true"
-              checked={entraEnabled}
-              onChange={(event) => setEntraEnabled(event.target.checked)}
-            />
-            SSO actief
+          <label className="grid gap-1 text-sm">
+            <span className="font-medium">Provider</span>
+            <select
+              className="rounded-md border border-border bg-surface px-3 py-2"
+              name="mail.provider"
+              value={mailProvider}
+              onChange={(event) => setMailProvider(event.target.value as SettingsValues["mailProvider"])}
+            >
+              <option value="SMTP">SMTP</option>
+              <option value="MICROSOFT_GRAPH">Microsoft Graph</option>
+            </select>
           </label>
-        </div>
 
-        {entraEnabled ? (
-          <div className="grid gap-4 md:grid-cols-2">
-            <TextField label="Tenant ID" name="entra.tenantId" defaultValue={values.entraTenantId} required />
-            <TextField label="Client ID" name="entra.clientId" defaultValue={values.entraClientId} required />
-            <TextField
-              label={values.hasEntraSecret ? "Nieuw client secret" : "Client secret"}
-              name="entra.clientSecret"
-              type="password"
-              help={values.hasEntraSecret ? "Er is al een client secret opgeslagen. Laat leeg om dit te behouden." : undefined}
-            />
+          {mailProvider === "SMTP" ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              <TextField label="SMTP host" name="smtp.host" defaultValue={values.smtpHost} required />
+              <TextField label="SMTP poort" name="smtp.port" type="number" defaultValue={values.smtpPort || "587"} required />
+              <TextField label="SMTP gebruiker" name="smtp.user" defaultValue={values.smtpUser} />
+              <TextField
+                label={values.hasSmtpPassword ? "Nieuw SMTP wachtwoord" : "SMTP wachtwoord"}
+                name="smtp.password"
+                type="password"
+                help={values.hasSmtpPassword ? "Er is al een wachtwoord opgeslagen. Laat leeg om dit te behouden." : undefined}
+              />
+              <TextField label="SMTP afzender" name="smtp.from" type="email" defaultValue={values.smtpFrom} required />
+            </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              <TextField label="Graph afzender" name="graph.from" type="email" defaultValue={values.graphFrom} required />
+              <TextField label="Tenant ID" name="graph.tenantId" defaultValue={values.graphTenantId} required />
+              <TextField label="App / client ID" name="graph.clientId" defaultValue={values.graphClientId} required />
+              <TextField
+                label={values.hasGraphClientSecret ? "Nieuw client secret" : "Client secret"}
+                name="graph.clientSecret"
+                type="password"
+                help={values.hasGraphClientSecret ? "Er is al een Graph client secret opgeslagen. Laat leeg om dit te behouden." : "Gebruik de secret value uit Microsoft Entra, niet de secret ID."}
+              />
+            </div>
+          )}
+        </section>
+      ) : null}
+
+      {showTab("sso") ? (
+        <section hidden={activeTab !== "sso"} className="grid gap-4 rounded-md border border-border bg-surface-soft p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">Microsoft Entra ID SSO</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Zet SSO alleen aan wanneer deze tenant via Microsoft Entra mag inloggen.
+              </p>
+            </div>
+            <label className="flex items-center gap-2 rounded-md border border-border bg-surface px-3 py-2 text-sm">
+              <input name="entra.enabled" type="hidden" value="false" />
+              <input
+                name="entra.enabled"
+                type="checkbox"
+                value="true"
+                checked={entraEnabled}
+                onChange={(event) => setEntraEnabled(event.target.checked)}
+              />
+              SSO actief
+            </label>
           </div>
-        ) : null}
-      </section>
+
+          {entraEnabled ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              <TextField label="Tenant ID" name="entra.tenantId" defaultValue={values.entraTenantId} required />
+              <TextField label="Client ID" name="entra.clientId" defaultValue={values.entraClientId} required />
+              <TextField
+                label={values.hasEntraSecret ? "Nieuw client secret" : "Client secret"}
+                name="entra.clientSecret"
+                type="password"
+                help={values.hasEntraSecret ? "Er is al een client secret opgeslagen. Laat leeg om dit te behouden." : undefined}
+              />
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       <div>
         <button className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90">

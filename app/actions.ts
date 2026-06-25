@@ -576,8 +576,12 @@ export async function saveSettings(formData: FormData) {
     ["entra.tenantId", formData.get("entra.tenantId")],
     ["entra.clientId", formData.get("entra.clientId")]
   ] as const;
-  await setSetting("itglue.enabled", boolField(formData, "itglue.enabled") ? "true" : "false", { tenantId });
-  await setSetting("entra.enabled", boolField(formData, "entra.enabled") ? "true" : "false", { tenantId });
+  if (formData.has("itglue.enabled")) {
+    await setSetting("itglue.enabled", boolField(formData, "itglue.enabled") ? "true" : "false", { tenantId });
+  }
+  if (formData.has("entra.enabled")) {
+    await setSetting("entra.enabled", boolField(formData, "entra.enabled") ? "true" : "false", { tenantId });
+  }
   for (const [key, value] of entries) {
     if (value) await setSetting(key, String(value), { tenantId });
   }

@@ -173,6 +173,14 @@ export function FortiGateWizard({
             </div>
 
             <label className="grid gap-1 text-sm">
+              <span className="font-medium">IT Glue configuration ID</span>
+              <input className="rounded-md border border-border bg-surface px-3 py-2" name="itGlueConfigurationId" placeholder="Bijvoorbeeld 123456789" />
+              <span className="text-xs text-muted-foreground">
+                Vul dit in als IT Glue actief is. Dit is de configuration waar de gewijzigde FortiGate configs als bijlage onder komen.
+              </span>
+            </label>
+
+            <label className="grid gap-1 text-sm">
               <span className="font-medium">API-token</span>
               <input
                 className="rounded-md border border-border bg-surface px-3 py-2 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15"
@@ -220,6 +228,7 @@ export function FortiGateWizard({
               <CheckItem text="Firmware, model en hostname worden waar mogelijk uitgelezen en bijgewerkt." />
               <CheckItem text="Alleen echte configuratiewijzigingen tellen als changed; dynamische ruis wordt genegeerd." />
               <CheckItem text="Bij fouten zie je per FortiGate een logregel met endpoint, statuscode en diagnose." />
+              <CheckItem text="Als IT Glue actief is, wordt alleen een gewijzigde backup als bijlage aan de gekoppelde configuration toegevoegd." />
             </div>
           </section>
 

@@ -71,47 +71,74 @@ export default async function SettingsPage({
     canUpdateApp ? getAppUpdateStatus() : Promise.resolve(null)
   ]);
   const secretKeys = new Set(savedSecrets.map((setting) => setting.key));
+  const values = {
+    portalSiteUrl: portalSiteUrl ?? "",
+    effectiveSiteUrl: portalSiteUrl ?? effectiveSiteUrl ?? "",
+    itGlueEnabled: itGlueEnabled === "true",
+    itGlueBaseUrl: itGlueBaseUrl ?? "https://api.itglue.com",
+    hasItGlueApiKey: secretKeys.has("itglue.apiKey"),
+    mailProvider: mailProvider === "MICROSOFT_GRAPH" ? ("MICROSOFT_GRAPH" as const) : ("SMTP" as const),
+    smtpHost: smtpHost ?? "",
+    smtpPort: smtpPort ?? "587",
+    smtpUser: smtpUser ?? "",
+    smtpFrom: smtpFrom ?? "",
+    graphFrom: graphFrom ?? "",
+    graphTenantId: graphTenantId ?? "",
+    graphClientId: graphClientId ?? "",
+    entraEnabled: entraEnabled === "true",
+    entraTenantId: entraTenantId ?? "",
+    entraClientId: entraClientId ?? "",
+    hasSmtpPassword: secretKeys.has("smtp.password"),
+    hasGraphClientSecret: secretKeys.has("graph.clientSecret") || secretKeys.has("graph.accessToken"),
+    hasEntraSecret: secretKeys.has("entra.clientSecret")
+  };
+  const formProps = { action: saveSettings, tenants, selectedTenantId, values };
 
   return (
     <Shell>
       <PageHeader
         title="Instellingen"
-        description="Beheer alleen de actieve mailprovider, SSO-velden en applicatie-updates die voor deze scope nodig zijn."
+        description="Beheer portal, IT Glue, mail, SSO en applicatie-updates per tenant of globaal."
       />
       <SettingsTabs
         tabs={[
           {
-            id: "configuratie",
-            label: "Configuratie",
-            description: "Beheer mail en SSO per scope zonder door een lange instellingenpagina te scrollen.",
+            id: "portal",
+            label: "Portal",
+            description: "Beheer de publieke URL per tenant voor links, notificaties en portalverwijzingen.",
             content: (
               <Panel className="max-w-4xl">
-                <SettingsForm
-                  action={saveSettings}
-                  tenants={tenants}
-                  selectedTenantId={selectedTenantId}
-                  values={{
-                    portalSiteUrl: portalSiteUrl ?? "",
-                    effectiveSiteUrl: portalSiteUrl ?? effectiveSiteUrl ?? "",
-                    itGlueEnabled: itGlueEnabled === "true",
-                    itGlueBaseUrl: itGlueBaseUrl ?? "https://api.itglue.com",
-                    hasItGlueApiKey: secretKeys.has("itglue.apiKey"),
-                    mailProvider: mailProvider === "MICROSOFT_GRAPH" ? "MICROSOFT_GRAPH" : "SMTP",
-                    smtpHost: smtpHost ?? "",
-                    smtpPort: smtpPort ?? "587",
-                    smtpUser: smtpUser ?? "",
-                    smtpFrom: smtpFrom ?? "",
-                    graphFrom: graphFrom ?? "",
-                    graphTenantId: graphTenantId ?? "",
-                    graphClientId: graphClientId ?? "",
-                    entraEnabled: entraEnabled === "true",
-                    entraTenantId: entraTenantId ?? "",
-                    entraClientId: entraClientId ?? "",
-                    hasSmtpPassword: secretKeys.has("smtp.password"),
-                    hasGraphClientSecret: secretKeys.has("graph.clientSecret") || secretKeys.has("graph.accessToken"),
-                    hasEntraSecret: secretKeys.has("entra.clientSecret")
-                  }}
-                />
+                <SettingsForm {...formProps} visibleTabs={["portal"]} initialTab="portal" />
+              </Panel>
+            )
+          },
+          {
+            id: "itglue",
+            label: "IT Glue",
+            description: "Koppel FortiGate backups aan IT Glue organizations en configurations.",
+            content: (
+              <Panel className="max-w-4xl">
+                <SettingsForm {...formProps} visibleTabs={["itglue"]} initialTab="itglue" />
+              </Panel>
+            )
+          },
+          {
+            id: "mail",
+            label: "Mail",
+            description: "Beheer SMTP of Microsoft Graph mailconfiguratie voor deze scope.",
+            content: (
+              <Panel className="max-w-4xl">
+                <SettingsForm {...formProps} visibleTabs={["mail"]} initialTab="mail" />
+              </Panel>
+            )
+          },
+          {
+            id: "sso",
+            label: "SSO",
+            description: "Beheer Microsoft Entra ID login voor deze tenant.",
+            content: (
+              <Panel className="max-w-4xl">
+                <SettingsForm {...formProps} visibleTabs={["sso"]} initialTab="sso" />
               </Panel>
             )
           },

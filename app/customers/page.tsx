@@ -69,6 +69,7 @@ export default async function CustomersPage() {
                 <th className="px-3 py-2">Tenant</th>
                 <th className="px-3 py-2">Contact</th>
                 <th className="px-3 py-2">FortiGates</th>
+                <th className="px-3 py-2">IT Glue</th>
                 <th className="px-3 py-2">Actie</th>
               </tr>
             </thead>
@@ -79,6 +80,9 @@ export default async function CustomersPage() {
                   <td className="px-3 py-2">{customer.tenant.name}</td>
                   <td className="px-3 py-2">{customer.email ?? customer.contact ?? "-"}</td>
                   <td className="px-3 py-2"><Badge>{customer.devices.length}</Badge></td>
+                  <td className="px-3 py-2">
+                    {customer.itGlueOrganizationId ? <Badge tone="success">Org {customer.itGlueOrganizationId}</Badge> : <Badge>Niet gekoppeld</Badge>}
+                  </td>
                   <td className="px-3 py-2">
                     <ActionLink href={`/customers/${customer.id}`}>Beheren</ActionLink>
                   </td>
