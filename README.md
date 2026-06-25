@@ -125,7 +125,22 @@ De logs bevatten stapnaam, niveau, melding en beperkte metadata zoals bytes, sco
 ./update.sh
 ```
 
-De updateflow maakt eerst een self-backup, voert daarna `git pull`, `pnpm install`, Prisma migrations, build en service restart uit. Als de updateknop vanuit het portaal geen rechten heeft om systemd te herstarten, rondt `update.sh` de pull/build af en toont hij welke `systemctl` commands je eenmalig als root moet uitvoeren.
+De updateflow maakt eerst een self-backup, voert daarna `git pull`, `pnpm install`, Prisma migrations, build en service restart uit. `setup.sh` plaatst een beperkte sudoers-regel zodat de portal alleen de FortiGate Backup services mag herstarten na een update.
+
+Voor een bestaande installatie waar de updateknop meldt dat `systemctl` niet via sudo mag, draai eenmalig als root:
+
+```bash
+cat >/etc/sudoers.d/fortigate-backup-update <<'EOF'
+fortigate-backup ALL=(root) NOPASSWD: /usr/bin/systemctl daemon-reload
+fortigate-backup ALL=(root) NOPASSWD: /usr/bin/systemctl restart fortigate-backup
+fortigate-backup ALL=(root) NOPASSWD: /usr/bin/systemctl restart fortigate-backup-worker
+fortigate-backup ALL=(root) NOPASSWD: /usr/bin/systemctl restart fortigate-backup fortigate-backup-worker
+EOF
+chmod 440 /etc/sudoers.d/fortigate-backup-update
+visudo -cf /etc/sudoers.d/fortigate-backup-update
+systemctl daemon-reload
+systemctl restart fortigate-backup fortigate-backup-worker
+```
 
 ## Rollback
 

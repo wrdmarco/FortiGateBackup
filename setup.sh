@@ -60,6 +60,24 @@ normalize_server_url() {
   esac
 }
 
+
+install_sudoers_rule() {
+  local sudoers_file="/etc/sudoers.d/fortigate-backup-update"
+  local systemctl_path
+  systemctl_path="$(command -v systemctl || echo /usr/bin/systemctl)"
+
+  sudo tee "$sudoers_file" >/dev/null <<EOF
+# Allow the FortiGate Backup portal to activate completed application updates only.
+$SERVICE_USER ALL=(root) NOPASSWD: $systemctl_path daemon-reload
+$SERVICE_USER ALL=(root) NOPASSWD: $systemctl_path restart fortigate-backup
+$SERVICE_USER ALL=(root) NOPASSWD: $systemctl_path restart fortigate-backup-worker
+$SERVICE_USER ALL=(root) NOPASSWD: $systemctl_path restart fortigate-backup fortigate-backup-worker
+EOF
+  sudo chmod 440 "$sudoers_file"
+  if command -v visudo >/dev/null 2>&1; then
+    sudo visudo -cf "$sudoers_file" >/dev/null
+  fi
+}
 prompt_server_url() {
   local env_file="$APP_DIR/.env"
   local current
@@ -116,6 +134,7 @@ sudo -u "$SERVICE_USER" pnpm run build
 
 sudo cp systemd/fortigate-backup.service /etc/systemd/system/fortigate-backup.service
 sudo cp systemd/fortigate-backup-worker.service /etc/systemd/system/fortigate-backup-worker.service
+install_sudoers_rule
 sudo systemctl daemon-reload
 sudo systemctl enable --now fortigate-backup fortigate-backup-worker
 
