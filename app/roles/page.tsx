@@ -1,10 +1,18 @@
 import Link from "next/link";
+import type { Prisma } from "@prisma/client";
 import { isSuperAdmin, requireTenantUser } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { ensureTenantRbac, permissions } from "@/lib/rbac";
 import { PageHeader, Panel, Shell } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
+
+type RoleWithDetails = Prisma.AccessRoleGetPayload<{
+  include: {
+    permissions: { include: { permission: true } };
+    _count: { select: { users: true } };
+  };
+}>;
 
 export default async function RolesPage({
   searchParams
@@ -20,18 +28,27 @@ export default async function RolesPage({
     ? tenants.find((tenant) => tenant.id === params?.tenantId)?.id ?? tenants[0]?.id ?? null
     : user.tenantId;
 
-  if (selectedTenantId) await ensureTenantRbac(selectedTenantId);
+  let roles: RoleWithDetails[] = [];
+  let rolesError: string | null = null;
 
-  const roles = selectedTenantId
-    ? await prisma.accessRole.findMany({
+  if (selectedTenantId) {
+    try {
+      await ensureTenantRbac(selectedTenantId);
+      roles = await prisma.accessRole.findMany({
         where: { tenantId: selectedTenantId },
         orderBy: [{ system: "desc" }, { name: "asc" }],
         include: {
-          permissions: { include: { permission: true }, orderBy: { permission: { key: "asc" } } },
+          permissions: { include: { permission: true } },
           _count: { select: { users: true } }
         }
-      })
-    : [];
+      });
+    } catch (error) {
+      rolesError =
+        error instanceof Error
+          ? error.message
+          : "De rollen konden niet worden geladen. Controleer of de RBAC migratie is uitgevoerd.";
+    }
+  }
   const selectedTenant = tenants.find((tenant) => tenant.id === selectedTenantId);
   const groupedPermissions = permissions.reduce<Record<string, typeof permissions[number][]>>((groups, permission) => {
     groups[permission.category] = [...(groups[permission.category] ?? []), permission];
@@ -65,6 +82,11 @@ export default async function RolesPage({
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <Panel title={selectedTenant ? `Rollen voor ${selectedTenant.name}` : "Rollen"}>
+          {rolesError ? (
+            <div className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+              {rolesError}
+            </div>
+          ) : null}
           <div className="grid gap-4">
             {roles.map((role) => (
               <section key={role.id} className="rounded-md border border-border bg-surface-soft p-4">
@@ -78,11 +100,14 @@ export default async function RolesPage({
                   </span>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {role.permissions.map(({ permission }) => (
-                    <span key={permission.id} className="rounded-md border border-border bg-surface px-2 py-1 font-mono text-xs">
-                      {permission.key}
-                    </span>
-                  ))}
+                  {role.permissions
+                    .map(({ permission }) => permission)
+                    .sort((a, b) => a.key.localeCompare(b.key))
+                    .map((permission) => (
+                      <span key={permission.id} className="rounded-md border border-border bg-surface px-2 py-1 font-mono text-xs">
+                        {permission.key}
+                      </span>
+                    ))}
                 </div>
               </section>
             ))}

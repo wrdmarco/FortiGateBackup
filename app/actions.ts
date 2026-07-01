@@ -1,5 +1,6 @@
 "use server";
 
+import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
@@ -68,6 +69,12 @@ async function createUniqueTenantSlug(name: string) {
     if (!existing) return slug;
   }
   return `${base}-${Date.now()}`;
+}
+
+function generateTemporaryPassword() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
+  const bytes = randomBytes(24);
+  return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("");
 }
 
 function isUniqueConstraintError(error: unknown) {
@@ -153,10 +160,10 @@ export async function createManagedTenant(formData: FormData) {
     active: true
   });
   const adminEmail = String(formData.get("adminEmail") ?? "").toLowerCase();
-  const adminPassword = String(formData.get("adminPassword") ?? "");
+  const adminPassword = generateTemporaryPassword();
   const adminName = String(formData.get("adminName") ?? "");
-  if (!adminEmail || adminPassword.length < 12) {
-    throw new Error("Admin e-mail en een wachtwoord van minimaal 12 tekens zijn verplicht.");
+  if (!adminEmail) {
+    throw new Error("Admin e-mail is verplicht.");
   }
 
   const tenant = await prisma.tenant.create({ data });
@@ -193,7 +200,7 @@ export async function createManagedTenantWithState(_state: ActionState, formData
     const user = await requireSuperAdmin();
     const name = String(formData.get("name") ?? "");
     const adminEmail = String(formData.get("adminEmail") ?? "").trim().toLowerCase();
-    const adminPassword = String(formData.get("adminPassword") ?? "");
+    const adminPassword = generateTemporaryPassword();
     const adminName = String(formData.get("adminName") ?? "").trim();
     const data = tenantSchema.parse({
       name,
@@ -201,8 +208,8 @@ export async function createManagedTenantWithState(_state: ActionState, formData
       active: true
     });
 
-    if (!adminEmail || adminPassword.length < 12) {
-      return { ok: false, message: "Admin e-mail en een tijdelijk wachtwoord van minimaal 12 tekens zijn verplicht." };
+    if (!adminEmail) {
+      return { ok: false, message: "Admin e-mail is verplicht." };
     }
 
     const { tenant, admin } = await prisma.$transaction(async (tx) => {
@@ -256,10 +263,14 @@ export async function createManagedTenantWithState(_state: ActionState, formData
         metadata: { email: admin.email }
       });
     } catch (mailError) {
+      await prisma.$transaction(async (tx) => {
+        await tx.user.deleteMany({ where: { id: admin.id } });
+        await tx.tenant.delete({ where: { id: tenant.id } });
+      });
       revalidatePath("/tenants");
       return {
-        ok: true,
-        message: `Tenant ${tenant.name} is aangemaakt, maar de mail kon niet worden verzonden: ${
+        ok: false,
+        message: `Tenant is niet aangemaakt, omdat de mail met het tijdelijke wachtwoord niet kon worden verzonden: ${
           mailError instanceof Error ? mailError.message : "onbekende mailfout"
         }`
       };

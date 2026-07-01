@@ -21,8 +21,10 @@ export function TenantCreateForm() {
         <div className="grid gap-4">
           <TextField label="Admin naam" name="adminName" required />
           <TextField label="Admin e-mail" name="adminEmail" type="email" required />
-          <TextField label="Tijdelijk wachtwoord" name="adminPassword" type="password" required />
         </div>
+        <p className="mt-3 rounded-md border border-border bg-surface-soft p-3 text-sm text-muted-foreground">
+          Het tijdelijke wachtwoord wordt automatisch gegenereerd en naar de admin gemaild.
+        </p>
       </div>
       {state.message ? (
         <p className={state.ok ? "text-sm text-emerald-600 dark:text-emerald-300" : "text-sm text-red-600 dark:text-red-300"}>
