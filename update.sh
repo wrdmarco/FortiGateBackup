@@ -10,6 +10,7 @@ BACKUP_DIR="data/self-backups"
 TMP_BACKUP="/tmp/fortigate-backup-$BACKUP_NAME"
 HEALTH_RETRIES="${HEALTH_RETRIES:-30}"
 HEALTH_DELAY="${HEALTH_DELAY:-2}"
+HEALTH_INITIAL_DELAY="${HEALTH_INITIAL_DELAY:-5}"
 SYSTEMCTL="${SYSTEMCTL:-$(command -v systemctl || echo /usr/bin/systemctl)}"
 UPDATE_SCRIPT_SUM_BEFORE="$(cksum "$SCRIPT_DIR/update.sh" 2>/dev/null || true)"
 MIN_FREE_KB="${MIN_FREE_KB:-262144}"
@@ -81,6 +82,8 @@ check_repository_writable() {
 }
 restart_services_or_explain() {
   if run_systemctl daemon-reload && run_systemctl restart fortigate-backup; then
+    echo "Waiting ${HEALTH_INITIAL_DELAY}s before application health check..."
+    sleep "$HEALTH_INITIAL_DELAY"
     for attempt in $(seq 1 "$HEALTH_RETRIES"); do
       if run_as_service_user pnpm run health; then
         echo "Health check passed."

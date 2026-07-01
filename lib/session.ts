@@ -44,8 +44,9 @@ export async function currentUser() {
   return session.user;
 }
 
-export async function requireUser() {
+export async function requireUser(options: { allowPasswordChange?: boolean } = {}) {
   const user = await currentUser();
   if (!user) redirect("/login");
+  if (user.mustChangePassword && !options.allowPasswordChange) redirect("/change-password");
   return user;
 }

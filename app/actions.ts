@@ -20,6 +20,11 @@ import { customerSchema, fortigateSchema, fortigateUpdateSchema, tenantSchema } 
 
 const loginAttempts = new Map<string, { count: number; lockedUntil: number }>();
 
+export type ActionState = {
+  ok: boolean;
+  message: string;
+};
+
 function bool(value: FormDataEntryValue | null) {
   return value === "on" || value === "true";
 }
@@ -64,6 +69,34 @@ async function createUniqueTenantSlug(name: string) {
   return `${base}-${Date.now()}`;
 }
 
+function isUniqueConstraintError(error: unknown) {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "P2002";
+}
+
+async function sendTemporaryPasswordMail(input: {
+  tenantId?: string | null;
+  tenantName: string;
+  to: string;
+  name: string;
+  password: string;
+}) {
+  await sendMail({
+    tenantId: input.tenantId,
+    to: input.to,
+    subject: `FortiGate Backup toegang voor ${input.tenantName}`,
+    text: [
+      `Hallo ${input.name || input.to},`,
+      "",
+      `Er is een account voor je aangemaakt in de FortiGate Backup portal voor tenant ${input.tenantName}.`,
+      "",
+      `Gebruikersnaam: ${input.to}`,
+      `Tijdelijk wachtwoord: ${input.password}`,
+      "",
+      "Na het inloggen moet je direct een nieuw wachtwoord instellen."
+    ].join("\n")
+  });
+}
+
 function recordLoginFailure(email: string) {
   const now = Date.now();
   const attempt = loginAttempts.get(email);
@@ -80,7 +113,7 @@ export async function createTenant(formData: FormData) {
   if (existingTenants > 0) {
     throw new Error("Setup is al uitgevoerd. Maak extra tenants aan via het Tenants menu.");
   }
-  const name = String(formData.get("name") ?? "");
+  const name = "Global";
   const data = tenantSchema.parse({
     name,
     slug: await createUniqueTenantSlug(name),
@@ -152,6 +185,94 @@ export async function createManagedTenant(formData: FormData) {
   revalidatePath("/tenants");
 }
 
+export async function createManagedTenantWithState(_state: ActionState, formData: FormData): Promise<ActionState> {
+  try {
+    const user = await requireSuperAdmin();
+    const name = String(formData.get("name") ?? "");
+    const adminEmail = String(formData.get("adminEmail") ?? "").trim().toLowerCase();
+    const adminPassword = String(formData.get("adminPassword") ?? "");
+    const adminName = String(formData.get("adminName") ?? "").trim();
+    const data = tenantSchema.parse({
+      name,
+      slug: await createUniqueTenantSlug(name),
+      active: true
+    });
+
+    if (!adminEmail || adminPassword.length < 12) {
+      return { ok: false, message: "Admin e-mail en een tijdelijk wachtwoord van minimaal 12 tekens zijn verplicht." };
+    }
+
+    const { tenant, admin } = await prisma.$transaction(async (tx) => {
+      const tenant = await tx.tenant.create({ data });
+      const admin = await tx.user.create({
+        data: {
+          tenantId: tenant.id,
+          name: adminName || "Tenant Admin",
+          email: adminEmail,
+          passwordHash: await bcrypt.hash(adminPassword, 12),
+          mustChangePassword: true,
+          role: "ADMIN",
+          provider: "LOCAL"
+        }
+      });
+      return { tenant, admin };
+    });
+
+    await auditLog({
+      action: "tenant.created",
+      tenantId: tenant.id,
+      userId: user.id,
+      entity: "Tenant",
+      entityId: tenant.id
+    });
+    await auditLog({
+      action: "user.created",
+      tenantId: tenant.id,
+      userId: user.id,
+      entity: "User",
+      entityId: admin.id,
+      metadata: { email: admin.email, role: admin.role, mustChangePassword: true }
+    });
+
+    try {
+      await sendTemporaryPasswordMail({
+        tenantId: null,
+        tenantName: tenant.name,
+        to: admin.email,
+        name: admin.name ?? "",
+        password: adminPassword
+      });
+      await auditLog({
+        action: "user.temporary_password.sent",
+        tenantId: tenant.id,
+        userId: user.id,
+        entity: "User",
+        entityId: admin.id,
+        metadata: { email: admin.email }
+      });
+    } catch (mailError) {
+      revalidatePath("/tenants");
+      return {
+        ok: true,
+        message: `Tenant ${tenant.name} is aangemaakt, maar de mail kon niet worden verzonden: ${
+          mailError instanceof Error ? mailError.message : "onbekende mailfout"
+        }`
+      };
+    }
+
+    revalidatePath("/tenants");
+    return { ok: true, message: `Tenant ${tenant.name} is aangemaakt. Het tijdelijke wachtwoord is naar ${admin.email} verstuurd.` };
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      return { ok: false, message: "Deze tenant of dit admin e-mailadres bestaat al." };
+    }
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Tenant kon niet worden aangemaakt."
+    };
+  }
+}
+
 export async function createTenantUser(formData: FormData) {
   const user = await requireSuperAdmin();
   const tenantId = String(formData.get("tenantId") ?? "");
@@ -172,6 +293,7 @@ export async function createTenantUser(formData: FormData) {
       name: name || null,
       email,
       passwordHash: await bcrypt.hash(password, 12),
+      mustChangePassword: true,
       role,
       provider: "LOCAL"
     }
@@ -184,6 +306,21 @@ export async function createTenantUser(formData: FormData) {
     entity: "User",
     entityId: created.id,
     metadata: { email: created.email, role: created.role }
+  });
+  await sendTemporaryPasswordMail({
+    tenantId: tenant.id,
+    tenantName: tenant.name,
+    to: created.email,
+    name: created.name ?? "",
+    password
+  });
+  await auditLog({
+    action: "user.temporary_password.sent",
+    tenantId: tenant.id,
+    userId: user.id,
+    entity: "User",
+    entityId: created.id,
+    metadata: { email: created.email }
   });
   revalidatePath("/tenants");
 }
@@ -253,7 +390,7 @@ export async function setTenantActive(formData: FormData) {
   const active = bool(formData.get("active"));
   const mainTenant = await mainTenantId();
   if (!active && mainTenant === id) {
-    throw new Error("De main tenant kan niet gedeactiveerd worden.");
+    throw new Error("Global kan niet gedeactiveerd worden.");
   }
   const tenant = await prisma.tenant.update({ where: { id }, data: { active } });
   await auditLog({
@@ -290,7 +427,7 @@ export async function deleteTenant(formData: FormData) {
   ]);
 
   if (mainTenant === tenant.id) {
-    throw new Error("De main tenant kan niet verwijderd worden.");
+    throw new Error("Global kan niet verwijderd worden.");
   }
   if (confirmName !== tenant.name) {
     throw new Error("Bevestiging mislukt. Typ de tenantnaam exact over.");
@@ -365,6 +502,44 @@ export async function loginAction(_state: LoginState, formData: FormData): Promi
   loginAttempts.delete(email);
   await createSession(user.id);
   await auditLog({ action: "auth.login", tenantId: user.tenantId, userId: user.id, entity: "User", entityId: user.id });
+  if (user.mustChangePassword) redirect("/change-password");
+  redirect("/");
+}
+
+export type ChangePasswordState = {
+  ok: boolean;
+  message: string;
+};
+
+export async function changeOwnPasswordAction(_state: ChangePasswordState, formData: FormData): Promise<ChangePasswordState> {
+  const user = await requireTenantUser();
+  const currentPassword = String(formData.get("currentPassword") ?? "");
+  const password = String(formData.get("password") ?? "");
+  const confirmPassword = String(formData.get("confirmPassword") ?? "");
+
+  if (!user.passwordHash) return { ok: false, message: "Dit account gebruikt geen lokaal wachtwoord." };
+  if (!(await bcrypt.compare(currentPassword, user.passwordHash))) {
+    return { ok: false, message: "Het huidige wachtwoord klopt niet." };
+  }
+  if (password.length < 12) {
+    return { ok: false, message: "Het nieuwe wachtwoord moet minimaal 12 tekens zijn." };
+  }
+  if (password !== confirmPassword) {
+    return { ok: false, message: "De nieuwe wachtwoorden komen niet overeen." };
+  }
+  if (await bcrypt.compare(password, user.passwordHash)) {
+    return { ok: false, message: "Kies een ander wachtwoord dan het tijdelijke wachtwoord." };
+  }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      passwordHash: await bcrypt.hash(password, 12),
+      mustChangePassword: false
+    }
+  });
+  await auditLog({ action: "user.password_changed", tenantId: user.tenantId, userId: user.id, entity: "User", entityId: user.id });
+  revalidatePath("/");
   redirect("/");
 }
 

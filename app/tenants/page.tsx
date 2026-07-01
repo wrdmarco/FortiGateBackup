@@ -1,6 +1,7 @@
-import { createManagedTenant, createTenantUser, deleteTenant, deleteTenantUser, setTenantActive } from "@/app/actions";
+import { createTenantUser, deleteTenant, deleteTenantUser, setTenantActive } from "@/app/actions";
 import { DeleteConfirmInput } from "@/components/delete-confirm-input";
 import { Modal } from "@/components/modal";
+import { TenantCreateForm } from "@/components/tenant-create-form";
 import { Badge, Button, Field, PageHeader, Shell, TableShell } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
@@ -40,18 +41,7 @@ export default async function TenantsPage() {
             description="Maak een tenant inclusief eerste tenantadmin."
             trigger={<Button>Tenant aanmaken</Button>}
           >
-            <form action={createManagedTenant} className="grid gap-4">
-              <Field label="Tenantnaam" name="name" required />
-              <div className="border-t border-border pt-4">
-                <h3 className="mb-3 font-semibold">Eerste tenantadmin</h3>
-                <div className="grid gap-4">
-                  <Field label="Admin naam" name="adminName" required />
-                  <Field label="Admin e-mail" name="adminEmail" type="email" required />
-                  <Field label="Tijdelijk wachtwoord" name="adminPassword" type="password" required />
-                </div>
-              </div>
-              <Button>Tenant en admin maken</Button>
-            </form>
+            <TenantCreateForm />
           </Modal>
         }
       />
@@ -78,7 +68,7 @@ export default async function TenantsPage() {
                     <td className="px-3 py-2 font-medium">
                       <div className="flex flex-wrap items-center gap-2">
                         {tenant.name}
-                        {isMainTenant ? <Badge>Main tenant</Badge> : null}
+                        {isMainTenant ? <Badge>Global</Badge> : null}
                       </div>
                     </td>
                     <td className="px-3 py-2">
@@ -179,7 +169,7 @@ export default async function TenantsPage() {
                           </div>
                         </Modal>
                         {isMainTenant ? (
-                          <Button variant="secondary" disabled>Main tenant actief</Button>
+                          <Button variant="secondary" disabled>Global actief</Button>
                         ) : (
                           <form action={setTenantActive}>
                             <input type="hidden" name="id" value={tenant.id} />
@@ -188,7 +178,7 @@ export default async function TenantsPage() {
                           </form>
                         )}
                         {isMainTenant ? (
-                          <Button variant="secondary" disabled>Main beschermd</Button>
+                          <Button variant="secondary" disabled>Global beschermd</Button>
                         ) : (
                           <Modal
                             title="Tenant verwijderen"

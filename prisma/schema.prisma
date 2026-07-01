@@ -64,6 +64,7 @@ model User {
   emailVerified DateTime?
   image         String?
   passwordHash  String?
+  mustChangePassword Boolean @default(false)
   role          UserRole     @default(VIEWER)
   provider      AuthProvider @default(LOCAL)
   active        Boolean      @default(true)
