@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useActionState, useMemo, useState } from "react";
 import { clsx } from "clsx";
+import type { MailTestState } from "@/app/actions";
 
 type TenantOption = {
   id: string;
@@ -28,6 +29,7 @@ type SettingsValues = {
   hasSmtpPassword: boolean;
   hasGraphClientSecret: boolean;
   hasEntraSecret: boolean;
+  testMailTo: string;
 };
 
 type SettingsTabId = "portal" | "itglue" | "mail" | "sso";
@@ -41,6 +43,7 @@ const tabs: { id: SettingsTabId; label: string }[] = [
 
 export function SettingsForm({
   action,
+  testMailAction,
   tenants,
   selectedTenantId,
   values,
@@ -48,6 +51,7 @@ export function SettingsForm({
   initialTab = "portal"
 }: {
   action: (formData: FormData) => void | Promise<void>;
+  testMailAction: (state: MailTestState, formData: FormData) => Promise<MailTestState>;
   tenants: TenantOption[];
   selectedTenantId: string;
   values: SettingsValues;
@@ -59,6 +63,7 @@ export function SettingsForm({
   const [activeTab, setActiveTab] = useState<SettingsTabId>(firstTab);
   const [mailProvider, setMailProvider] = useState(values.mailProvider);
   const [entraEnabled, setEntraEnabled] = useState(values.entraEnabled);
+  const [mailTestState, runMailTest, mailTestPending] = useActionState(testMailAction, { ok: false, message: "" });
   const scopeLabel = useMemo(
     () => tenants.find((tenant) => tenant.id === selectedTenantId)?.name ?? "Globaal",
     [selectedTenantId, tenants]
@@ -194,7 +199,7 @@ export function SettingsForm({
           </label>
 
           {mailProvider === "SMTP" ? (
-            <div className="grid gap-4 md:grid-cols-2">
+            <div key="smtp-settings" className="grid gap-4 md:grid-cols-2">
               <TextField label="SMTP host" name="smtp.host" defaultValue={values.smtpHost} required />
               <TextField label="SMTP poort" name="smtp.port" type="number" defaultValue={values.smtpPort || "587"} required />
               <TextField label="SMTP gebruiker" name="smtp.user" defaultValue={values.smtpUser} />
@@ -207,7 +212,7 @@ export function SettingsForm({
               <TextField label="SMTP afzender" name="smtp.from" type="email" defaultValue={values.smtpFrom} required />
             </div>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2">
+            <div key="graph-settings" className="grid gap-4 md:grid-cols-2">
               <TextField label="Graph afzender" name="graph.from" type="email" defaultValue={values.graphFrom} required />
               <TextField label="Tenant ID" name="graph.tenantId" defaultValue={values.graphTenantId} required />
               <TextField label="App / client ID" name="graph.clientId" defaultValue={values.graphClientId} required />
@@ -219,6 +224,25 @@ export function SettingsForm({
               />
             </div>
           )}
+
+          <div className="grid gap-3 rounded-md border border-border bg-surface p-3">
+            <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
+              <TextField label="Testmail naar" name="mail.testTo" type="email" defaultValue={values.testMailTo} />
+              <button
+                className="rounded-md border border-border bg-surface-soft px-4 py-2 text-sm font-medium text-foreground transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
+                type="submit"
+                formAction={runMailTest}
+                disabled={mailTestPending}
+              >
+                {mailTestPending ? "Testmail versturen..." : "Testmail versturen"}
+              </button>
+            </div>
+            {mailTestState.message ? (
+              <p className={clsx("text-sm", mailTestState.ok ? "text-emerald-600 dark:text-emerald-300" : "text-red-600 dark:text-red-300")}>
+                {mailTestState.message}
+              </p>
+            ) : null}
+          </div>
         </section>
       ) : null}
 

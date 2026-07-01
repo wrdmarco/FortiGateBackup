@@ -1,4 +1,4 @@
-import { saveSettings, startAppUpdateAction } from "@/app/actions";
+import { saveSettings, startAppUpdateAction, testMailSettings } from "@/app/actions";
 import { SettingsForm } from "@/components/settings-form";
 import { SettingsTabs } from "@/components/settings-tabs";
 import { Badge, Button, PageHeader, Panel, Shell } from "@/components/ui";
@@ -90,9 +90,10 @@ export default async function SettingsPage({
     entraClientId: entraClientId ?? "",
     hasSmtpPassword: secretKeys.has("smtp.password"),
     hasGraphClientSecret: secretKeys.has("graph.clientSecret") || secretKeys.has("graph.accessToken"),
-    hasEntraSecret: secretKeys.has("entra.clientSecret")
+    hasEntraSecret: secretKeys.has("entra.clientSecret"),
+    testMailTo: user.email
   };
-  const formProps = { action: saveSettings, tenants, selectedTenantId, values };
+  const formProps = { action: saveSettings, testMailAction: testMailSettings, tenants, selectedTenantId, values };
   const tabIds = ["portal", "itglue", "mail", "sso", ...(updateStatus ? ["updates"] : [])];
   const activeTab = params?.tab && tabIds.includes(params.tab) ? params.tab : "portal";
 

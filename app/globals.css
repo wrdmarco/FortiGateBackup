@@ -109,14 +109,6 @@ textarea {
     position: relative;
   }
 
-  .security-panel::before {
-    background: linear-gradient(90deg, hsl(var(--primary)), hsl(var(--accent)));
-    content: "";
-    height: 2px;
-    inset: 0 0 auto;
-    position: absolute;
-  }
-
   .professional-surface {
     background:
       linear-gradient(180deg, hsl(var(--surface)) 0%, hsl(var(--surface-soft) / 0.32) 100%);

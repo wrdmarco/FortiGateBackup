@@ -34,7 +34,7 @@ async function sendSmtpMail(input: MailInput) {
 }
 
 async function sendGraphMail(input: MailInput) {
-  const token = await getSetting("graph.accessToken", input.tenantId);
+  const token = await getGraphAccessToken(input.tenantId);
   const from = await getSetting("graph.from", input.tenantId);
   if (!token || !from) throw new Error("Microsoft Graph mail settings are incomplete.");
 
@@ -53,4 +53,28 @@ async function sendGraphMail(input: MailInput) {
     })
   });
   if (!response.ok) throw new Error(`Microsoft Graph returned ${response.status}.`);
+}
+
+async function getGraphAccessToken(tenantId?: string | null) {
+  const tenant = await getSetting("graph.tenantId", tenantId);
+  const clientId = await getSetting("graph.clientId", tenantId);
+  const clientSecret = await getSetting("graph.clientSecret", tenantId);
+
+  if (tenant && clientId && clientSecret) {
+    const response = await fetch(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        grant_type: "client_credentials",
+        scope: "https://graph.microsoft.com/.default"
+      })
+    });
+    if (!response.ok) throw new Error(`Microsoft Graph token request returned ${response.status}.`);
+    const payload = (await response.json()) as { access_token?: string };
+    return payload.access_token ?? null;
+  }
+
+  return getSetting("graph.accessToken", tenantId);
 }

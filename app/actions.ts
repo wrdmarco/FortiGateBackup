@@ -9,6 +9,7 @@ import { assertTenantAccess, isSuperAdmin, requireSuperAdmin, requireTenantUser 
 import { encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 import { runBackup } from "@/lib/fortigate";
+import { sendMail } from "@/lib/mail";
 import { createSession, destroySession } from "@/lib/session";
 import { deleteSetting, setSetting } from "@/lib/settings";
 import { isItGlueEnabled } from "@/lib/itglue";
@@ -614,4 +615,40 @@ export async function startAppUpdateAction() {
   });
   revalidatePath("/");
   revalidatePath("/settings");
+}
+
+export type MailTestState = {
+  ok: boolean;
+  message: string;
+};
+
+export async function testMailSettings(_state: MailTestState, formData: FormData): Promise<MailTestState> {
+  const to = String(formData.get("mail.testTo") || "").trim().toLowerCase();
+  if (!to || !to.includes("@")) {
+    return { ok: false, message: "Vul een geldig test e-mailadres in." };
+  }
+
+  try {
+    const user = await requireTenantUser();
+    await saveSettings(formData);
+
+    const requestedTenantId = String(formData.get("tenantId") || "") || null;
+    const tenantId = isSuperAdmin(user) ? requestedTenantId : user.tenantId;
+
+    await sendMail({
+      tenantId,
+      to,
+      subject: "FortiGate Backup mailtest",
+      text: "Deze testmail bevestigt dat de mailconfiguratie correct werkt."
+    });
+
+    await auditLog({ action: "settings.mail_test.sent", tenantId, metadata: { provider: formData.get("mail.provider"), to } });
+    revalidatePath("/settings");
+    return { ok: true, message: `Testmail verzonden naar ${to}.` };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Testmail kon niet worden verzonden."
+    };
+  }
 }
