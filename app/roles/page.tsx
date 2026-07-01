@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Prisma } from "@prisma/client";
 import { deleteAccessRole } from "@/app/actions";
+import { Modal } from "@/components/modal";
 import { RoleCreateForm } from "@/components/role-create-form";
 import { isSuperAdmin, requireTenantUser } from "@/lib/authz";
 import { prisma } from "@/lib/db";
@@ -74,6 +75,17 @@ export default async function RolesPage({
       <PageHeader
         title="Rollen"
         description="Tenant-scoped RBAC rollen met een centrale permission catalogus voor tenant- en platformrechten."
+        actions={
+          selectedTenantId && !rolesError ? (
+            <Modal
+              title="Custom rol aanmaken"
+              description={selectedTenant ? `Maak een tenantrol voor ${selectedTenant.name} en kies exact welke rechten erbij horen.` : "Maak een tenantrol en kies exact welke rechten erbij horen."}
+              trigger={<Button>Custom rol toevoegen</Button>}
+            >
+              <RoleCreateForm tenantId={selectedTenantId} groupedPermissions={groupedPermissionEntries} />
+            </Modal>
+          ) : null
+        }
       />
 
       {tenants.length ? (
@@ -100,9 +112,6 @@ export default async function RolesPage({
             <div className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
               {rolesError}
             </div>
-          ) : null}
-          {selectedTenantId && !rolesError ? (
-            <RoleCreateForm tenantId={selectedTenantId} groupedPermissions={groupedPermissionEntries} />
           ) : null}
           <div className="grid gap-4">
             {roles.map((role) => (

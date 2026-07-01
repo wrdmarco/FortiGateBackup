@@ -1,5 +1,6 @@
 import { User, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { mainTenantId } from "@/lib/tenant-main";
 
 export const permissions = [
   { key: "platform.dashboard.read", category: "Platform", description: "Platformbreed dashboard bekijken" },
@@ -63,8 +64,31 @@ export type PermissionKey = (typeof permissions)[number]["key"];
 const allPermissionKeys = permissions.map((permission) => permission.key);
 const tenantPermissionKeys = allPermissionKeys.filter((key) => !key.startsWith("platform."));
 const readPermissionKeys = tenantPermissionKeys.filter((key) => key.endsWith(".read"));
+const operatorPermissionKeys = [
+  "customers.read",
+  "customers.create",
+  "customers.update",
+  "customers.delete",
+  "fortigates.read",
+  "fortigates.create",
+  "fortigates.update",
+  "fortigates.delete",
+  "fortigates.backup.run",
+  "fortigates.logs.read",
+  "fortigates.firmware.read",
+  "backups.read",
+  "backups.download",
+  "backups.diff.read",
+  "alerts.read"
+] satisfies PermissionKey[];
 
 const defaultRoles = [
+  {
+    name: "Super Admin",
+    description: "Platformbeheer met alle globale en tenantrechten.",
+    permissionKeys: allPermissionKeys,
+    globalOnly: true
+  },
   {
     name: "Tenant Admin",
     description: "Volledig beheer binnen deze tenant.",
@@ -73,7 +97,7 @@ const defaultRoles = [
   {
     name: "Operator",
     description: "Dagelijks beheer van klanten, FortiGates en backups.",
-    permissionKeys: tenantPermissionKeys.filter((key) => !key.startsWith("tenant.roles.") && !key.startsWith("tenant.settings."))
+    permissionKeys: operatorPermissionKeys
   },
   {
     name: "Backup Operator",
@@ -114,10 +138,12 @@ export async function ensurePermissions() {
 
 export async function ensureTenantRbac(tenantId: string) {
   await ensurePermissions();
+  const globalTenantId = await mainTenantId();
   const permissionRecords = await prisma.accessPermission.findMany();
   const permissionIds = new Map(permissionRecords.map((permission) => [permission.key, permission.id]));
 
   for (const roleTemplate of defaultRoles) {
+    if ("globalOnly" in roleTemplate && roleTemplate.globalOnly && tenantId !== globalTenantId) continue;
     const role = await prisma.accessRole.upsert({
       where: { tenantId_name: { tenantId, name: roleTemplate.name } },
       update: { description: roleTemplate.description, system: true },
@@ -139,12 +165,30 @@ export async function ensureTenantRbac(tenantId: string) {
         create: { roleId: role.id, permissionId }
       });
     }
+    if (roleTemplate.name === "Super Admin" && tenantId === globalTenantId) {
+      const superAdmins = await prisma.user.findMany({
+        where: { tenantId, role: UserRole.SUPER_ADMIN },
+        select: { id: true }
+      });
+      for (const superAdmin of superAdmins) {
+        await prisma.userAccessRole.upsert({
+          where: { userId_roleId: { userId: superAdmin.id, roleId: role.id } },
+          update: {},
+          create: { userId: superAdmin.id, roleId: role.id }
+        });
+      }
+    }
   }
 }
 
 export async function assignDefaultTenantRole(userId: string, tenantId: string, legacyRole: UserRole) {
   await ensureTenantRbac(tenantId);
-  const roleName = legacyRole === UserRole.ADMIN || legacyRole === UserRole.SUPER_ADMIN ? "Tenant Admin" : "Viewer";
+  const roleName =
+    legacyRole === UserRole.SUPER_ADMIN && tenantId === (await mainTenantId())
+      ? "Super Admin"
+      : legacyRole === UserRole.ADMIN
+        ? "Tenant Admin"
+        : "Viewer";
   const role = await prisma.accessRole.findUnique({ where: { tenantId_name: { tenantId, name: roleName } } });
   if (!role) return;
   await prisma.userAccessRole.upsert({

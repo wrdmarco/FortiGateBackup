@@ -48,6 +48,7 @@ export function SettingsForm({
   testMailAction,
   tenants,
   selectedTenantId,
+  selectedTenantName,
   values,
   visibleTabs,
   initialTab = "portal"
@@ -56,6 +57,7 @@ export function SettingsForm({
   testMailAction: (state: MailTestState, formData: FormData) => Promise<MailTestState>;
   tenants: TenantOption[];
   selectedTenantId: string;
+  selectedTenantName: string;
   values: SettingsValues;
   visibleTabs?: SettingsTabId[];
   initialTab?: SettingsTabId;
@@ -67,8 +69,8 @@ export function SettingsForm({
   const [entraEnabled, setEntraEnabled] = useState(values.entraEnabled);
   const [mailTestState, runMailTest, mailTestPending] = useActionState(testMailAction, { ok: false, message: "" });
   const scopeLabel = useMemo(
-    () => tenants.find((tenant) => tenant.id === selectedTenantId)?.name ?? "Global",
-    [selectedTenantId, tenants]
+    () => tenants.find((tenant) => tenant.id === selectedTenantId)?.name ?? selectedTenantName,
+    [selectedTenantId, selectedTenantName, tenants]
   );
   const showTab = (id: SettingsTabId) => availableTabs.some((tab) => tab.id === id);
 

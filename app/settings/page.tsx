@@ -28,12 +28,18 @@ export default async function SettingsPage({
     : [];
   const globalTenantId = canUpdateApp ? await mainTenantId() : null;
   const requestedTenantId = canUpdateApp ? params?.tenantId ?? globalTenantId ?? "" : user.tenantId ?? "";
-  const selectedTenantId = tenants.some((tenant) => tenant.id === requestedTenantId)
-    ? requestedTenantId
-    : tenants.some((tenant) => tenant.id === globalTenantId)
-      ? globalTenantId ?? ""
-      : "";
+  const selectedTenantId = canUpdateApp
+    ? tenants.some((tenant) => tenant.id === requestedTenantId)
+      ? requestedTenantId
+      : tenants.some((tenant) => tenant.id === globalTenantId)
+        ? globalTenantId ?? ""
+        : ""
+    : user.tenantId ?? "";
   const tenantId = selectedTenantId || null;
+  const selectedTenantName =
+    tenants.find((tenant) => tenant.id === selectedTenantId)?.name ??
+    (user.tenantId === selectedTenantId ? user.tenant?.name : null) ??
+    (selectedTenantId === globalTenantId ? "Global" : "Deze tenant");
   const secretScopeWhere = tenantId ? { OR: [{ tenantId }, { tenantId: null }] } : { tenantId: null };
 
   const [
@@ -105,7 +111,7 @@ export default async function SettingsPage({
     hasEntraSecret: secretKeys.has("entra.clientSecret"),
     testMailTo: user.email
   };
-  const formProps = { action: saveSettings, testMailAction: testMailSettings, tenants, selectedTenantId, values };
+  const formProps = { action: saveSettings, testMailAction: testMailSettings, tenants, selectedTenantId, selectedTenantName, values };
   const tabIds = ["portal", "itglue", "mail", "sso", ...(updateStatus ? ["updates"] : [])];
   const activeTab = params?.tab && tabIds.includes(params.tab) ? params.tab : "portal";
 
