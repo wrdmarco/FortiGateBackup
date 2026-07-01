@@ -102,12 +102,21 @@ export async function ensureTenantRbac(tenantId: string) {
       update: { description: roleTemplate.description, system: true },
       create: { tenantId, name: roleTemplate.name, description: roleTemplate.description, system: true }
     });
-    await prisma.accessRolePermission.deleteMany({ where: { roleId: role.id } });
-    for (const key of roleTemplate.permissionKeys) {
-      const permissionId = permissionIds.get(key);
-      if (permissionId) {
-        await prisma.accessRolePermission.create({ data: { roleId: role.id, permissionId } });
+    const desiredPermissionIds = [...new Set(roleTemplate.permissionKeys)]
+      .map((key) => permissionIds.get(key))
+      .filter((permissionId): permissionId is string => Boolean(permissionId));
+    await prisma.accessRolePermission.deleteMany({
+      where: {
+        roleId: role.id,
+        permissionId: { notIn: desiredPermissionIds }
       }
+    });
+    for (const permissionId of desiredPermissionIds) {
+      await prisma.accessRolePermission.upsert({
+        where: { roleId_permissionId: { roleId: role.id, permissionId } },
+        update: {},
+        create: { roleId: role.id, permissionId }
+      });
     }
   }
 }

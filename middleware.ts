@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { sessionCookieName } from "@/lib/session-cookie";
+import { sessionCookieName, sessionCookieOptions } from "@/lib/session-cookie";
 
 const publicPaths = ["/login", "/setup", "/api/health"];
 const unsafeMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -43,10 +43,13 @@ export function middleware(request: NextRequest) {
   ) {
     return NextResponse.next();
   }
-  if (!request.cookies.get(sessionCookieName)?.value) {
+  const sessionToken = request.cookies.get(sessionCookieName)?.value;
+  if (!sessionToken) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
-  return NextResponse.next();
+  const response = NextResponse.next();
+  response.cookies.set(sessionCookieName, sessionToken, sessionCookieOptions());
+  return response;
 }
 
 export const config = {
