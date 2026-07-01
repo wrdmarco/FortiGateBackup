@@ -132,10 +132,10 @@ export default async function RolesPage({
           ) : null}
           {roles.length ? (
             <div className="overflow-auto rounded-md border border-border bg-surface">
-              <table className="w-full min-w-[860px] border-collapse text-left text-sm">
+              <table className="w-full min-w-[940px] border-collapse text-left text-sm">
                 <thead className="bg-surface-soft">
                   <tr>
-                    <th className="sticky left-0 z-20 w-[260px] border-b border-r border-border bg-surface-soft px-4 py-3">
+                    <th className="sticky left-0 z-20 w-[340px] border-b border-r border-border bg-surface-soft px-4 py-3">
                       Permission
                     </th>
                     {matrixRoles.map((role) => (
@@ -159,7 +159,8 @@ export default async function RolesPage({
                       {items.map((permission) => (
                         <tr key={permission.key} className="border-b border-border last:border-b-0">
                           <th className="sticky left-0 z-10 border-r border-border bg-surface px-4 py-2.5 align-middle">
-                            <span className="block font-mono text-xs text-foreground">{permission.key}</span>
+                            <span className="block text-sm font-medium text-foreground">{permission.description}</span>
+                            <span className="mt-0.5 block font-mono text-[11px] text-muted-foreground">{permission.key}</span>
                           </th>
                           {matrixRoles.map((role) => {
                             const allowed = rolePermissionKeys.get(role.id)?.has(permission.key) ?? false;
