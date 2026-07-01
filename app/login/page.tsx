@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/login-form";
-import { Panel, Shell } from "@/components/ui";
 import { prisma } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -10,12 +9,23 @@ export default async function LoginPage() {
   if (tenantCount === 0) redirect("/setup");
 
   return (
-    <Shell>
-      <div className="mx-auto max-w-md pt-8">
-        <Panel title="Inloggen" description="Gebruik je portaalaccount om backups en FortiGates te beheren.">
+    <main className="grid min-h-screen place-items-center bg-background px-4 py-10">
+      <section className="w-full max-w-[420px] overflow-hidden rounded-md border border-border bg-surface shadow-xl shadow-slate-900/10 dark:shadow-black/30">
+        <div className="border-b border-border bg-surface-soft px-6 py-5">
+          <div className="flex items-center gap-3">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-primary text-sm font-bold text-primary-foreground">
+              FB
+            </div>
+            <div>
+              <p className="text-sm font-semibold leading-5">FortiGate Backup</p>
+              <h1 className="text-xl font-semibold tracking-tight">Inloggen</h1>
+            </div>
+          </div>
+        </div>
+        <div className="px-6 py-6">
           <LoginForm />
-        </Panel>
-      </div>
-    </Shell>
+        </div>
+      </section>
+    </main>
   );
 }
