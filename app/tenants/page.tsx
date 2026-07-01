@@ -42,7 +42,6 @@ export default async function TenantsPage() {
           >
             <form action={createManagedTenant} className="grid gap-4">
               <Field label="Tenantnaam" name="name" required />
-              <Field label="Slug" name="slug" required />
               <div className="border-t border-border pt-4">
                 <h3 className="mb-3 font-semibold">Eerste tenantadmin</h3>
                 <div className="grid gap-4">
@@ -63,7 +62,6 @@ export default async function TenantsPage() {
             <thead className="bg-surface-soft">
               <tr>
                 <th className="px-3 py-2">Tenant</th>
-                <th className="px-3 py-2">Slug</th>
                 <th className="px-3 py-2">Status</th>
                 <th className="px-3 py-2">Klanten</th>
                 <th className="px-3 py-2">Actieve gebruikers</th>
@@ -83,7 +81,6 @@ export default async function TenantsPage() {
                         {isMainTenant ? <Badge>Main tenant</Badge> : null}
                       </div>
                     </td>
-                    <td className="px-3 py-2 font-mono text-xs">{tenant.slug}</td>
                     <td className="px-3 py-2">
                       <Badge tone={tenant.active ? "success" : "danger"}>{tenant.active ? "Actief" : "Inactief"}</Badge>
                     </td>
@@ -212,7 +209,7 @@ export default async function TenantsPage() {
                                 </p>
                                 <p className="font-semibold">Deze actie kan niet ongedaan gemaakt worden.</p>
                               </div>
-                              <Field label={`Typ de slug "${tenant.slug}" ter bevestiging`} name="confirmSlug" required />
+                              <Field label={`Typ de tenantnaam "${tenant.name}" ter bevestiging`} name="confirmName" required />
                               <DeleteConfirmInput />
                               <Button variant="danger">Tenant definitief verwijderen</Button>
                             </form>

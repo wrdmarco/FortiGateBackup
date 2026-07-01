@@ -88,7 +88,9 @@ export function SettingsForm({
               value={selectedTenantId}
               onChange={(event) => {
                 const value = event.target.value;
-                window.location.href = value ? `/settings?tenantId=${value}` : "/settings";
+                const params = new URLSearchParams({ tab: activeTab });
+                if (value) params.set("tenantId", value);
+                window.location.href = `/settings?${params.toString()}`;
               }}
             >
               <option value="">Globaal</option>

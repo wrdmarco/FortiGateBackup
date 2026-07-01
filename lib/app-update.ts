@@ -63,7 +63,7 @@ export async function startAppUpdate() {
   const command = [
     `cd ${shellQuote(appDir)}`,
     `echo "--- update started $(date -Is) ---" >> ${shellQuote(logPath)}`,
-    `bash ./update.sh >> ${shellQuote(logPath)} 2>&1`,
+    `FORTIGATE_UPDATE_LOCK_PATH=${shellQuote(lockPath)} bash ./update.sh >> ${shellQuote(logPath)} 2>&1`,
     `status=$?`,
     `echo "--- update finished $(date -Is) exit=$status ---" >> ${shellQuote(logPath)}`,
     `rm -f ${shellQuote(lockPath)}`,
@@ -110,9 +110,21 @@ async function isUpdateRunning() {
 async function clearStaleLock(lockPath: string) {
   try {
     const info = await stat(lockPath);
-    if (Date.now() - info.mtimeMs > LOCK_TTL_MS) await rm(lockPath, { force: true });
+    if ((await lockHasFinishedLog(info.mtimeMs)) || Date.now() - info.mtimeMs > LOCK_TTL_MS) {
+      await rm(lockPath, { force: true });
+    }
   } catch {
     // No lock present.
+  }
+}
+
+async function lockHasFinishedLog(lockMtimeMs: number) {
+  try {
+    const logPath = path.join(process.cwd(), UPDATE_LOG);
+    const [logInfo, log] = await Promise.all([stat(logPath), readFile(logPath, "utf8")]);
+    return logInfo.mtimeMs >= lockMtimeMs && (/--- update finished .* exit=\d+ ---/.test(log) || /Update complete\./.test(log));
+  } catch {
+    return false;
   }
 }
 

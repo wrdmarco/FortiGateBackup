@@ -19,7 +19,6 @@ export default async function SetupPage() {
         <Panel>
           <form action={createTenant} className="grid gap-4">
             <Field label="Tenantnaam" name="name" required />
-            <Field label="Slug" name="slug" required />
             <Field label="Admin naam" name="adminName" required />
             <Field label="Admin e-mail" name="adminEmail" type="email" required />
             <Field label="Admin wachtwoord" name="adminPassword" type="password" required />

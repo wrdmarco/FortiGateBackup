@@ -41,6 +41,29 @@ function normalizeOptionalSiteUrl(value: FormDataEntryValue | null) {
   const raw = String(value ?? "").trim();
   return raw ? normalizeSiteUrl(raw) : "";
 }
+
+function slugBaseFromName(name: string) {
+  return (
+    name
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 48) || "tenant"
+  );
+}
+
+async function createUniqueTenantSlug(name: string) {
+  const base = slugBaseFromName(name);
+  for (let index = 0; index < 100; index += 1) {
+    const slug = index === 0 ? base : `${base}-${index + 1}`;
+    const existing = await prisma.tenant.findUnique({ where: { slug }, select: { id: true } });
+    if (!existing) return slug;
+  }
+  return `${base}-${Date.now()}`;
+}
+
 function recordLoginFailure(email: string) {
   const now = Date.now();
   const attempt = loginAttempts.get(email);
@@ -57,9 +80,10 @@ export async function createTenant(formData: FormData) {
   if (existingTenants > 0) {
     throw new Error("Setup is al uitgevoerd. Maak extra tenants aan via het Tenants menu.");
   }
+  const name = String(formData.get("name") ?? "");
   const data = tenantSchema.parse({
-    name: formData.get("name"),
-    slug: formData.get("slug"),
+    name,
+    slug: await createUniqueTenantSlug(name),
     active: bool(formData.get("active"))
   });
   const email = String(formData.get("adminEmail") ?? "");
@@ -87,9 +111,10 @@ export async function createTenant(formData: FormData) {
 
 export async function createManagedTenant(formData: FormData) {
   const user = await requireSuperAdmin();
+  const name = String(formData.get("name") ?? "");
   const data = tenantSchema.parse({
-    name: formData.get("name"),
-    slug: formData.get("slug"),
+    name,
+    slug: await createUniqueTenantSlug(name),
     active: true
   });
   const adminEmail = String(formData.get("adminEmail") ?? "").toLowerCase();
@@ -243,7 +268,7 @@ export async function setTenantActive(formData: FormData) {
 export async function deleteTenant(formData: FormData) {
   const user = await requireSuperAdmin();
   const id = String(formData.get("id"));
-  const confirmSlug = String(formData.get("confirmSlug") ?? "").trim();
+  const confirmName = String(formData.get("confirmName") ?? "").trim();
   const confirmDelete = String(formData.get("confirmDelete") ?? "").trim();
   const [tenant, mainTenant] = await Promise.all([
     prisma.tenant.findUniqueOrThrow({
@@ -267,8 +292,8 @@ export async function deleteTenant(formData: FormData) {
   if (mainTenant === tenant.id) {
     throw new Error("De main tenant kan niet verwijderd worden.");
   }
-  if (confirmSlug !== tenant.slug) {
-    throw new Error("Bevestiging mislukt. Typ de tenant slug exact over.");
+  if (confirmName !== tenant.name) {
+    throw new Error("Bevestiging mislukt. Typ de tenantnaam exact over.");
   }
   if (confirmDelete !== "Delete") {
     throw new Error('Bevestiging mislukt. Typ exact "Delete" om de tenant definitief te verwijderen.');

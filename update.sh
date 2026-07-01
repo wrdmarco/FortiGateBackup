@@ -13,6 +13,7 @@ HEALTH_DELAY="${HEALTH_DELAY:-2}"
 SYSTEMCTL="${SYSTEMCTL:-$(command -v systemctl || echo /usr/bin/systemctl)}"
 UPDATE_SCRIPT_SUM_BEFORE="$(cksum "$SCRIPT_DIR/update.sh" 2>/dev/null || true)"
 MIN_FREE_KB="${MIN_FREE_KB:-262144}"
+FORTIGATE_UPDATE_LOCK_PATH="${FORTIGATE_UPDATE_LOCK_PATH:-}"
 
 run_as_service_user() {
   if [ "$(id -un)" = "$SERVICE_USER" ]; then
@@ -33,6 +34,11 @@ run_systemctl() {
   fi
 }
 
+clear_update_lock() {
+  if [ -n "$FORTIGATE_UPDATE_LOCK_PATH" ]; then
+    rm -f "$FORTIGATE_UPDATE_LOCK_PATH"
+  fi
+}
 
 fail_preflight() {
   cat >&2 <<EOF
@@ -113,6 +119,7 @@ REMOTE_REV="$(run_as_service_user git rev-parse "$UPSTREAM_REF")"
 
 if [ "$LOCAL_REV" = "$REMOTE_REV" ]; then
   echo "Already up to date. No update needed."
+  clear_update_lock
   exit 0
 fi
 
@@ -137,5 +144,6 @@ run_as_service_user corepack enable
 run_as_service_user pnpm install --frozen-lockfile
 run_as_service_user pnpm prisma migrate deploy
 run_as_service_user pnpm run build
+clear_update_lock
 restart_services_or_explain
 echo "Update complete."
