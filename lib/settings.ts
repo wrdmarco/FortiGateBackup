@@ -3,7 +3,8 @@ import { decryptSecret, encryptSecret } from "@/lib/crypto";
 
 export async function getSetting(key: string, tenantId?: string | null) {
   const setting = await prisma.systemSetting.findFirst({
-    where: { tenantId: tenantId ?? null, key }
+    where: { tenantId: tenantId ?? null, key },
+    orderBy: { updatedAt: "desc" }
   });
   if (!setting) return null;
   return setting.encrypted ? decryptSecret(setting.value) : setting.value;
@@ -15,17 +16,22 @@ export async function setSetting(
   options: { tenantId?: string | null; encrypted?: boolean } = {}
 ) {
   const encrypted = options.encrypted ?? false;
-  const existing = await prisma.systemSetting.findFirst({
-    where: { tenantId: options.tenantId ?? null, key }
+  const existing = await prisma.systemSetting.findMany({
+    where: { tenantId: options.tenantId ?? null, key },
+    orderBy: { updatedAt: "desc" },
+    select: { id: true }
   });
-  if (existing) {
-    return prisma.systemSetting.update({
-      where: { id: existing.id },
+  if (existing[0]) {
+    const setting = await prisma.systemSetting.update({
+      where: { id: existing[0].id },
       data: {
         value: encrypted ? encryptSecret(value) : value,
         encrypted
       }
     });
+    const duplicateIds = existing.slice(1).map((setting) => setting.id);
+    if (duplicateIds.length) await prisma.systemSetting.deleteMany({ where: { id: { in: duplicateIds } } });
+    return setting;
   }
   return prisma.systemSetting.create({
     data: {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useState } from "react";
 import { clsx } from "clsx";
 import type { MailTestState } from "@/app/actions";
 
@@ -69,6 +69,14 @@ export function SettingsForm({
     [selectedTenantId, tenants]
   );
   const showTab = (id: SettingsTabId) => availableTabs.some((tab) => tab.id === id);
+
+  useEffect(() => {
+    setMailProvider(values.mailProvider);
+  }, [values.mailProvider]);
+
+  useEffect(() => {
+    setEntraEnabled(values.entraEnabled);
+  }, [values.entraEnabled]);
 
   return (
     <form action={action} className="grid gap-6">
