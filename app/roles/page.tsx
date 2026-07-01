@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import Link from "next/link";
 import type { Prisma } from "@prisma/client";
 import { deleteAccessRole } from "@/app/actions";
@@ -69,6 +70,9 @@ export default async function RolesPage({
     return groups;
   }, {});
   const groupedPermissionEntries = Object.entries(groupedPermissions);
+  const rolePermissionKeys = new Map(
+    roles.map((role) => [role.id, new Set(role.permissions.map(({ permission }) => permission.key))])
+  );
 
   return (
     <Shell>
@@ -106,75 +110,100 @@ export default async function RolesPage({
         </div>
       ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <Panel title={selectedTenant ? `Rollen voor ${selectedTenant.name}` : "Rollen"}>
+      <div className="grid gap-6">
+        <Panel
+          title={selectedTenant ? `Rollenmatrix voor ${selectedTenant.name}` : "Rollenmatrix"}
+          description="Vergelijk per permission welke rol toegang heeft. Rollen staan horizontaal, permissions verticaal gegroepeerd."
+        >
           {rolesError ? (
             <div className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
               {rolesError}
             </div>
           ) : null}
-          <div className="grid gap-4">
-            {roles.map((role) => (
-              <section key={role.id} className="rounded-md border border-border bg-surface-soft p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="font-semibold">{role.name}</h2>
-                      {role.system ? (
-                        <span className="rounded-md border border-border bg-surface px-2 py-1 text-xs font-semibold text-muted-foreground">
-                          Systeem
-                        </span>
-                      ) : null}
-                    </div>
-                    {role.description ? <p className="mt-1 text-sm text-muted-foreground">{role.description}</p> : null}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-md border border-border bg-surface px-2 py-1 text-xs font-semibold text-muted-foreground">
-                      {role._count.users} gebruiker{role._count.users === 1 ? "" : "s"}
-                    </span>
-                    {!role.system && role._count.users === 0 ? (
-                      <form action={deleteAccessRole}>
-                        <input type="hidden" name="roleId" value={role.id} />
-                        <Button variant="danger">Verwijderen</Button>
-                      </form>
-                    ) : !role.system ? (
-                      <Button variant="secondary" disabled>
-                        Heeft leden
-                      </Button>
-                    ) : null}
-                  </div>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {role.permissions
-                    .map(({ permission }) => permission)
-                    .sort((a, b) => a.key.localeCompare(b.key))
-                    .map((permission) => (
-                      <span key={permission.id} className="rounded-md border border-border bg-surface px-2 py-1 font-mono text-xs">
-                        {permission.key}
-                      </span>
+          {roles.length ? (
+            <div className="overflow-auto rounded-md border border-border bg-surface">
+              <table className="w-full min-w-[980px] border-collapse text-left text-sm">
+                <thead className="bg-surface-soft">
+                  <tr>
+                    <th className="sticky left-0 z-20 w-[340px] border-b border-r border-border bg-surface-soft px-4 py-3 align-top">
+                      Permission
+                    </th>
+                    {roles.map((role) => (
+                      <th key={role.id} className="min-w-[180px] border-b border-border px-3 py-3 align-top">
+                        <div className="grid gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-semibold text-foreground">{role.name}</span>
+                            {role.system ? (
+                              <span className="rounded-md border border-border bg-surface px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
+                                Systeem
+                              </span>
+                            ) : null}
+                          </div>
+                          {role.description ? <p className="text-xs font-normal text-muted-foreground">{role.description}</p> : null}
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="rounded-md border border-border bg-surface px-2 py-1 text-xs font-semibold text-muted-foreground">
+                              {role._count.users} gebruiker{role._count.users === 1 ? "" : "s"}
+                            </span>
+                            {!role.system && role._count.users === 0 ? (
+                              <form action={deleteAccessRole}>
+                                <input type="hidden" name="roleId" value={role.id} />
+                                <Button variant="danger">Verwijderen</Button>
+                              </form>
+                            ) : !role.system ? (
+                              <Button variant="secondary" disabled>
+                                Heeft leden
+                              </Button>
+                            ) : null}
+                          </div>
+                        </div>
+                      </th>
                     ))}
-                </div>
-              </section>
-            ))}
-          </div>
-        </Panel>
-
-        <Panel title="Permission catalogus">
-          <div className="grid gap-4">
-            {groupedPermissionEntries.map(([category, items]) => (
-              <section key={category}>
-                <h2 className="text-sm font-semibold">{category}</h2>
-                <div className="mt-2 grid gap-2">
-                  {items.map((permission) => (
-                    <div key={permission.key} className="rounded-md border border-border bg-surface-soft p-3">
-                      <p className="font-mono text-xs">{permission.key}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{permission.description}</p>
-                    </div>
+                  </tr>
+                </thead>
+                <tbody>
+                  {groupedPermissionEntries.map(([category, items]) => (
+                    <Fragment key={category}>
+                      <tr key={`${category}-group`}>
+                        <th
+                          colSpan={roles.length + 1}
+                          className="border-b border-border bg-muted px-4 py-2 text-xs font-semibold uppercase text-muted-foreground"
+                        >
+                          {category}
+                        </th>
+                      </tr>
+                      {items.map((permission) => (
+                        <tr key={permission.key} className="border-b border-border last:border-b-0">
+                          <th className="sticky left-0 z-10 border-r border-border bg-surface px-4 py-3 align-top">
+                            <span className="block font-mono text-xs text-foreground">{permission.key}</span>
+                            <span className="mt-1 block text-xs font-normal text-muted-foreground">{permission.description}</span>
+                          </th>
+                          {roles.map((role) => {
+                            const allowed = rolePermissionKeys.get(role.id)?.has(permission.key) ?? false;
+                            return (
+                              <td key={`${role.id}-${permission.key}`} className="px-3 py-3 text-center align-middle">
+                                <input
+                                  aria-label={`${role.name}: ${permission.key}`}
+                                  checked={allowed}
+                                  className="h-4 w-4 rounded border-border accent-primary disabled:cursor-default disabled:opacity-100"
+                                  disabled
+                                  readOnly
+                                  type="checkbox"
+                                />
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </Fragment>
                   ))}
-                </div>
-              </section>
-            ))}
-          </div>
+                </tbody>
+              </table>
+            </div>
+          ) : !rolesError ? (
+            <div className="rounded-md border border-border bg-surface-soft p-4 text-sm text-muted-foreground">
+              Geen rollen gevonden voor deze tenant.
+            </div>
+          ) : null}
         </Panel>
       </div>
     </Shell>
