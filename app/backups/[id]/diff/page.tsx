@@ -8,6 +8,8 @@ import {
 } from "@/lib/backups";
 import { requireTenantUser } from "@/lib/authz";
 import { ActionLink, Card, PageHeader, Panel, Shell } from "@/components/ui";
+import { formatDateTime } from "@/lib/time";
+import { getTenantTimeZone } from "@/lib/tenant-timezone";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +23,7 @@ export default async function BackupDiffPage({
   const backup = await getBackupForUser(id, user);
   if (!backup.filename) notFound();
   const previous = await previousStoredBackup(backup);
+  const timeZone = await getTenantTimeZone(backup.fortigate.customer.tenantId);
   if (!previous?.filename) {
     return (
       <Shell>
@@ -56,7 +59,7 @@ export default async function BackupDiffPage({
     <Shell>
       <PageHeader
         title="Backup diff"
-        description={`${backup.fortigate.customer.name} - ${backup.fortigate.hostname ?? backup.fortigate.managementUrl} - ${previous.createdAt.toLocaleString("nl-NL")} naar ${backup.createdAt.toLocaleString("nl-NL")}`}
+        description={`${backup.fortigate.customer.name} - ${backup.fortigate.hostname ?? backup.fortigate.managementUrl} - ${formatDateTime(previous.createdAt, timeZone)} naar ${formatDateTime(backup.createdAt, timeZone)}`}
         actions={
           <>
             <ActionLink href={`/api/backups/${previous.id}/download`}>Vorige downloaden</ActionLink>

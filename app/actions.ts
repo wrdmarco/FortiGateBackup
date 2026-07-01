@@ -17,6 +17,7 @@ import { deleteSetting, setSetting } from "@/lib/settings";
 import { isItGlueEnabled } from "@/lib/itglue";
 import { normalizeSiteUrl } from "@/lib/site-url";
 import { mainTenantId } from "@/lib/tenant-main";
+import { defaultTimeZone, isValidTimeZone } from "@/lib/time";
 import { startAppUpdate } from "@/lib/app-update";
 import { customerSchema, fortigateSchema, fortigateUpdateSchema, tenantSchema } from "@/lib/validators";
 
@@ -115,6 +116,10 @@ async function sendTemporaryPasswordMail(input: {
   });
 }
 
+async function onboardingMailTenantId() {
+  return mainTenantId();
+}
+
 function recordLoginFailure(email: string) {
   const now = Date.now();
   const attempt = loginAttempts.get(email);
@@ -175,7 +180,8 @@ export async function createManagedTenant(formData: FormData) {
   if (!adminEmail) {
     throw new Error("Admin e-mail is verplicht.");
   }
-  await assertMailReady(null);
+  const mailTenantId = await onboardingMailTenantId();
+  await assertMailReady(mailTenantId);
 
   const tenant = await prisma.tenant.create({ data });
   const admin = await prisma.user.create({
@@ -206,7 +212,7 @@ export async function createManagedTenant(formData: FormData) {
   await assignDefaultTenantRole(admin.id, tenant.id, admin.role);
   try {
     await sendTemporaryPasswordMail({
-      tenantId: null,
+      tenantId: mailTenantId,
       tenantName: tenant.name,
       to: admin.email,
       name: admin.name ?? "",
@@ -242,7 +248,8 @@ export async function createManagedTenantWithState(_state: ActionState, formData
     if (!adminEmail) {
       return { ok: false, message: "Admin e-mail is verplicht." };
     }
-    await assertMailReady(null);
+    const mailTenantId = await onboardingMailTenantId();
+    await assertMailReady(mailTenantId);
 
     const { tenant, admin } = await prisma.$transaction(async (tx) => {
       const tenant = await tx.tenant.create({ data });
@@ -280,7 +287,7 @@ export async function createManagedTenantWithState(_state: ActionState, formData
 
     try {
       await sendTemporaryPasswordMail({
-        tenantId: null,
+        tenantId: mailTenantId,
         tenantName: tenant.name,
         to: admin.email,
         name: admin.name ?? "",
@@ -915,6 +922,11 @@ export async function saveSettings(formData: FormData) {
   if (formData.has("portal.siteUrl")) {
     if (portalSiteUrl) await setSetting("portal.siteUrl", portalSiteUrl, { tenantId });
     else await deleteSetting("portal.siteUrl", tenantId);
+  }
+  if (formData.has("ui.timeZone")) {
+    const timeZone = String(formData.get("ui.timeZone") || defaultTimeZone);
+    if (!isValidTimeZone(timeZone)) throw new Error("Ongeldige tijdzone.");
+    await setSetting("ui.timeZone", timeZone, { tenantId });
   }
   const entries = [
     ["itglue.baseUrl", formData.get("itglue.baseUrl")],

@@ -4,6 +4,8 @@ import { getAppUpdateStatus } from "@/lib/app-update";
 import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { formatDateTime } from "@/lib/time";
+import { getTenantTimeZone } from "@/lib/tenant-timezone";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +13,7 @@ export default async function DashboardPage() {
   const user = await requireUser();
   const canManagePlatform = isSuperAdmin(user);
   const tenantId = canManagePlatform ? undefined : user.tenantId ?? undefined;
+  const timeZone = await getTenantTimeZone(tenantId);
   const customerWhere = tenantId ? { tenantId } : {};
   const fortigateWhere = tenantId ? { customer: { tenantId } } : {};
   const backupWhere = tenantId ? { fortigate: { customer: { tenantId } } } : {};
@@ -81,7 +84,7 @@ export default async function DashboardPage() {
                 <tr key={item.id} className="border-t border-border">
                   <td className="px-3 py-2">{item.action}</td>
                   <td className="px-3 py-2">{item.entity ?? "-"}</td>
-                  <td className="px-3 py-2">{item.createdAt.toLocaleString("nl-NL")}</td>
+                  <td className="px-3 py-2">{formatDateTime(item.createdAt, timeZone)}</td>
                 </tr>
               ))}
             </tbody>

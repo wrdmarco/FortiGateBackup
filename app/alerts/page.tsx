@@ -3,6 +3,8 @@ import { checkFortiOsFirmware } from "@/lib/firmware-check";
 import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { formatDateOnly, formatDateTime } from "@/lib/time";
+import { getTenantTimeZoneMap } from "@/lib/tenant-timezone";
 
 export const dynamic = "force-dynamic";
 
@@ -39,8 +41,10 @@ export default async function AlertsPage() {
     devices.map(async (device) => ({ deviceId: device.id, result: await checkFortiOsFirmware(device.firmwareVersion) }))
   );
   const firmwareByDevice = new Map(firmwareChecks.map((item) => [item.deviceId, item.result]));
+  const timeZones = await getTenantTimeZoneMap(devices.map((device) => device.customer.tenantId));
 
   const alerts = devices.flatMap((device): AlertRow[] => {
+    const timeZone = timeZones.get(device.customer.tenantId);
     const label = device.hostname ?? device.serialNumber ?? device.managementUrl;
     const base = {
       customer: device.customer.name,
@@ -71,7 +75,7 @@ export default async function AlertsPage() {
       });
     }
 
-    for (const license of licenseAlerts(device.licenseInfo)) {
+    for (const license of licenseAlerts(device.licenseInfo, timeZone)) {
       rows.push({
         ...base,
         id: `${device.id}-license-${license.name}`,
@@ -90,7 +94,7 @@ export default async function AlertsPage() {
         severity: "danger",
         type: "Backup fout",
         message: latestBackup.error ?? "Laatste backup is mislukt",
-        detail: latestBackup.createdAt.toLocaleString("nl-NL")
+        detail: formatDateTime(latestBackup.createdAt, timeZone)
       });
     }
     return rows;
@@ -159,7 +163,7 @@ function Metric({ label, value, tone }: { label: string; value: number; tone: "d
   );
 }
 
-function licenseAlerts(raw: string | null) {
+function licenseAlerts(raw: string | null, timeZone?: string) {
   const info = parseJson<LicenseInfo | null>(raw, null);
   const now = Date.now();
   const soon = now + 1000 * 60 * 60 * 24 * 30;
@@ -174,7 +178,7 @@ function licenseAlerts(raw: string | null) {
       name,
       expired,
       detail: expires
-        ? `Status: ${service.status ?? "onbekend"}. Verloopt: ${expires.toLocaleDateString("nl-NL")}.`
+        ? `Status: ${service.status ?? "onbekend"}. Verloopt: ${formatDateOnly(expires, timeZone)}.`
         : `Status: ${service.status ?? "onbekend"}. Geen vervaldatum uitgelezen.`
     }];
   });

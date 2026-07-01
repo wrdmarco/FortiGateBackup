@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui";
+import { formatDateTime } from "@/lib/time";
 
 type FortiGateSummaryDevice = {
   hostname: string | null;
@@ -44,7 +45,7 @@ type LicenseInfo = {
   services?: Array<{ name?: string; status?: unknown; expires?: unknown }>;
 };
 
-export function FortiGateSummary({ device }: { device: FortiGateSummaryDevice }) {
+export function FortiGateSummary({ device, timeZone }: { device: FortiGateSummaryDevice; timeZone?: string }) {
   const latestBackup = device.backups[0];
   const latestLog = device.logs[0];
   const externalIps = parseJson<ExternalIp[]>(device.externalIpAddresses, []);
@@ -68,7 +69,7 @@ export function FortiGateSummary({ device }: { device: FortiGateSummaryDevice })
             <InfoRow label="Serial" value={device.serialNumber ?? "Niet uitgelezen"} />
             <InfoRow label="Firmware" value={firmware || "Niet uitgelezen"} />
             <InfoRow label="Uptime" value={device.uptime ?? "Niet uitgelezen"} />
-            <InfoRow label="Laatste inventory" value={formatDate(device.lastCheckedAt)} />
+            <InfoRow label="Laatste inventory" value={formatDate(device.lastCheckedAt, timeZone)} />
           </dl>
         </section>
 
@@ -129,7 +130,7 @@ export function FortiGateSummary({ device }: { device: FortiGateSummaryDevice })
           <h3 className="font-semibold">Backup summary</h3>
           <dl className="mt-3 grid gap-2 text-sm">
             <InfoRow label="Schema" value={device.scheduleType === "CRON" ? device.cronExpression ?? "Cron" : device.scheduleType} />
-            <InfoRow label="Volgende run" value={formatDate(device.nextRunAt)} />
+            <InfoRow label="Volgende run" value={formatDate(device.nextRunAt, timeZone)} />
             <InfoRow label="Laatste status" value={latestBackup?.status ?? "Nog niet uitgevoerd"} />
             <InfoRow label="Laatste bestand" value={latestBackup?.filename ? `${latestBackup.filesize} bytes` : latestBackup?.error ?? "Geen bestand"} />
           </dl>
@@ -146,7 +147,7 @@ export function FortiGateSummary({ device }: { device: FortiGateSummaryDevice })
                 <span className="font-medium">{latestLog.event}</span>
               </div>
               <p className="text-muted-foreground">{latestLog.message}</p>
-              <p className="text-xs text-muted-foreground">{latestLog.createdAt.toLocaleString("nl-NL")}</p>
+              <p className="text-xs text-muted-foreground">{formatDateTime(latestLog.createdAt, timeZone)}</p>
             </div>
           ) : (
             <p className="mt-2 text-sm text-muted-foreground">Nog geen logregels.</p>
@@ -188,13 +189,13 @@ function formatExternalIp(item: ExternalIp) {
   return [item.interface, item.address].filter(Boolean).join(" ") || "Onbekend";
 }
 
-function formatDate(value: Date | null) {
-  return value ? value.toLocaleString("nl-NL") : "Niet gepland";
+function formatDate(value: Date | null, timeZone?: string) {
+  return value ? formatDateTime(value, timeZone) : "Niet gepland";
 }
 
 function formatUnknown(value: unknown) {
   if (value === null || value === undefined || value === "") return "Onbekend";
-  if (value instanceof Date) return value.toLocaleString("nl-NL");
+  if (value instanceof Date) return formatDateTime(value);
   return String(value);
 }
 

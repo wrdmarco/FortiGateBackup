@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { clsx } from "clsx";
 import type { MailTestState } from "@/app/actions";
+import { commonTimeZones, defaultTimeZone } from "@/lib/time";
 
 type TenantOption = {
   id: string;
@@ -12,6 +13,7 @@ type TenantOption = {
 type SettingsValues = {
   portalSiteUrl: string;
   effectiveSiteUrl: string;
+  timeZone: string;
   itGlueEnabled: boolean;
   itGlueBaseUrl: string;
   hasItGlueApiKey: boolean;
@@ -153,6 +155,17 @@ export function SettingsForm({
             defaultValue={values.portalSiteUrl}
             help={values.effectiveSiteUrl ? `Actieve URL: ${values.effectiveSiteUrl}` : "Laat leeg om de globale SERVER_URL of globale portal URL te gebruiken."}
           />
+          <label className="grid gap-1 text-sm">
+            <span className="font-medium">Tijdzone</span>
+            <select className="rounded-md border border-border bg-surface px-3 py-2" name="ui.timeZone" defaultValue={values.timeZone || defaultTimeZone}>
+              {commonTimeZones.map((timeZone) => (
+                <option key={timeZone} value={timeZone}>
+                  {timeZone}
+                </option>
+              ))}
+            </select>
+            <span className="text-xs text-muted-foreground">Deze tijdzone wordt gebruikt voor datums, logs, backups en planning binnen deze tenant.</span>
+          </label>
         </section>
       ) : null}
 

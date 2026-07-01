@@ -9,7 +9,7 @@ type MailInput = {
 };
 
 export async function sendMail(input: MailInput) {
-  const provider = await getMailSetting("mail.provider", input.tenantId);
+  const provider = await getMailProvider(input.tenantId);
   if (provider === "MICROSOFT_GRAPH") {
     return sendGraphMail(input);
   }
@@ -17,7 +17,7 @@ export async function sendMail(input: MailInput) {
 }
 
 export async function assertMailReady(tenantId?: string | null) {
-  const provider = await getMailSetting("mail.provider", tenantId);
+  const provider = await getMailProvider(tenantId);
   if (provider === "MICROSOFT_GRAPH") {
     const [from, tenant, clientId, clientSecret, accessToken] = await Promise.all([
       getMailSetting("graph.from", tenantId),
@@ -41,6 +41,14 @@ export async function assertMailReady(tenantId?: string | null) {
   if (!host || !from || Boolean(user) !== Boolean(pass)) {
     throw new Error("SMTP mail is niet volledig ingesteld. Configureer en test eerst de mailinstellingen.");
   }
+}
+
+export async function getMailProvider(tenantId?: string | null) {
+  return (await getMailSetting("mail.provider", tenantId)) === "MICROSOFT_GRAPH" ? "MICROSOFT_GRAPH" : "SMTP";
+}
+
+export async function getEffectiveMailSetting(key: string, tenantId?: string | null) {
+  return getMailSetting(key, tenantId);
 }
 
 async function sendSmtpMail(input: MailInput) {

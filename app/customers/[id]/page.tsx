@@ -6,6 +6,8 @@ import { Modal } from "@/components/modal";
 import { ActionLink, Badge, Button, Card, Field, PageHeader, Shell, TableShell } from "@/components/ui";
 import { assertTenantAccess, requireTenantUser } from "@/lib/authz";
 import { prisma } from "@/lib/db";
+import { formatDateTime } from "@/lib/time";
+import { getTenantTimeZone } from "@/lib/tenant-timezone";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +38,7 @@ export default async function CustomerDetailPage({
   );
   const changedBackups = backups.filter((backup) => backup.filename);
   const latestBackup = backups.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+  const timeZone = await getTenantTimeZone(customer.tenantId);
 
   return (
     <Shell>
@@ -76,7 +79,7 @@ export default async function CustomerDetailPage({
         <Card
           title="Laatste backup"
           value={latestBackup?.status ?? "-"}
-          detail={latestBackup ? latestBackup.createdAt.toLocaleString("nl-NL") : "Nog niet uitgevoerd"}
+          detail={latestBackup ? formatDateTime(latestBackup.createdAt, timeZone) : "Nog niet uitgevoerd"}
         />
       </div>
 
@@ -126,7 +129,7 @@ export default async function CustomerDetailPage({
                             {latestLog.level} - {latestLog.event}
                           </div>
                           <div className="text-muted-foreground">{latestLog.message}</div>
-                          <div className="text-xs text-muted-foreground">{latestLog.createdAt.toLocaleString("nl-NL")}</div>
+                          <div className="text-xs text-muted-foreground">{formatDateTime(latestLog.createdAt, timeZone)}</div>
                         </div>
                       ) : (
                         <span className="text-muted-foreground">Geen logs</span>
@@ -138,7 +141,7 @@ export default async function CustomerDetailPage({
                         description="Technische summary, bereikbaarheid, licenties, backups en diagnose."
                         trigger={<Button variant="secondary">Info</Button>}
                       >
-                        <FortiGateSummary device={device} />
+                        <FortiGateSummary device={device} timeZone={timeZone} />
                       </Modal>
                       <form action={runBackupAction}>
                         <input type="hidden" name="id" value={device.id} />
@@ -174,7 +177,7 @@ export default async function CustomerDetailPage({
                 .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
                 .map((backup) => (
                   <tr key={backup.id} className="border-t border-border align-top">
-                    <td className="px-3 py-2">{backup.createdAt.toLocaleString("nl-NL")}</td>
+                    <td className="px-3 py-2">{formatDateTime(backup.createdAt, timeZone)}</td>
                     <td className="px-3 py-2">{backup.device.hostname ?? backup.device.managementUrl}</td>
                     <td className="px-3 py-2">
                       <Badge tone={backup.status === "FAILED" ? "danger" : backup.status === "CHANGED" ? "warning" : "success"}>

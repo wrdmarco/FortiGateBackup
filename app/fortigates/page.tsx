@@ -8,6 +8,8 @@ import { Badge, Button, Field, PageHeader, Shell, TableShell } from "@/component
 import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { formatDateTime } from "@/lib/time";
+import { getTenantTimeZoneMap } from "@/lib/tenant-timezone";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +35,7 @@ export default async function FortiGatesPage({
     })
   ]);
   const editDevice = devices.find((device) => device.id === params?.edit);
+  const timeZones = await getTenantTimeZoneMap(devices.map((device) => device.customer.tenantId));
   const formAction = editDevice ? updateFortiGate : createFortiGate;
   const selectedCustomerId = customers.some((customer) => customer.id === params?.customerId)
     ? params?.customerId
@@ -161,6 +164,7 @@ export default async function FortiGatesPage({
             <tbody>
               {devices.map((device) => {
                 const latestLog = device.logs[0];
+                const timeZone = timeZones.get(device.customer.tenantId);
                 const logTone =
                   latestLog?.level === "ERROR"
                     ? "text-red-700 dark:text-red-300"
@@ -203,7 +207,7 @@ export default async function FortiGatesPage({
                           </div>
                           <div className="text-muted-foreground">{latestLog.message}</div>
                           <div className="text-xs text-muted-foreground">
-                            {latestLog.createdAt.toLocaleString("nl-NL")}
+                            {formatDateTime(latestLog.createdAt, timeZone)}
                           </div>
                         </div>
                       ) : (
@@ -216,7 +220,7 @@ export default async function FortiGatesPage({
                         description="Technische summary, bereikbaarheid, licenties, backups en diagnose."
                         trigger={<Button variant="secondary">Info</Button>}
                       >
-                        <FortiGateSummary device={device} />
+                        <FortiGateSummary device={device} timeZone={timeZone} />
                       </Modal>
                       <form action={runBackupAction}>
                         <input type="hidden" name="id" value={device.id} />

@@ -2,6 +2,8 @@ import { ActionLink, Badge, PageHeader, Shell, TableShell } from "@/components/u
 import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { formatDateTime } from "@/lib/time";
+import { getTenantTimeZoneMap } from "@/lib/tenant-timezone";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +15,7 @@ export default async function BackupsPage() {
     orderBy: { createdAt: "desc" },
     take: 100
   });
+  const timeZones = await getTenantTimeZoneMap(backups.map((backup) => backup.fortigate.customer.tenantId));
   return (
     <Shell>
       <PageHeader
@@ -35,7 +38,7 @@ export default async function BackupsPage() {
           <tbody>
             {backups.map((backup) => (
               <tr key={backup.id} className="border-t border-border">
-                <td className="px-3 py-2">{backup.createdAt.toLocaleString("nl-NL")}</td>
+                <td className="px-3 py-2">{formatDateTime(backup.createdAt, timeZones.get(backup.fortigate.customer.tenantId))}</td>
                 <td className="px-3 py-2">{backup.fortigate.customer.name}</td>
                 <td className="px-3 py-2">{backup.fortigate.hostname ?? backup.fortigate.managementUrl}</td>
                 <td className="px-3 py-2">

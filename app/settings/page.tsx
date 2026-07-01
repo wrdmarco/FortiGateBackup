@@ -5,9 +5,11 @@ import { Badge, Button, PageHeader, Panel, Shell } from "@/components/ui";
 import { getAppUpdateStatus } from "@/lib/app-update";
 import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
+import { getEffectiveMailSetting, getMailProvider } from "@/lib/mail";
 import { getSetting } from "@/lib/settings";
 import { requireUser } from "@/lib/session";
 import { mainTenantId } from "@/lib/tenant-main";
+import { defaultTimeZone } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
@@ -32,10 +34,12 @@ export default async function SettingsPage({
       ? globalTenantId ?? ""
       : "";
   const tenantId = selectedTenantId || null;
+  const secretScopeWhere = tenantId ? { OR: [{ tenantId }, { tenantId: null }] } : { tenantId: null };
 
   const [
     portalSiteUrl,
     effectiveSiteUrl,
+    timeZone,
     itGlueEnabled,
     itGlueBaseUrl,
     mailProvider,
@@ -54,22 +58,23 @@ export default async function SettingsPage({
   ] = await Promise.all([
     getSetting("portal.siteUrl", tenantId),
     tenantId ? getSetting("portal.siteUrl", null) : Promise.resolve(process.env.SERVER_URL ?? ""),
+    getSetting("ui.timeZone", tenantId),
     getSetting("itglue.enabled", tenantId),
     getSetting("itglue.baseUrl", tenantId),
-    getSetting("mail.provider", tenantId),
-    getSetting("smtp.host", tenantId),
-    getSetting("smtp.port", tenantId),
-    getSetting("smtp.user", tenantId),
-    getSetting("smtp.from", tenantId),
-    getSetting("graph.from", tenantId),
-    getSetting("graph.tenantId", tenantId),
-    getSetting("graph.clientId", tenantId),
+    getMailProvider(tenantId),
+    getEffectiveMailSetting("smtp.host", tenantId),
+    getEffectiveMailSetting("smtp.port", tenantId),
+    getEffectiveMailSetting("smtp.user", tenantId),
+    getEffectiveMailSetting("smtp.from", tenantId),
+    getEffectiveMailSetting("graph.from", tenantId),
+    getEffectiveMailSetting("graph.tenantId", tenantId),
+    getEffectiveMailSetting("graph.clientId", tenantId),
     getSetting("entra.enabled", tenantId),
     getSetting("entra.tenantId", tenantId),
     getSetting("entra.clientId", tenantId),
     prisma.systemSetting.findMany({
       where: {
-        tenantId,
+        ...secretScopeWhere,
         key: { in: [...settingKeys] }
       },
       select: { key: true }
@@ -80,6 +85,7 @@ export default async function SettingsPage({
   const values = {
     portalSiteUrl: portalSiteUrl ?? "",
     effectiveSiteUrl: portalSiteUrl ?? effectiveSiteUrl ?? "",
+    timeZone: timeZone ?? defaultTimeZone,
     itGlueEnabled: itGlueEnabled === "true",
     itGlueBaseUrl: itGlueBaseUrl ?? "https://api.itglue.com",
     hasItGlueApiKey: secretKeys.has("itglue.apiKey"),
