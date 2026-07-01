@@ -7,6 +7,7 @@ import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { getSetting } from "@/lib/settings";
 import { requireUser } from "@/lib/session";
+import { mainTenantId } from "@/lib/tenant-main";
 
 export const dynamic = "force-dynamic";
 
@@ -23,8 +24,13 @@ export default async function SettingsPage({
   const tenants = canUpdateApp
     ? await prisma.tenant.findMany({ where: { active: true }, orderBy: { name: "asc" } })
     : [];
-  const requestedTenantId = canUpdateApp ? params?.tenantId ?? "" : user.tenantId ?? "";
-  const selectedTenantId = tenants.some((tenant) => tenant.id === requestedTenantId) ? requestedTenantId : "";
+  const globalTenantId = canUpdateApp ? await mainTenantId() : null;
+  const requestedTenantId = canUpdateApp ? params?.tenantId ?? globalTenantId ?? "" : user.tenantId ?? "";
+  const selectedTenantId = tenants.some((tenant) => tenant.id === requestedTenantId)
+    ? requestedTenantId
+    : tenants.some((tenant) => tenant.id === globalTenantId)
+      ? globalTenantId ?? ""
+      : "";
   const tenantId = selectedTenantId || null;
 
   const [

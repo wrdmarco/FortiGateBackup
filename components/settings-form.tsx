@@ -65,7 +65,7 @@ export function SettingsForm({
   const [entraEnabled, setEntraEnabled] = useState(values.entraEnabled);
   const [mailTestState, runMailTest, mailTestPending] = useActionState(testMailAction, { ok: false, message: "" });
   const scopeLabel = useMemo(
-    () => tenants.find((tenant) => tenant.id === selectedTenantId)?.name ?? "Globaal",
+    () => tenants.find((tenant) => tenant.id === selectedTenantId)?.name ?? "Global",
     [selectedTenantId, tenants]
   );
   const showTab = (id: SettingsTabId) => availableTabs.some((tab) => tab.id === id);
@@ -101,7 +101,6 @@ export function SettingsForm({
                 window.location.href = `/settings?${params.toString()}`;
               }}
             >
-              <option value="">Globaal</option>
               {tenants.map((tenant) => (
                 <option key={tenant.id} value={tenant.id}>
                   {tenant.name}
