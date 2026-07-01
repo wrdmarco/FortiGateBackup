@@ -9,52 +9,54 @@ export async function Shell({ children }: { children: React.ReactNode }) {
   const canManageTenants = user ? isSuperAdmin(user) : false;
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-30 border-b border-border bg-surface/95 backdrop-blur">
+    <div className="min-h-screen bg-background/80">
+      <header className="sticky top-0 z-30 border-b border-black/30 bg-[hsl(var(--header))] text-[hsl(var(--header-foreground))] shadow-lg shadow-slate-950/10">
+        <div className="h-1 bg-gradient-to-r from-primary via-warning to-[hsl(var(--accent))]" />
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-3">
           <Link href={user ? "/" : "/login"} className="flex items-center gap-3">
-            <span className="grid h-9 w-9 place-items-center rounded-md bg-primary text-sm font-bold text-primary-foreground">
+            <span className="grid h-10 w-10 place-items-center rounded-md border border-white/10 bg-primary text-sm font-black text-primary-foreground shadow-sm shadow-primary/30">
               FB
             </span>
             <span>
               <span className="block text-sm font-semibold leading-4">FortiGate Backup</span>
-              <span className="block text-xs text-muted-foreground">MSP portal</span>
+              <span className="block text-xs text-white/60">Security operations portal</span>
             </span>
           </Link>
           {user ? (
             <>
-              <nav className="flex flex-wrap items-center gap-1 rounded-md border border-border bg-background p-1 text-sm text-muted-foreground">
-                <Link className="rounded px-3 py-1.5 hover:bg-surface hover:text-foreground" href="/">
+              <nav className="flex flex-wrap items-center gap-1 rounded-md border border-white/10 bg-white/[0.06] p-1 text-sm text-white/70">
+                <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/">
                   Dashboard
                 </Link>
-                <Link className="rounded px-3 py-1.5 hover:bg-surface hover:text-foreground" href="/customers">
+                <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/customers">
                   Klanten
                 </Link>
-                <Link className="rounded px-3 py-1.5 hover:bg-surface hover:text-foreground" href="/fortigates">
+                <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/fortigates">
                   FortiGates
                 </Link>
-                <Link className="rounded px-3 py-1.5 hover:bg-surface hover:text-foreground" href="/backups">
+                <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/backups">
                   Backups
-                </Link>                <Link className="rounded px-3 py-1.5 hover:bg-surface hover:text-foreground" href="/alerts">
+                </Link>
+                <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/alerts">
                   Alerts
                 </Link>
                 {canManageTenants ? (
-                  <Link className="rounded px-3 py-1.5 hover:bg-surface hover:text-foreground" href="/tenants">
+                  <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/tenants">
                     Tenants
                   </Link>
                 ) : null}
-                <Link className="rounded px-3 py-1.5 hover:bg-surface hover:text-foreground" href="/settings">
+                <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/settings">
                   Instellingen
                 </Link>
               </nav>
               <form action={logoutAction}>
-                <button className="rounded-md border border-border px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground">
+                <button className="rounded-md border border-white/12 bg-white/[0.04] px-3 py-2 text-sm font-medium text-white/72 transition hover:bg-white/10 hover:text-white">
                   Uitloggen
                 </button>
               </form>
             </>
           ) : (
-            <Link className="rounded-md border border-border px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted" href="/login">
+            <Link className="rounded-md border border-white/12 bg-white/[0.04] px-3 py-2 text-sm font-medium text-white/72 transition hover:bg-white/10 hover:text-white" href="/login">
               Inloggen
             </Link>
           )}
@@ -75,7 +77,7 @@ export function PageHeader({
   actions?: React.ReactNode;
 }) {
   return (
-    <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+    <div className="mb-6 flex flex-wrap items-start justify-between gap-4 border-l-4 border-primary pl-4">
       <div>
         <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
         {description ? <p className="mt-2 max-w-3xl text-sm text-muted-foreground">{description}</p> : null}
@@ -97,9 +99,9 @@ export function Panel({
   className?: string;
 }) {
   return (
-    <section className={clsx("rounded-md border border-border bg-surface shadow-sm", className)}>
+    <section className={clsx("security-panel overflow-hidden rounded-md border border-border bg-surface shadow-sm shadow-slate-900/5", className)}>
       {title || description ? (
-        <div className="border-b border-border px-5 py-4">
+        <div className="border-b border-border bg-surface-soft/70 px-5 py-4 pt-5">
           {title ? <h2 className="font-semibold">{title}</h2> : null}
           {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
         </div>
@@ -111,7 +113,7 @@ export function Panel({
 
 export function TableShell({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={clsx("overflow-auto rounded-md border border-border bg-surface shadow-sm", className)}>
+    <div className={clsx("overflow-auto rounded-md border border-border bg-surface shadow-sm shadow-slate-900/5", className)}>
       {children}
     </div>
   );
@@ -129,9 +131,9 @@ export function Card({
   className?: string;
 }) {
   return (
-    <section className={clsx("rounded-md border border-border bg-surface p-5 shadow-sm", className)}>
+    <section className={clsx("security-panel overflow-hidden rounded-md border border-border bg-surface p-5 pt-6 shadow-sm shadow-slate-900/5", className)}>
       <p className="text-xs font-semibold uppercase text-muted-foreground">{title}</p>
-      <p className="mt-3 text-3xl font-semibold tracking-tight">{value}</p>
+      <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">{value}</p>
       {detail ? <p className="mt-1 text-sm text-muted-foreground">{detail}</p> : null}
     </section>
   );
@@ -146,12 +148,12 @@ export function Badge({
 }) {
   const tones = {
     neutral: "border-border bg-muted text-muted-foreground",
-    success: "border-green-200 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950 dark:text-green-300",
-    warning: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300",
-    danger: "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
+    success: "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300",
+    warning: "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300",
+    danger: "border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
   };
   return (
-    <span className={clsx("inline-flex items-center rounded-md border px-2 py-1 text-xs font-medium", tones[tone])}>
+    <span className={clsx("inline-flex items-center rounded-md border px-2 py-1 text-xs font-semibold", tones[tone])}>
       {children}
     </span>
   );
@@ -168,8 +170,8 @@ export function Button({
   className?: string;
 } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   const variants = {
-    primary: "bg-primary text-primary-foreground hover:bg-primary/90",
-    secondary: "border border-border bg-surface text-foreground hover:bg-muted",
+    primary: "bg-primary text-primary-foreground shadow-sm shadow-primary/20 hover:bg-primary/90",
+    secondary: "border border-border bg-surface text-foreground hover:border-primary/45 hover:bg-muted",
     danger: "border border-red-300 bg-surface text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950"
   };
   return (
@@ -198,8 +200,8 @@ export function ActionLink({
   target?: string;
 }) {
   const variants = {
-    primary: "bg-primary text-primary-foreground hover:bg-primary/90",
-    secondary: "border border-border bg-surface text-foreground hover:bg-muted",
+    primary: "bg-primary text-primary-foreground shadow-sm shadow-primary/20 hover:bg-primary/90",
+    secondary: "border border-border bg-surface text-foreground hover:border-primary/45 hover:bg-muted",
     danger: "border border-red-300 bg-surface text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950"
   };
   return (

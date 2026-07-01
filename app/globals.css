@@ -3,37 +3,47 @@
 @tailwind utilities;
 
 :root {
-  --background: 210 30% 97%;
-  --foreground: 222 24% 12%;
+  --background: 220 23% 96%;
+  --foreground: 225 22% 12%;
   --surface: 0 0% 100%;
-  --surface-soft: 210 29% 95%;
-  --muted: 210 18% 92%;
-  --muted-foreground: 215 12% 40%;
-  --border: 214 18% 84%;
-  --primary: 197 78% 31%;
+  --surface-soft: 220 22% 93%;
+  --muted: 220 16% 90%;
+  --muted-foreground: 221 10% 38%;
+  --border: 220 16% 81%;
+  --primary: 358 77% 45%;
   --primary-foreground: 0 0% 100%;
-  --danger: 0 72% 46%;
-  --success: 150 66% 30%;
-  --warning: 38 92% 40%;
+  --danger: 0 78% 42%;
+  --success: 153 68% 29%;
+  --warning: 37 92% 39%;
+  --header: 225 25% 13%;
+  --header-foreground: 210 28% 96%;
+  --accent: 198 86% 35%;
 }
 
 .dark {
-  --background: 222 18% 10%;
-  --foreground: 210 24% 96%;
-  --surface: 222 16% 13%;
-  --surface-soft: 220 14% 17%;
-  --muted: 220 13% 18%;
-  --muted-foreground: 215 15% 68%;
-  --border: 220 12% 26%;
-  --primary: 196 100% 43%;
-  --primary-foreground: 220 24% 10%;
-  --danger: 0 84% 60%;
-  --success: 150 68% 44%;
-  --warning: 42 92% 58%;
+  --background: 225 25% 9%;
+  --foreground: 210 26% 96%;
+  --surface: 225 21% 13%;
+  --surface-soft: 224 18% 17%;
+  --muted: 224 16% 19%;
+  --muted-foreground: 216 14% 69%;
+  --border: 222 13% 27%;
+  --primary: 358 84% 58%;
+  --primary-foreground: 0 0% 100%;
+  --danger: 0 86% 62%;
+  --success: 153 68% 44%;
+  --warning: 42 93% 58%;
+  --header: 225 28% 8%;
+  --header-foreground: 210 28% 97%;
+  --accent: 197 88% 56%;
 }
 
 body {
-  background: hsl(var(--background));
+  background:
+    linear-gradient(90deg, hsl(var(--foreground) / 0.035) 1px, transparent 1px),
+    linear-gradient(0deg, hsl(var(--foreground) / 0.03) 1px, transparent 1px),
+    hsl(var(--background));
+  background-size: 44px 44px, 44px 44px, auto;
   color: hsl(var(--foreground));
   font-feature-settings: "rlig" 1, "calt" 1;
 }
@@ -45,10 +55,18 @@ textarea {
 }
 
 ::selection {
-  background: hsl(var(--primary) / 0.18);
+  background: hsl(var(--primary) / 0.2);
 }
 
 @layer base {
+  a,
+  button,
+  input,
+  select,
+  textarea {
+    outline-color: hsl(var(--primary));
+  }
+
   table {
     border-collapse: separate;
     border-spacing: 0;
@@ -61,7 +79,7 @@ textarea {
 
 @layer components {
   .table-pro th {
-    padding: 0.75rem 1rem;
+    padding: 0.875rem 1rem;
     color: hsl(var(--muted-foreground));
     font-size: 0.75rem;
     letter-spacing: 0;
@@ -69,14 +87,27 @@ textarea {
   }
 
   .table-pro td {
-    padding: 0.875rem 1rem;
+    padding: 0.925rem 1rem;
   }
 
   .table-pro tbody tr {
-    transition: background-color 150ms ease;
+    transition: background-color 150ms ease, box-shadow 150ms ease;
   }
 
   .table-pro tbody tr:hover {
-    background: hsl(var(--surface-soft) / 0.72);
+    background: hsl(var(--surface-soft) / 0.82);
+    box-shadow: inset 3px 0 0 hsl(var(--primary));
+  }
+
+  .security-panel {
+    position: relative;
+  }
+
+  .security-panel::before {
+    background: linear-gradient(90deg, hsl(var(--primary)), hsl(var(--warning)), hsl(var(--accent)));
+    content: "";
+    height: 3px;
+    inset: 0 0 auto;
+    position: absolute;
   }
 }

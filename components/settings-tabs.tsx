@@ -24,7 +24,7 @@ export function SettingsTabs({ tabs, activeTab }: { tabs: SettingsTab[]; activeT
               className={clsx(
                 "rounded px-4 py-2 text-sm font-medium transition",
                 active?.id === tab.id
-                  ? "bg-primary text-primary-foreground shadow-sm"
+                  ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
               href={tab.href}

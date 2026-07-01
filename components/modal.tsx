@@ -36,12 +36,12 @@ export function Modal({
       </span>
       <dialog
         ref={dialogRef}
-        className="w-[min(94vw,1040px)] rounded-lg border border-border bg-surface p-0 text-foreground shadow-2xl backdrop:bg-slate-950/60 backdrop:backdrop-blur-sm"
+        className="security-panel w-[min(94vw,1040px)] overflow-hidden rounded-md border border-border bg-surface p-0 text-foreground shadow-2xl backdrop:bg-slate-950/60 backdrop:backdrop-blur-sm"
         onClick={(event) => {
           if (event.target === dialogRef.current) dialogRef.current?.close();
         }}
       >
-        <div className="border-b border-border bg-surface-soft px-6 py-5">
+        <div className="border-b border-border bg-surface-soft px-6 py-5 pt-6">
           <div className="flex items-start justify-between gap-4">
             <div>
               <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
@@ -49,7 +49,7 @@ export function Modal({
             </div>
             <button
               type="button"
-              className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+              className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-muted-foreground transition hover:border-primary/45 hover:bg-muted hover:text-foreground"
               onClick={() => dialogRef.current?.close()}
             >
               Sluiten
