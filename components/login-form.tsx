@@ -19,7 +19,7 @@ export function LoginForm() {
       <label className="grid gap-2 text-sm">
         <span className="font-medium text-foreground">E-mail</span>
         <input
-          className="h-11 rounded-md border border-border bg-background px-3 text-base outline-none transition placeholder:text-muted-foreground/70 focus:border-primary focus:ring-2 focus:ring-primary/15 sm:text-sm"
+          className="h-11 rounded-md border border-border bg-surface px-3 text-base outline-none transition placeholder:text-muted-foreground/70 focus:border-primary focus:ring-2 focus:ring-primary/15 sm:text-sm"
           name="email"
           type="email"
           autoComplete="email"
@@ -31,7 +31,7 @@ export function LoginForm() {
       <label className="grid gap-2 text-sm">
         <span className="font-medium text-foreground">Wachtwoord</span>
         <input
-          className="h-11 rounded-md border border-border bg-background px-3 text-base outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 sm:text-sm"
+          className="h-11 rounded-md border border-border bg-surface px-3 text-base outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 sm:text-sm"
           name="password"
           type="password"
           autoComplete="current-password"

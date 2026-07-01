@@ -10,21 +10,34 @@ export async function Shell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-background/80">
-      <header className="sticky top-0 z-30 border-b border-black/30 bg-[hsl(var(--header))] text-[hsl(var(--header-foreground))] shadow-lg shadow-slate-950/10">
-        <div className="h-1 bg-gradient-to-r from-primary via-warning to-[hsl(var(--accent))]" />
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-3">
-          <Link href={user ? "/" : "/login"} className="flex items-center gap-3">
-            <span className="grid h-10 w-10 place-items-center rounded-md border border-white/10 bg-primary text-sm font-black text-primary-foreground shadow-sm shadow-primary/30">
-              FB
-            </span>
-            <span>
-              <span className="block text-sm font-semibold leading-4">FortiGate Backup</span>
-              <span className="block text-xs text-white/60">Security operations portal</span>
-            </span>
-          </Link>
+      <header className="sticky top-0 z-30 border-b border-black/25 bg-[hsl(var(--header))] text-[hsl(var(--header-foreground))] shadow-lg shadow-slate-950/10">
+        <div className="h-0.5 bg-gradient-to-r from-primary to-[hsl(var(--accent))]" />
+        <div className="mx-auto grid max-w-[1440px] gap-3 px-4 py-3 lg:px-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Link href={user ? "/" : "/login"} className="flex items-center gap-3">
+              <span className="grid h-10 w-10 place-items-center rounded-md border border-white/10 bg-primary text-sm font-black text-primary-foreground shadow-sm shadow-primary/30">
+                FB
+              </span>
+              <span>
+                <span className="block text-sm font-semibold leading-4">FortiGate Backup</span>
+                <span className="block text-xs text-white/60">Security operations portal</span>
+              </span>
+            </Link>
+            {user ? (
+              <form action={logoutAction}>
+                <button className="rounded-md border border-white/12 bg-white/[0.04] px-3 py-2 text-sm font-medium text-white/72 transition hover:bg-white/10 hover:text-white">
+                  Uitloggen
+                </button>
+              </form>
+            ) : (
+              <Link className="rounded-md border border-white/12 bg-white/[0.04] px-3 py-2 text-sm font-medium text-white/72 transition hover:bg-white/10 hover:text-white" href="/login">
+                Inloggen
+              </Link>
+            )}
+          </div>
           {user ? (
-            <>
-              <nav className="flex flex-wrap items-center gap-1 rounded-md border border-white/10 bg-white/[0.06] p-1 text-sm text-white/70">
+            <div className="overflow-x-auto">
+              <nav className="flex w-max min-w-full items-center gap-1 rounded-md border border-white/10 bg-white/[0.055] p-1 text-sm text-white/70">
                 <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/">
                   Dashboard
                 </Link>
@@ -49,20 +62,11 @@ export async function Shell({ children }: { children: React.ReactNode }) {
                   Instellingen
                 </Link>
               </nav>
-              <form action={logoutAction}>
-                <button className="rounded-md border border-white/12 bg-white/[0.04] px-3 py-2 text-sm font-medium text-white/72 transition hover:bg-white/10 hover:text-white">
-                  Uitloggen
-                </button>
-              </form>
-            </>
-          ) : (
-            <Link className="rounded-md border border-white/12 bg-white/[0.04] px-3 py-2 text-sm font-medium text-white/72 transition hover:bg-white/10 hover:text-white" href="/login">
-              Inloggen
-            </Link>
-          )}
+            </div>
+          ) : null}
         </div>
       </header>
-      <main className="mx-auto max-w-7xl px-4 py-8">{children}</main>
+      <main className="mx-auto max-w-[1440px] px-4 py-6 lg:px-6 lg:py-8">{children}</main>
     </div>
   );
 }
@@ -77,9 +81,9 @@ export function PageHeader({
   actions?: React.ReactNode;
 }) {
   return (
-    <div className="mb-6 flex flex-wrap items-start justify-between gap-4 border-l-4 border-primary pl-4">
+    <div className="professional-surface mb-6 flex flex-wrap items-start justify-between gap-4 rounded-md border border-border px-5 py-4 shadow-sm shadow-slate-900/5">
       <div>
-        <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
         {description ? <p className="mt-2 max-w-3xl text-sm text-muted-foreground">{description}</p> : null}
       </div>
       {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
@@ -99,9 +103,9 @@ export function Panel({
   className?: string;
 }) {
   return (
-    <section className={clsx("security-panel overflow-hidden rounded-md border border-border bg-surface shadow-sm shadow-slate-900/5", className)}>
+    <section className={clsx("security-panel professional-surface overflow-hidden rounded-md border border-border shadow-sm shadow-slate-900/5", className)}>
       {title || description ? (
-        <div className="border-b border-border bg-surface-soft/70 px-5 py-4 pt-5">
+        <div className="border-b border-border bg-surface/60 px-5 py-4 pt-5">
           {title ? <h2 className="font-semibold">{title}</h2> : null}
           {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
         </div>
@@ -131,9 +135,9 @@ export function Card({
   className?: string;
 }) {
   return (
-    <section className={clsx("security-panel overflow-hidden rounded-md border border-border bg-surface p-5 pt-6 shadow-sm shadow-slate-900/5", className)}>
+    <section className={clsx("security-panel professional-surface overflow-hidden rounded-md border border-border p-5 pt-6 shadow-sm shadow-slate-900/5", className)}>
       <p className="text-xs font-semibold uppercase text-muted-foreground">{title}</p>
-      <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">{value}</p>
+      <p className="mt-3 text-2xl font-semibold tracking-tight text-foreground">{value}</p>
       {detail ? <p className="mt-1 text-sm text-muted-foreground">{detail}</p> : null}
     </section>
   );
@@ -177,7 +181,7 @@ export function Button({
   return (
     <button
       className={clsx(
-        "rounded-md px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-45",
+        "inline-flex min-h-10 items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-45",
         variants[variant],
         className
       )}
@@ -205,7 +209,7 @@ export function ActionLink({
     danger: "border border-red-300 bg-surface text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950"
   };
   return (
-    <Link className={clsx("rounded-md px-4 py-2 text-sm font-medium transition", variants[variant])} href={href} target={target}>
+    <Link className={clsx("inline-flex min-h-10 items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition", variants[variant])} href={href} target={target}>
       {children}
     </Link>
   );
@@ -225,8 +229,8 @@ export function Field({
   defaultValue?: string | number;
 }) {
   return (
-    <label className="grid gap-1 text-sm">
-      <span className="font-medium">{label}</span>
+    <label className="grid gap-1.5 text-sm">
+      <span className="font-medium text-foreground">{label}</span>
       <input
         className="rounded-md border border-border bg-surface px-3 py-2 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15"
         name={name}
