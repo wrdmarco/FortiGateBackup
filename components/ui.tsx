@@ -58,6 +58,9 @@ export async function Shell({ children }: { children: React.ReactNode }) {
                     Tenants
                   </Link>
                 ) : null}
+                <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/roles">
+                  Rollen
+                </Link>
                 <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/settings">
                   Instellingen
                 </Link>

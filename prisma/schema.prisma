@@ -52,6 +52,7 @@ model Tenant {
   updatedAt DateTime        @updatedAt
   customers Customer[]
   users     User[]
+  accessRoles AccessRole[]
   settings  SystemSetting[]
   auditLogs AuditLog[]
 }
@@ -74,6 +75,52 @@ model User {
   accounts      Account[]
   sessions      Session[]
   auditLogs     AuditLog[]
+  accessRoles   UserAccessRole[]
+}
+
+model AccessPermission {
+  id          String                 @id @default(cuid())
+  key         String                 @unique
+  category    String
+  description String
+  createdAt   DateTime               @default(now())
+  roles       AccessRolePermission[]
+}
+
+model AccessRole {
+  id          String                 @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  system      Boolean                @default(false)
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+  tenant      Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  permissions AccessRolePermission[]
+  users       UserAccessRole[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+model AccessRolePermission {
+  roleId       String
+  permissionId String
+  role         AccessRole       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   AccessPermission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model UserAccessRole {
+  userId     String
+  roleId     String
+  assignedAt DateTime   @default(now())
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       AccessRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([roleId])
 }
 
 model Account {

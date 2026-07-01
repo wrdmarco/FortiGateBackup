@@ -1,5 +1,6 @@
 import { User, UserRole } from "@prisma/client";
 import { notFound, redirect } from "next/navigation";
+import { hasPermission, PermissionKey } from "@/lib/rbac";
 import { requireUser } from "@/lib/session";
 
 export function isSuperAdmin(user: Pick<User, "role">) {
@@ -26,5 +27,17 @@ export function assertTenantAccess(user: Pick<User, "role" | "tenantId">, tenant
   if (isSuperAdmin(user)) return;
   if (!tenantId || tenantId !== user.tenantId) {
     throw new Error("Geen toegang tot deze tenant.");
+  }
+}
+
+export async function requirePermission(permission: PermissionKey) {
+  const user = await requireTenantUser();
+  if (!(await hasPermission(user, permission))) notFound();
+  return user;
+}
+
+export async function assertPermission(user: Pick<User, "id" | "role" | "tenantId">, permission: PermissionKey) {
+  if (!(await hasPermission(user, permission))) {
+    throw new Error("Geen toestemming voor deze actie.");
   }
 }

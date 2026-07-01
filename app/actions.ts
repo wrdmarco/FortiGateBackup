@@ -10,6 +10,7 @@ import { encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 import { runBackup } from "@/lib/fortigate";
 import { sendMail } from "@/lib/mail";
+import { assignDefaultTenantRole, ensureTenantRbac } from "@/lib/rbac";
 import { createSession, destroySession } from "@/lib/session";
 import { deleteSetting, setSetting } from "@/lib/settings";
 import { isItGlueEnabled } from "@/lib/itglue";
@@ -137,6 +138,7 @@ export async function createTenant(formData: FormData) {
   });
   await auditLog({ action: "tenant.created", tenantId: tenant.id, entity: "Tenant", entityId: tenant.id });
   await auditLog({ action: "user.created", tenantId: tenant.id, entity: "User", entityId: admin.id });
+  await assignDefaultTenantRole(admin.id, tenant.id, admin.role);
   await createSession(admin.id);
   revalidatePath("/");
   redirect("/");
@@ -182,6 +184,7 @@ export async function createManagedTenant(formData: FormData) {
     entity: "User",
     entityId: admin.id
   });
+  await assignDefaultTenantRole(admin.id, tenant.id, admin.role);
   revalidatePath("/tenants");
 }
 
@@ -233,6 +236,8 @@ export async function createManagedTenantWithState(_state: ActionState, formData
       entityId: admin.id,
       metadata: { email: admin.email, role: admin.role, mustChangePassword: true }
     });
+    await ensureTenantRbac(tenant.id);
+    await assignDefaultTenantRole(admin.id, tenant.id, admin.role);
 
     try {
       await sendTemporaryPasswordMail({
@@ -307,6 +312,7 @@ export async function createTenantUser(formData: FormData) {
     entityId: created.id,
     metadata: { email: created.email, role: created.role }
   });
+  await assignDefaultTenantRole(created.id, tenant.id, created.role);
   await sendTemporaryPasswordMail({
     tenantId: tenant.id,
     tenantName: tenant.name,

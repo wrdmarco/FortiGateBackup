@@ -1,0 +1,142 @@
+import { User, UserRole } from "@prisma/client";
+import { prisma } from "@/lib/db";
+
+export const permissions = [
+  { key: "tenant.dashboard.read", category: "Tenant", description: "Tenant dashboard bekijken" },
+  { key: "tenant.users.read", category: "Tenant", description: "Gebruikers binnen tenant bekijken" },
+  { key: "tenant.users.create", category: "Tenant", description: "Tenantgebruikers aanmaken" },
+  { key: "tenant.users.update", category: "Tenant", description: "Tenantgebruikers wijzigen" },
+  { key: "tenant.users.delete", category: "Tenant", description: "Tenantgebruikers verwijderen" },
+  { key: "tenant.roles.read", category: "Tenant", description: "Rollen bekijken" },
+  { key: "tenant.roles.create", category: "Tenant", description: "Rollen aanmaken" },
+  { key: "tenant.roles.update", category: "Tenant", description: "Rollen wijzigen" },
+  { key: "tenant.roles.delete", category: "Tenant", description: "Rollen verwijderen" },
+  { key: "tenant.settings.read", category: "Tenant", description: "Tenantinstellingen bekijken" },
+  { key: "tenant.settings.update", category: "Tenant", description: "Tenantinstellingen wijzigen" },
+  { key: "customers.read", category: "Klanten", description: "Klanten bekijken" },
+  { key: "customers.create", category: "Klanten", description: "Klanten aanmaken" },
+  { key: "customers.update", category: "Klanten", description: "Klanten wijzigen" },
+  { key: "customers.delete", category: "Klanten", description: "Klanten verwijderen" },
+  { key: "fortigates.read", category: "FortiGates", description: "FortiGates bekijken" },
+  { key: "fortigates.create", category: "FortiGates", description: "FortiGates toevoegen" },
+  { key: "fortigates.update", category: "FortiGates", description: "FortiGate configuratie wijzigen" },
+  { key: "fortigates.delete", category: "FortiGates", description: "FortiGate verwijderen" },
+  { key: "fortigates.backup.run", category: "FortiGates", description: "Handmatige backup starten" },
+  { key: "fortigates.logs.read", category: "FortiGates", description: "FortiGate logs bekijken" },
+  { key: "fortigates.firmware.read", category: "FortiGates", description: "Firmware/status bekijken" },
+  { key: "backups.read", category: "Backups", description: "Backupoverzicht bekijken" },
+  { key: "backups.download", category: "Backups", description: "Backupbestand downloaden" },
+  { key: "backups.diff.read", category: "Backups", description: "Diff bekijken" },
+  { key: "alerts.read", category: "Alerts", description: "Alerts bekijken" },
+  { key: "audit.read", category: "Audit", description: "Auditlogs binnen tenant bekijken" },
+  { key: "integrations.mail.read", category: "Integraties", description: "Mailconfiguratie bekijken" },
+  { key: "integrations.mail.update", category: "Integraties", description: "Mailconfiguratie wijzigen" },
+  { key: "integrations.mail.test", category: "Integraties", description: "Testmail sturen" },
+  { key: "integrations.itglue.read", category: "Integraties", description: "IT Glue instellingen bekijken" },
+  { key: "integrations.itglue.update", category: "Integraties", description: "IT Glue instellingen wijzigen" },
+  { key: "integrations.sso.read", category: "Integraties", description: "SSO instellingen bekijken" },
+  { key: "integrations.sso.update", category: "Integraties", description: "SSO instellingen wijzigen" }
+] as const;
+
+export type PermissionKey = (typeof permissions)[number]["key"];
+
+const allPermissionKeys = permissions.map((permission) => permission.key);
+const readPermissionKeys = allPermissionKeys.filter((key) => key.endsWith(".read"));
+
+const defaultRoles = [
+  {
+    name: "Tenant Admin",
+    description: "Volledig beheer binnen deze tenant.",
+    permissionKeys: allPermissionKeys
+  },
+  {
+    name: "Operator",
+    description: "Dagelijks beheer van klanten, FortiGates en backups.",
+    permissionKeys: allPermissionKeys.filter((key) => !key.startsWith("tenant.roles.") && !key.startsWith("tenant.settings."))
+  },
+  {
+    name: "Backup Operator",
+    description: "Backups bekijken, vergelijken, downloaden en starten.",
+    permissionKeys: [
+      "tenant.dashboard.read",
+      "customers.read",
+      "fortigates.read",
+      "fortigates.backup.run",
+      "fortigates.logs.read",
+      "backups.read",
+      "backups.download",
+      "backups.diff.read",
+      "alerts.read"
+    ]
+  },
+  {
+    name: "Auditor",
+    description: "Alleen lezen inclusief audit en diff.",
+    permissionKeys: [...readPermissionKeys, "backups.download", "backups.diff.read", "audit.read"]
+  },
+  {
+    name: "Viewer",
+    description: "Alleen lezen zonder downloadrechten.",
+    permissionKeys: readPermissionKeys
+  }
+] as const;
+
+export async function ensurePermissions() {
+  for (const permission of permissions) {
+    await prisma.accessPermission.upsert({
+      where: { key: permission.key },
+      update: { category: permission.category, description: permission.description },
+      create: permission
+    });
+  }
+}
+
+export async function ensureTenantRbac(tenantId: string) {
+  await ensurePermissions();
+  const permissionRecords = await prisma.accessPermission.findMany();
+  const permissionIds = new Map(permissionRecords.map((permission) => [permission.key, permission.id]));
+
+  for (const roleTemplate of defaultRoles) {
+    const role = await prisma.accessRole.upsert({
+      where: { tenantId_name: { tenantId, name: roleTemplate.name } },
+      update: { description: roleTemplate.description, system: true },
+      create: { tenantId, name: roleTemplate.name, description: roleTemplate.description, system: true }
+    });
+    await prisma.accessRolePermission.deleteMany({ where: { roleId: role.id } });
+    for (const key of roleTemplate.permissionKeys) {
+      const permissionId = permissionIds.get(key);
+      if (permissionId) {
+        await prisma.accessRolePermission.create({ data: { roleId: role.id, permissionId } });
+      }
+    }
+  }
+}
+
+export async function assignDefaultTenantRole(userId: string, tenantId: string, legacyRole: UserRole) {
+  await ensureTenantRbac(tenantId);
+  const roleName = legacyRole === UserRole.ADMIN || legacyRole === UserRole.SUPER_ADMIN ? "Tenant Admin" : "Viewer";
+  const role = await prisma.accessRole.findUnique({ where: { tenantId_name: { tenantId, name: roleName } } });
+  if (!role) return;
+  await prisma.userAccessRole.upsert({
+    where: { userId_roleId: { userId, roleId: role.id } },
+    update: {},
+    create: { userId, roleId: role.id }
+  });
+}
+
+export async function userPermissionKeys(user: Pick<User, "id" | "role" | "tenantId">) {
+  if (user.role === UserRole.SUPER_ADMIN) return new Set(allPermissionKeys);
+  if (!user.tenantId) return new Set<string>();
+  const assignments = await prisma.userAccessRole.findMany({
+    where: { userId: user.id, role: { tenantId: user.tenantId } },
+    include: { role: { include: { permissions: { include: { permission: true } } } } }
+  });
+  if (!assignments.length) {
+    return new Set(user.role === UserRole.ADMIN ? allPermissionKeys : readPermissionKeys);
+  }
+  return new Set(assignments.flatMap((assignment) => assignment.role.permissions.map((item) => item.permission.key)));
+}
+
+export async function hasPermission(user: Pick<User, "id" | "role" | "tenantId">, permission: PermissionKey) {
+  return (await userPermissionKeys(user)).has(permission);
+}
