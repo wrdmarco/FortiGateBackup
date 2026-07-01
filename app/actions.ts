@@ -12,7 +12,7 @@ import { prisma } from "@/lib/db";
 import { runBackup } from "@/lib/fortigate";
 import { assertMailReady, sendMail } from "@/lib/mail";
 import { assignDefaultTenantRole, ensureTenantRbac, permissions } from "@/lib/rbac";
-import { createSession, destroySession } from "@/lib/session";
+import { createSession, destroySession, requireUser } from "@/lib/session";
 import { deleteSetting, setSetting } from "@/lib/settings";
 import { isItGlueEnabled } from "@/lib/itglue";
 import { normalizeSiteUrl } from "@/lib/site-url";
@@ -177,6 +177,7 @@ export async function createManagedTenant(formData: FormData) {
   const adminEmail = String(formData.get("adminEmail") ?? "").toLowerCase();
   const adminPassword = generateTemporaryPassword();
   const adminName = String(formData.get("adminName") ?? "");
+  const portalSiteUrl = normalizeOptionalSiteUrl(formData.get("portal.siteUrl"));
   if (!adminEmail) {
     throw new Error("Admin e-mail is verplicht.");
   }
@@ -184,6 +185,9 @@ export async function createManagedTenant(formData: FormData) {
   await assertMailReady(mailTenantId);
 
   const tenant = await prisma.tenant.create({ data });
+  if (portalSiteUrl) {
+    await setSetting("portal.siteUrl", portalSiteUrl, { tenantId: tenant.id });
+  }
   const admin = await prisma.user.create({
     data: {
       tenantId: tenant.id,
@@ -239,6 +243,7 @@ export async function createManagedTenantWithState(_state: ActionState, formData
     const adminEmail = String(formData.get("adminEmail") ?? "").trim().toLowerCase();
     const adminPassword = generateTemporaryPassword();
     const adminName = String(formData.get("adminName") ?? "").trim();
+    const portalSiteUrl = normalizeOptionalSiteUrl(formData.get("portal.siteUrl"));
     const data = tenantSchema.parse({
       name,
       slug: await createUniqueTenantSlug(name),
@@ -253,6 +258,15 @@ export async function createManagedTenantWithState(_state: ActionState, formData
 
     const { tenant, admin } = await prisma.$transaction(async (tx) => {
       const tenant = await tx.tenant.create({ data });
+      if (portalSiteUrl) {
+        await tx.systemSetting.create({
+          data: {
+            tenantId: tenant.id,
+            key: "portal.siteUrl",
+            value: portalSiteUrl
+          }
+        });
+      }
       const admin = await tx.user.create({
         data: {
           tenantId: tenant.id,
@@ -671,11 +685,12 @@ export type ChangePasswordState = {
 };
 
 export async function changeOwnPasswordAction(_state: ChangePasswordState, formData: FormData): Promise<ChangePasswordState> {
-  const user = await requireTenantUser();
+  const user = await requireUser({ allowPasswordChange: true });
   const currentPassword = String(formData.get("currentPassword") ?? "");
   const password = String(formData.get("password") ?? "");
   const confirmPassword = String(formData.get("confirmPassword") ?? "");
 
+  if (!isSuperAdmin(user) && !user.tenantId) redirect("/login");
   if (!user.passwordHash) return { ok: false, message: "Dit account gebruikt geen lokaal wachtwoord." };
   if (!(await bcrypt.compare(currentPassword, user.passwordHash))) {
     return { ok: false, message: "Het huidige wachtwoord klopt niet." };

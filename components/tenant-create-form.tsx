@@ -16,6 +16,12 @@ export function TenantCreateForm() {
   return (
     <form ref={formRef} action={formAction} className="grid gap-4">
       <TextField label="Tenantnaam" name="name" required />
+      <TextField
+        label="Custom domein"
+        name="portal.siteUrl"
+        placeholder="https://backup.klant.nl"
+        help="Optioneel. Wordt gebruikt voor portal-links en mails van deze tenant."
+      />
       <div className="border-t border-border pt-4">
         <h3 className="mb-3 font-semibold">Eerste tenantadmin</h3>
         <div className="grid gap-4">
@@ -45,12 +51,16 @@ function TextField({
   label,
   name,
   type = "text",
-  required = false
+  required = false,
+  placeholder,
+  help
 }: {
   label: string;
   name: string;
   type?: string;
   required?: boolean;
+  placeholder?: string;
+  help?: string;
 }) {
   return (
     <label className="grid gap-1.5 text-sm">
@@ -60,7 +70,9 @@ function TextField({
         name={name}
         type={type}
         required={required}
+        placeholder={placeholder}
       />
+      {help ? <span className="text-xs text-muted-foreground">{help}</span> : null}
     </label>
   );
 }
