@@ -6,12 +6,12 @@ import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
 import { auditLog } from "@/lib/audit";
 import { removeBackupFiles } from "@/lib/backup-cleanup";
-import { assertTenantAccess, isSuperAdmin, requireSuperAdmin, requireTenantUser } from "@/lib/authz";
+import { assertPermission, assertTenantAccess, isSuperAdmin, requireSuperAdmin, requireTenantUser } from "@/lib/authz";
 import { encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 import { runBackup } from "@/lib/fortigate";
 import { assertMailReady, sendMail } from "@/lib/mail";
-import { assignDefaultTenantRole, ensureTenantRbac } from "@/lib/rbac";
+import { assignDefaultTenantRole, ensureTenantRbac, permissions } from "@/lib/rbac";
 import { createSession, destroySession } from "@/lib/session";
 import { deleteSetting, setSetting } from "@/lib/settings";
 import { isItGlueEnabled } from "@/lib/itglue";
@@ -28,6 +28,7 @@ export type ActionState = {
 };
 
 export type TenantUserCreateState = ActionState;
+export type AccessRoleCreateState = ActionState;
 
 function bool(value: FormDataEntryValue | null) {
   return value === "on" || value === "true";
@@ -81,6 +82,13 @@ function generateTemporaryPassword() {
 
 function isUniqueConstraintError(error: unknown) {
   return typeof error === "object" && error !== null && "code" in error && error.code === "P2002";
+}
+
+async function assertRoleManagementAccess(tenantId: string, action: "create" | "delete") {
+  const user = await requireTenantUser();
+  assertTenantAccess(user, tenantId);
+  await assertPermission(user, isSuperAdmin(user) ? `platform.roles.${action}` : `tenant.roles.${action}`);
+  return user;
 }
 
 async function sendTemporaryPasswordMail(input: {
@@ -389,6 +397,84 @@ export async function createTenantUserWithState(_state: TenantUserCreateState, f
       message: error instanceof Error ? error.message : "Gebruiker kon niet worden aangemaakt."
     };
   }
+}
+
+export async function createAccessRoleWithState(_state: AccessRoleCreateState, formData: FormData): Promise<AccessRoleCreateState> {
+  try {
+    const tenantId = String(formData.get("tenantId") ?? "");
+    const name = String(formData.get("name") ?? "").trim();
+    const description = String(formData.get("description") ?? "").trim();
+    const selectedKeys = formData.getAll("permissionKeys").map(String);
+
+    if (!tenantId) return { ok: false, message: "Tenant is verplicht." };
+    if (name.length < 2) return { ok: false, message: "Rolnaam moet minimaal 2 tekens bevatten." };
+    const user = await assertRoleManagementAccess(tenantId, "create");
+    const allowedKeys = new Set<string>(
+      permissions
+        .filter((permission) => isSuperAdmin(user) || !permission.key.startsWith("platform."))
+        .map((permission) => permission.key)
+    );
+    const permissionKeys = [...new Set(selectedKeys)].filter((key) => allowedKeys.has(key));
+    await ensureTenantRbac(tenantId);
+
+    const permissionRecords = permissionKeys.length
+      ? await prisma.accessPermission.findMany({ where: { key: { in: permissionKeys } }, select: { id: true } })
+      : [];
+    const role = await prisma.accessRole.create({
+      data: {
+        tenantId,
+        name,
+        description: description || null,
+        system: false,
+        permissions: {
+          create: permissionRecords.map((permission) => ({
+            permission: { connect: { id: permission.id } }
+          }))
+        }
+      }
+    });
+    await auditLog({
+      action: "role.created",
+      tenantId,
+      userId: user.id,
+      entity: "AccessRole",
+      entityId: role.id,
+      metadata: { name, permissions: permissionKeys.length }
+    });
+    revalidatePath("/roles");
+    return { ok: true, message: `Rol ${name} is aangemaakt.` };
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      return { ok: false, message: "Er bestaat al een rol met deze naam binnen deze tenant." };
+    }
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Rol kon niet worden aangemaakt."
+    };
+  }
+}
+
+export async function deleteAccessRole(formData: FormData) {
+  const roleId = String(formData.get("roleId") ?? "");
+  if (!roleId) throw new Error("Rol is verplicht.");
+  const role = await prisma.accessRole.findUniqueOrThrow({
+    where: { id: roleId },
+    include: { _count: { select: { users: true } } }
+  });
+  const user = await assertRoleManagementAccess(role.tenantId, "delete");
+  if (role.system) throw new Error("Systeemrollen kunnen niet worden verwijderd.");
+  if (role._count.users > 0) throw new Error("Deze rol kan pas worden verwijderd wanneer er geen leden meer aan gekoppeld zijn.");
+
+  await prisma.accessRole.delete({ where: { id: role.id } });
+  await auditLog({
+    action: "role.deleted",
+    tenantId: role.tenantId,
+    userId: user.id,
+    entity: "AccessRole",
+    entityId: role.id,
+    metadata: { name: role.name }
+  });
+  revalidatePath("/roles");
 }
 
 export async function deleteTenantUser(formData: FormData) {

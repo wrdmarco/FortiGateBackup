@@ -1,9 +1,11 @@
 import Link from "next/link";
 import type { Prisma } from "@prisma/client";
+import { deleteAccessRole } from "@/app/actions";
+import { RoleCreateForm } from "@/components/role-create-form";
 import { isSuperAdmin, requireTenantUser } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { ensureTenantRbac, permissions } from "@/lib/rbac";
-import { PageHeader, Panel, Shell } from "@/components/ui";
+import { Button, PageHeader, Panel, Shell } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +15,11 @@ type RoleWithDetails = Prisma.AccessRoleGetPayload<{
     _count: { select: { users: true } };
   };
 }>;
+type PermissionForDisplay = {
+  key: string;
+  category: string;
+  description: string;
+};
 
 export default async function RolesPage({
   searchParams
@@ -49,11 +56,18 @@ export default async function RolesPage({
           : "De rollen konden niet worden geladen. Controleer of de RBAC migratie is uitgevoerd.";
     }
   }
-  const selectedTenant = tenants.find((tenant) => tenant.id === selectedTenantId);
-  const groupedPermissions = permissions.reduce<Record<string, typeof permissions[number][]>>((groups, permission) => {
+  const selectedTenant = selectedTenantId
+    ? tenants.find((tenant) => tenant.id === selectedTenantId) ??
+      (await prisma.tenant.findUnique({ where: { id: selectedTenantId }, select: { id: true, name: true } }))
+    : null;
+  const visiblePermissions: PermissionForDisplay[] = permissions
+    .filter((permission) => isSuperAdmin(user) || !permission.key.startsWith("platform."))
+    .map((permission) => ({ key: permission.key, category: permission.category, description: permission.description }));
+  const groupedPermissions = visiblePermissions.reduce<Record<string, PermissionForDisplay[]>>((groups, permission) => {
     groups[permission.category] = [...(groups[permission.category] ?? []), permission];
     return groups;
   }, {});
+  const groupedPermissionEntries = Object.entries(groupedPermissions);
 
   return (
     <Shell>
@@ -87,17 +101,39 @@ export default async function RolesPage({
               {rolesError}
             </div>
           ) : null}
+          {selectedTenantId && !rolesError ? (
+            <RoleCreateForm tenantId={selectedTenantId} groupedPermissions={groupedPermissionEntries} />
+          ) : null}
           <div className="grid gap-4">
             {roles.map((role) => (
               <section key={role.id} className="rounded-md border border-border bg-surface-soft p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <h2 className="font-semibold">{role.name}</h2>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="font-semibold">{role.name}</h2>
+                      {role.system ? (
+                        <span className="rounded-md border border-border bg-surface px-2 py-1 text-xs font-semibold text-muted-foreground">
+                          Systeem
+                        </span>
+                      ) : null}
+                    </div>
                     {role.description ? <p className="mt-1 text-sm text-muted-foreground">{role.description}</p> : null}
                   </div>
-                  <span className="rounded-md border border-border bg-surface px-2 py-1 text-xs font-semibold text-muted-foreground">
-                    {role._count.users} gebruiker{role._count.users === 1 ? "" : "s"}
-                  </span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-md border border-border bg-surface px-2 py-1 text-xs font-semibold text-muted-foreground">
+                      {role._count.users} gebruiker{role._count.users === 1 ? "" : "s"}
+                    </span>
+                    {!role.system && role._count.users === 0 ? (
+                      <form action={deleteAccessRole}>
+                        <input type="hidden" name="roleId" value={role.id} />
+                        <Button variant="danger">Verwijderen</Button>
+                      </form>
+                    ) : !role.system ? (
+                      <Button variant="secondary" disabled>
+                        Heeft leden
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {role.permissions
@@ -116,7 +152,7 @@ export default async function RolesPage({
 
         <Panel title="Permission catalogus">
           <div className="grid gap-4">
-            {Object.entries(groupedPermissions).map(([category, items]) => (
+            {groupedPermissionEntries.map(([category, items]) => (
               <section key={category}>
                 <h2 className="text-sm font-semibold">{category}</h2>
                 <div className="mt-2 grid gap-2">
