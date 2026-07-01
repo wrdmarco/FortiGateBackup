@@ -1,7 +1,8 @@
-import { createTenantUser, deleteTenant, deleteTenantUser, setTenantActive } from "@/app/actions";
+import { deleteTenant, deleteTenantUser, setTenantActive } from "@/app/actions";
 import { DeleteConfirmInput } from "@/components/delete-confirm-input";
 import { Modal } from "@/components/modal";
 import { TenantCreateForm } from "@/components/tenant-create-form";
+import { TenantUserCreateForm } from "@/components/tenant-user-create-form";
 import { Badge, Button, Field, PageHeader, Shell, TableShell } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
@@ -98,27 +99,7 @@ export default async function TenantsPage() {
                           <div className="grid gap-6">
                             <section>
                               <h3 className="font-semibold">Nieuwe gebruiker</h3>
-                              <form action={createTenantUser} className="mt-3 grid gap-4">
-                                <input type="hidden" name="tenantId" value={tenant.id} />
-                                <div className="grid gap-4 md:grid-cols-2">
-                                  <Field label="Naam" name="name" />
-                                  <Field label="E-mail" name="email" type="email" required />
-                                </div>
-                                <div className="grid gap-4 md:grid-cols-2">
-                                  <label className="grid gap-1 text-sm">
-                                    <span className="font-medium">Rol</span>
-                                    <select className="rounded-md border border-border bg-surface px-3 py-2" name="role" defaultValue="VIEWER">
-                                      <option value="ADMIN">Admin</option>
-                                      <option value="VIEWER">Viewer</option>
-                                    </select>
-                                  </label>
-                                  <Field label="Tijdelijk wachtwoord" name="password" type="password" required />
-                                </div>
-                                <div className="rounded-md border border-border bg-surface-soft p-3 text-sm text-muted-foreground">
-                                  Admins kunnen klanten, FortiGates en backups binnen deze tenant beheren. Viewers zijn bedoeld voor meekijken en controle.
-                                </div>
-                                <Button>Gebruiker toevoegen</Button>
-                              </form>
+                              <TenantUserCreateForm tenantId={tenant.id} />
                             </section>
 
                             <section className="border-t border-border pt-5">

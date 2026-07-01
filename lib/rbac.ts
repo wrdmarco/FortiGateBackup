@@ -2,6 +2,26 @@ import { User, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/db";
 
 export const permissions = [
+  { key: "platform.dashboard.read", category: "Platform", description: "Platformbreed dashboard bekijken" },
+  { key: "platform.tenants.read", category: "Platform", description: "Alle tenants bekijken" },
+  { key: "platform.tenants.create", category: "Platform", description: "Nieuwe tenants aanmaken" },
+  { key: "platform.tenants.update", category: "Platform", description: "Tenantstatus en tenantgegevens wijzigen" },
+  { key: "platform.tenants.delete", category: "Platform", description: "Tenants verwijderen" },
+  { key: "platform.users.read", category: "Platform", description: "Platformbreed gebruikers bekijken" },
+  { key: "platform.users.create", category: "Platform", description: "Gebruikers voor tenants aanmaken" },
+  { key: "platform.users.update", category: "Platform", description: "Platformbreed gebruikers wijzigen" },
+  { key: "platform.users.delete", category: "Platform", description: "Platformbreed gebruikers verwijderen" },
+  { key: "platform.roles.read", category: "Platform", description: "Platformrollen en permission catalogus bekijken" },
+  { key: "platform.roles.create", category: "Platform", description: "Platformrollen aanmaken" },
+  { key: "platform.roles.update", category: "Platform", description: "Platformrollen wijzigen" },
+  { key: "platform.roles.delete", category: "Platform", description: "Platformrollen verwijderen" },
+  { key: "platform.settings.read", category: "Platform", description: "Globale applicatie-instellingen bekijken" },
+  { key: "platform.settings.update", category: "Platform", description: "Globale applicatie-instellingen wijzigen" },
+  { key: "platform.updates.read", category: "Platform", description: "Applicatie-update status bekijken" },
+  { key: "platform.updates.run", category: "Platform", description: "Applicatie-update starten" },
+  { key: "platform.audit.read", category: "Platform", description: "Platformbrede auditlogs bekijken" },
+  { key: "platform.health.read", category: "Platform", description: "Healthchecks en systeemstatus bekijken" },
+  { key: "platform.version.read", category: "Platform", description: "Applicatieversie en Git commit bekijken" },
   { key: "tenant.dashboard.read", category: "Tenant", description: "Tenant dashboard bekijken" },
   { key: "tenant.users.read", category: "Tenant", description: "Gebruikers binnen tenant bekijken" },
   { key: "tenant.users.create", category: "Tenant", description: "Tenantgebruikers aanmaken" },
@@ -41,18 +61,19 @@ export const permissions = [
 export type PermissionKey = (typeof permissions)[number]["key"];
 
 const allPermissionKeys = permissions.map((permission) => permission.key);
-const readPermissionKeys = allPermissionKeys.filter((key) => key.endsWith(".read"));
+const tenantPermissionKeys = allPermissionKeys.filter((key) => !key.startsWith("platform."));
+const readPermissionKeys = tenantPermissionKeys.filter((key) => key.endsWith(".read"));
 
 const defaultRoles = [
   {
     name: "Tenant Admin",
     description: "Volledig beheer binnen deze tenant.",
-    permissionKeys: allPermissionKeys
+    permissionKeys: tenantPermissionKeys
   },
   {
     name: "Operator",
     description: "Dagelijks beheer van klanten, FortiGates en backups.",
-    permissionKeys: allPermissionKeys.filter((key) => !key.startsWith("tenant.roles.") && !key.startsWith("tenant.settings."))
+    permissionKeys: tenantPermissionKeys.filter((key) => !key.startsWith("tenant.roles.") && !key.startsWith("tenant.settings."))
   },
   {
     name: "Backup Operator",

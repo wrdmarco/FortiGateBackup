@@ -59,7 +59,7 @@ export default async function DashboardPage() {
               <Badge tone={updateStatus.updateRunning ? "warning" : "danger"}>
                 {updateStatus.updateRunning ? "Update draait" : "Update beschikbaar"}
               </Badge>
-              <ActionLink href="/settings" variant="primary">Naar updateknop</ActionLink>
+              <ActionLink href="/settings?tab=updates" variant="primary">Naar updateknop</ActionLink>
             </div>
           </div>
         </section>

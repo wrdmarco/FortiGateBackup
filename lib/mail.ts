@@ -9,19 +9,46 @@ type MailInput = {
 };
 
 export async function sendMail(input: MailInput) {
-  const provider = await getSetting("mail.provider", input.tenantId);
+  const provider = await getMailSetting("mail.provider", input.tenantId);
   if (provider === "MICROSOFT_GRAPH") {
     return sendGraphMail(input);
   }
   return sendSmtpMail(input);
 }
 
+export async function assertMailReady(tenantId?: string | null) {
+  const provider = await getMailSetting("mail.provider", tenantId);
+  if (provider === "MICROSOFT_GRAPH") {
+    const [from, tenant, clientId, clientSecret, accessToken] = await Promise.all([
+      getMailSetting("graph.from", tenantId),
+      getMailSetting("graph.tenantId", tenantId),
+      getMailSetting("graph.clientId", tenantId),
+      getMailSetting("graph.clientSecret", tenantId),
+      getMailSetting("graph.accessToken", tenantId)
+    ]);
+    if (!from || (!accessToken && (!tenant || !clientId || !clientSecret))) {
+      throw new Error("Microsoft Graph mail is niet volledig ingesteld. Configureer en test eerst de mailinstellingen.");
+    }
+    return;
+  }
+
+  const [host, from, user, pass] = await Promise.all([
+    getMailSetting("smtp.host", tenantId),
+    getMailSetting("smtp.from", tenantId),
+    getMailSetting("smtp.user", tenantId),
+    getMailSetting("smtp.password", tenantId)
+  ]);
+  if (!host || !from || Boolean(user) !== Boolean(pass)) {
+    throw new Error("SMTP mail is niet volledig ingesteld. Configureer en test eerst de mailinstellingen.");
+  }
+}
+
 async function sendSmtpMail(input: MailInput) {
-  const host = await getSetting("smtp.host", input.tenantId);
-  const port = Number((await getSetting("smtp.port", input.tenantId)) ?? 587);
-  const user = await getSetting("smtp.user", input.tenantId);
-  const pass = await getSetting("smtp.password", input.tenantId);
-  const from = await getSetting("smtp.from", input.tenantId);
+  const host = await getMailSetting("smtp.host", input.tenantId);
+  const port = Number((await getMailSetting("smtp.port", input.tenantId)) ?? 587);
+  const user = await getMailSetting("smtp.user", input.tenantId);
+  const pass = await getMailSetting("smtp.password", input.tenantId);
+  const from = await getMailSetting("smtp.from", input.tenantId);
   if (!host || !from) throw new Error("SMTP settings are incomplete.");
 
   const transporter = nodemailer.createTransport({
@@ -35,7 +62,7 @@ async function sendSmtpMail(input: MailInput) {
 
 async function sendGraphMail(input: MailInput) {
   const token = await getGraphAccessToken(input.tenantId);
-  const from = await getSetting("graph.from", input.tenantId);
+  const from = await getMailSetting("graph.from", input.tenantId);
   if (!token || !from) throw new Error("Microsoft Graph mail settings are incomplete.");
 
   const response = await fetch(`https://graph.microsoft.com/v1.0/users/${from}/sendMail`, {
@@ -56,9 +83,9 @@ async function sendGraphMail(input: MailInput) {
 }
 
 async function getGraphAccessToken(tenantId?: string | null) {
-  const tenant = await getSetting("graph.tenantId", tenantId);
-  const clientId = await getSetting("graph.clientId", tenantId);
-  const clientSecret = await getSetting("graph.clientSecret", tenantId);
+  const tenant = await getMailSetting("graph.tenantId", tenantId);
+  const clientId = await getMailSetting("graph.clientId", tenantId);
+  const clientSecret = await getMailSetting("graph.clientSecret", tenantId);
 
   if (tenant && clientId && clientSecret) {
     const response = await fetch(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`, {
@@ -76,5 +103,10 @@ async function getGraphAccessToken(tenantId?: string | null) {
     return payload.access_token ?? null;
   }
 
-  return getSetting("graph.accessToken", tenantId);
+  return getMailSetting("graph.accessToken", tenantId);
+}
+
+async function getMailSetting(key: string, tenantId?: string | null) {
+  const tenantValue = tenantId ? await getSetting(key, tenantId) : null;
+  return tenantValue ?? getSetting(key, null);
 }

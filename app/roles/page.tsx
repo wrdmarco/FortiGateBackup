@@ -59,7 +59,7 @@ export default async function RolesPage({
     <Shell>
       <PageHeader
         title="Rollen"
-        description="Tenant-scoped RBAC rollen en permissies. Elke tenant heeft een eigen rollenset."
+        description="Tenant-scoped RBAC rollen met een centrale permission catalogus voor tenant- en platformrechten."
       />
 
       {tenants.length ? (

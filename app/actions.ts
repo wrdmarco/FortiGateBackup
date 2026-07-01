@@ -10,7 +10,7 @@ import { assertTenantAccess, isSuperAdmin, requireSuperAdmin, requireTenantUser 
 import { encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 import { runBackup } from "@/lib/fortigate";
-import { sendMail } from "@/lib/mail";
+import { assertMailReady, sendMail } from "@/lib/mail";
 import { assignDefaultTenantRole, ensureTenantRbac } from "@/lib/rbac";
 import { createSession, destroySession } from "@/lib/session";
 import { deleteSetting, setSetting } from "@/lib/settings";
@@ -26,6 +26,8 @@ export type ActionState = {
   ok: boolean;
   message: string;
 };
+
+export type TenantUserCreateState = ActionState;
 
 function bool(value: FormDataEntryValue | null) {
   return value === "on" || value === "true";
@@ -165,6 +167,7 @@ export async function createManagedTenant(formData: FormData) {
   if (!adminEmail) {
     throw new Error("Admin e-mail is verplicht.");
   }
+  await assertMailReady(null);
 
   const tenant = await prisma.tenant.create({ data });
   const admin = await prisma.user.create({
@@ -173,6 +176,7 @@ export async function createManagedTenant(formData: FormData) {
       name: adminName || "Tenant Admin",
       email: adminEmail,
       passwordHash: await bcrypt.hash(adminPassword, 12),
+      mustChangePassword: true,
       role: "ADMIN",
       provider: "LOCAL"
     }
@@ -192,6 +196,25 @@ export async function createManagedTenant(formData: FormData) {
     entityId: admin.id
   });
   await assignDefaultTenantRole(admin.id, tenant.id, admin.role);
+  try {
+    await sendTemporaryPasswordMail({
+      tenantId: null,
+      tenantName: tenant.name,
+      to: admin.email,
+      name: admin.name ?? "",
+      password: adminPassword
+    });
+  } catch (mailError) {
+    await prisma.$transaction(async (tx) => {
+      await tx.user.deleteMany({ where: { id: admin.id } });
+      await tx.tenant.delete({ where: { id: tenant.id } });
+    });
+    throw new Error(
+      `Tenant is niet aangemaakt, omdat de mail met het tijdelijke wachtwoord niet kon worden verzonden: ${
+        mailError instanceof Error ? mailError.message : "onbekende mailfout"
+      }`
+    );
+  }
   revalidatePath("/tenants");
 }
 
@@ -211,6 +234,7 @@ export async function createManagedTenantWithState(_state: ActionState, formData
     if (!adminEmail) {
       return { ok: false, message: "Admin e-mail is verplicht." };
     }
+    await assertMailReady(null);
 
     const { tenant, admin } = await prisma.$transaction(async (tx) => {
       const tenant = await tx.tenant.create({ data });
@@ -303,6 +327,7 @@ export async function createTenantUser(formData: FormData) {
   if (password.length < 12) throw new Error("Het tijdelijke wachtwoord moet minimaal 12 tekens zijn.");
 
   const tenant = await prisma.tenant.findUniqueOrThrow({ where: { id: tenantId } });
+  await assertMailReady(tenant.id);
   const created = await prisma.user.create({
     data: {
       tenantId: tenant.id,
@@ -324,13 +349,22 @@ export async function createTenantUser(formData: FormData) {
     metadata: { email: created.email, role: created.role }
   });
   await assignDefaultTenantRole(created.id, tenant.id, created.role);
-  await sendTemporaryPasswordMail({
-    tenantId: tenant.id,
-    tenantName: tenant.name,
-    to: created.email,
-    name: created.name ?? "",
-    password
-  });
+  try {
+    await sendTemporaryPasswordMail({
+      tenantId: tenant.id,
+      tenantName: tenant.name,
+      to: created.email,
+      name: created.name ?? "",
+      password
+    });
+  } catch (mailError) {
+    await prisma.user.delete({ where: { id: created.id } });
+    throw new Error(
+      `Gebruiker is niet aangemaakt, omdat de mail met het tijdelijke wachtwoord niet kon worden verzonden: ${
+        mailError instanceof Error ? mailError.message : "onbekende mailfout"
+      }`
+    );
+  }
   await auditLog({
     action: "user.temporary_password.sent",
     tenantId: tenant.id,
@@ -340,6 +374,21 @@ export async function createTenantUser(formData: FormData) {
     metadata: { email: created.email }
   });
   revalidatePath("/tenants");
+}
+
+export async function createTenantUserWithState(_state: TenantUserCreateState, formData: FormData): Promise<TenantUserCreateState> {
+  try {
+    await createTenantUser(formData);
+    return { ok: true, message: "Gebruiker is aangemaakt en het tijdelijke wachtwoord is gemaild." };
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      return { ok: false, message: "Er bestaat al een gebruiker met dit e-mailadres." };
+    }
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Gebruiker kon niet worden aangemaakt."
+    };
+  }
 }
 
 export async function deleteTenantUser(formData: FormData) {
