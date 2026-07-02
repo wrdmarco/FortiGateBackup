@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 
 type TenantOption = {
   id: string;
@@ -21,13 +20,7 @@ export function TenantSwitcher({
   action: (formData: FormData) => void | Promise<void>;
   canSwitch: boolean;
 }) {
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
   const [selectedTenantId, setSelectedTenantId] = useState(activeTenantId ?? "");
-  const returnTo = useMemo(() => {
-    const query = searchParams.toString();
-    return query ? `${pathname}?${query}` : pathname;
-  }, [pathname, searchParams]);
 
   useEffect(() => {
     setSelectedTenantId(activeTenantId ?? "");
@@ -43,7 +36,6 @@ export function TenantSwitcher({
 
   return (
     <form action={action} className="flex items-center gap-2">
-      <input type="hidden" name="returnTo" value={returnTo} />
       <label className="sr-only" htmlFor="tenant-context">
         Actieve tenant
       </label>
