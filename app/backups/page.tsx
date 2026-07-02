@@ -1,8 +1,9 @@
 import { ActionLink, Badge, PageHeader, Shell, TableShell } from "@/components/ui";
 import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
+import { hasPermission } from "@/lib/rbac";
 import { requireUser } from "@/lib/session";
-import { mainTenantId } from "@/lib/tenant-main";
+import { isGlobalTenantId, mainTenantId } from "@/lib/tenant-main";
 import { formatDateTime } from "@/lib/time";
 import { getTenantTimeZoneMap } from "@/lib/tenant-timezone";
 
@@ -10,10 +11,15 @@ export const dynamic = "force-dynamic";
 
 export default async function BackupsPage() {
   const user = await requireUser();
-  const globalTenantId = isSuperAdmin(user) ? await mainTenantId() : null;
+  const globalTenantId = await mainTenantId();
   const activeTenantId = isSuperAdmin(user) ? user.activeTenantId ?? globalTenantId ?? "" : user.tenantId ?? "";
+  const isGlobalContext = await isGlobalTenantId(activeTenantId);
+  const [canDownloadBackup, canReadDiff] = await Promise.all([
+    hasPermission(user, "backups.download"),
+    hasPermission(user, "backups.diff.read")
+  ]);
   const backups = await prisma.backup.findMany({
-    where: { fortigate: { customer: { tenantId: activeTenantId } } },
+    where: { fortigate: { customer: { tenantId: isGlobalContext ? "__global_has_no_backups__" : activeTenantId } } },
     include: { fortigate: { include: { customer: true } } },
     orderBy: { createdAt: "desc" },
     take: 100
@@ -54,8 +60,8 @@ export default async function BackupsPage() {
                 <td className="flex flex-wrap gap-2 px-3 py-2">
                   {backup.filename ? (
                     <>
-                      <ActionLink href={`/api/backups/${backup.id}/download`}>Download</ActionLink>
-                      <ActionLink href={`/backups/${backup.id}/diff`}>Diff</ActionLink>
+                      {canDownloadBackup ? <ActionLink href={`/api/backups/${backup.id}/download`}>Download</ActionLink> : null}
+                      {canReadDiff ? <ActionLink href={`/backups/${backup.id}/diff`}>Diff</ActionLink> : null}
                     </>
                   ) : (
                     <span className="text-muted-foreground">Geen bestand</span>

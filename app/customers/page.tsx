@@ -3,17 +3,19 @@ import { Modal } from "@/components/modal";
 import { ActionLink, Badge, Button, Field, PageHeader, Shell, TableShell } from "@/components/ui";
 import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
+import { hasPermission } from "@/lib/rbac";
 import { requireUser } from "@/lib/session";
-import { mainTenantId } from "@/lib/tenant-main";
+import { isGlobalTenantId, mainTenantId } from "@/lib/tenant-main";
 
 export const dynamic = "force-dynamic";
 
 export default async function CustomersPage() {
   const user = await requireUser();
-  const globalTenantId = isSuperAdmin(user) ? await mainTenantId() : null;
+  const globalTenantId = await mainTenantId();
   const activeTenantId = isSuperAdmin(user) ? user.activeTenantId ?? globalTenantId ?? "" : user.tenantId ?? "";
-  const isGlobalContext = Boolean(activeTenantId && activeTenantId === globalTenantId);
-  const customerWhere = { tenantId: activeTenantId };
+  const isGlobalContext = await isGlobalTenantId(activeTenantId);
+  const canCreateCustomer = await hasPermission(user, "customers.create");
+  const customerWhere = { tenantId: isGlobalContext ? "__global_has_no_customers__" : activeTenantId };
   const customers = await prisma.customer.findMany({
     where: customerWhere,
     include: { tenant: true, devices: true },
@@ -25,7 +27,7 @@ export default async function CustomersPage() {
       <PageHeader
         title="Klanten"
         description="Beheer klanten als startpunt voor FortiGates, backups, downloads en configuratiediffs."
-        actions={!isGlobalContext ? (
+        actions={!isGlobalContext && canCreateCustomer ? (
           <Modal
             title="Klant toevoegen"
             description="Maak een klantkaart aan voor FortiGates, backups en beheer."

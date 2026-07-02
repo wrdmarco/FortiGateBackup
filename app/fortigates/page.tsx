@@ -7,9 +7,10 @@ import { Modal } from "@/components/modal";
 import { Badge, Button, Field, PageHeader, Shell, TableShell } from "@/components/ui";
 import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
+import { hasPermission } from "@/lib/rbac";
 import { getSetting } from "@/lib/settings";
 import { requireUser } from "@/lib/session";
-import { mainTenantId } from "@/lib/tenant-main";
+import { isGlobalTenantId, mainTenantId } from "@/lib/tenant-main";
 import { formatDateTime } from "@/lib/time";
 import { getTenantTimeZoneMap } from "@/lib/tenant-timezone";
 
@@ -22,11 +23,17 @@ export default async function FortiGatesPage({
 }) {
   const user = await requireUser();
   const params = await searchParams;
-  const globalTenantId = isSuperAdmin(user) ? await mainTenantId() : null;
+  const globalTenantId = await mainTenantId();
   const activeTenantId = isSuperAdmin(user) ? user.activeTenantId ?? globalTenantId ?? "" : user.tenantId ?? "";
-  const isGlobalContext = Boolean(activeTenantId && activeTenantId === globalTenantId);
-  const customerWhere = { active: true, tenantId: activeTenantId };
-  const fortigateWhere = { customer: { tenantId: activeTenantId } };
+  const isGlobalContext = await isGlobalTenantId(activeTenantId);
+  const [canCreate, canUpdate, canDelete, canRunBackup] = await Promise.all([
+    hasPermission(user, "fortigates.create"),
+    hasPermission(user, "fortigates.update"),
+    hasPermission(user, "fortigates.delete"),
+    hasPermission(user, "fortigates.backup.run")
+  ]);
+  const customerWhere = { active: true, tenantId: isGlobalContext ? "__global_has_no_customers__" : activeTenantId };
+  const fortigateWhere = { customer: { tenantId: isGlobalContext ? "__global_has_no_fortigates__" : activeTenantId } };
   const [customers, devices, defaultScheduleType] = await Promise.all([
     prisma.customer.findMany({ where: customerWhere, orderBy: { name: "asc" } }),
     prisma.fortiGate.findMany({
@@ -53,7 +60,7 @@ export default async function FortiGatesPage({
       <PageHeader
         title="FortiGates"
         description="Beheer API-toegang, backupstatus, firmware en diagnose per firewall."
-        actions={!isGlobalContext ? (
+        actions={!isGlobalContext && canCreate ? (
           <Modal
             title="FortiGate toevoegen"
             description="Begeleide setup voor REST API-token, connectiegegevens en backupschema."
@@ -74,7 +81,7 @@ export default async function FortiGatesPage({
           Global is alleen voor platformbeheer. Wissel naar een tenant om FortiGates en backups te beheren.
         </div>
       ) : null}
-      {editDevice ? (
+      {editDevice && canUpdate ? (
         <Modal
           title="FortiGate bewerken"
           description="Wijzig connectiegegevens zonder de bestaande API-token te tonen."
@@ -238,22 +245,28 @@ export default async function FortiGatesPage({
                       >
                         <FortiGateSummary device={device} timeZone={timeZone} />
                       </Modal>
-                      <form action={runBackupAction}>
-                        <input type="hidden" name="id" value={device.id} />
-                        <Button>Backup</Button>
-                      </form>
-                      <Link
-                        className="rounded-md border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-muted"
-                        href={`/fortigates?edit=${device.id}`}
-                      >
-                        Edit
-                      </Link>
-                      <form action={deleteFortiGate}>
-                        <input type="hidden" name="id" value={device.id} />
-                        <Button variant="danger">
-                          Delete
-                        </Button>
-                      </form>
+                      {canRunBackup ? (
+                        <form action={runBackupAction}>
+                          <input type="hidden" name="id" value={device.id} />
+                          <Button>Backup</Button>
+                        </form>
+                      ) : null}
+                      {canUpdate ? (
+                        <Link
+                          className="rounded-md border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-muted"
+                          href={`/fortigates?edit=${device.id}`}
+                        >
+                          Edit
+                        </Link>
+                      ) : null}
+                      {canDelete ? (
+                        <form action={deleteFortiGate}>
+                          <input type="hidden" name="id" value={device.id} />
+                          <Button variant="danger">
+                            Delete
+                          </Button>
+                        </form>
+                      ) : null}
                     </td>
                   </tr>
                 );

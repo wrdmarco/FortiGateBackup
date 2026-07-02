@@ -4,7 +4,7 @@ import { getAppUpdateStatus } from "@/lib/app-update";
 import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
-import { mainTenantId } from "@/lib/tenant-main";
+import { isGlobalTenantId, mainTenantId } from "@/lib/tenant-main";
 import { formatDateTime } from "@/lib/time";
 import { getTenantTimeZone } from "@/lib/tenant-timezone";
 
@@ -13,9 +13,9 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage() {
   const user = await requireUser();
   const canManagePlatform = isSuperAdmin(user);
-  const globalTenantId = canManagePlatform ? await mainTenantId() : null;
+  const globalTenantId = await mainTenantId();
   const tenantId = canManagePlatform ? user.activeTenantId ?? globalTenantId ?? undefined : user.tenantId ?? undefined;
-  const isGlobalContext = Boolean(tenantId && tenantId === globalTenantId);
+  const isGlobalContext = await isGlobalTenantId(tenantId);
   const timeZone = await getTenantTimeZone(tenantId);
   const customerWhere = tenantId && !isGlobalContext ? { tenantId } : { tenantId: "__global_has_no_customers__" };
   const fortigateWhere = tenantId && !isGlobalContext ? { customer: { tenantId } } : { customer: { tenantId: "__global_has_no_fortigates__" } };

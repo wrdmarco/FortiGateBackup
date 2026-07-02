@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { assertOperationalTenant, requireTenantUser } from "@/lib/authz";
+import { assertOperationalTenant, assertPermission, requireTenantUser } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { runBackup } from "@/lib/fortigate";
 
@@ -14,6 +14,7 @@ export async function POST(
     include: { customer: true }
   });
   await assertOperationalTenant(user, device.customer.tenantId);
+  await assertPermission(user, "fortigates.backup.run");
   const backup = await runBackup(id);
   return NextResponse.json(backup);
 }

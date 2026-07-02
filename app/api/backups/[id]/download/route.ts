@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { NextRequest, NextResponse } from "next/server";
 import path from "node:path";
 import { backupFilePath, getBackupForUser } from "@/lib/backups";
-import { requireTenantUser } from "@/lib/authz";
+import { assertPermission, requireTenantUser } from "@/lib/authz";
 
 export async function GET(
   _request: NextRequest,
@@ -10,6 +10,7 @@ export async function GET(
 ) {
   const { id } = await context.params;
   const user = await requireTenantUser();
+  await assertPermission(user, "backups.download");
   const backup = await getBackupForUser(id, user);
   if (!backup.filename) {
     return NextResponse.json({ error: "No backup file stored for this record." }, { status: 404 });

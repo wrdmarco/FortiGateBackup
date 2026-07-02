@@ -2,7 +2,7 @@ import { User, UserRole } from "@prisma/client";
 import { notFound, redirect } from "next/navigation";
 import { hasPermission, PermissionKey } from "@/lib/rbac";
 import { requireUser } from "@/lib/session";
-import { mainTenantId } from "@/lib/tenant-main";
+import { isGlobalTenantId } from "@/lib/tenant-main";
 
 type UserWithContext = Pick<User, "id" | "role" | "tenantId"> & {
   activeTenantId?: string | null;
@@ -40,7 +40,7 @@ export function assertTenantAccess(user: UserWithContext, tenantId: string | nul
 
 export async function assertOperationalTenant(user: UserWithContext, tenantId: string | null) {
   assertTenantAccess(user, tenantId);
-  if (tenantId && tenantId === (await mainTenantId())) {
+  if (await isGlobalTenantId(tenantId)) {
     throw new Error("Global is een platformtenant en kan geen klanten, FortiGates of backups bevatten.");
   }
 }

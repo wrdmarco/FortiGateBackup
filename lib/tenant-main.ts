@@ -15,3 +15,15 @@ export async function mainTenantId() {
   });
   return firstTenant?.id ?? null;
 }
+
+export async function isGlobalTenantId(tenantId: string | null | undefined) {
+  if (!tenantId) return false;
+  const mainTenant = await mainTenantId();
+  if (tenantId === mainTenant) return true;
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { name: true, slug: true }
+  });
+  const labels = [tenant?.name, tenant?.slug].filter(Boolean).map((value) => String(value).trim().toLowerCase());
+  return labels.some((value) => value === "global" || value === "globaal");
+}

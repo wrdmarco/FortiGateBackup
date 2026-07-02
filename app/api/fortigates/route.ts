@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auditLog } from "@/lib/audit";
-import { assertOperationalTenant, requireTenantUser, tenantFilter } from "@/lib/authz";
+import { assertOperationalTenant, assertPermission, requireTenantUser, tenantFilter } from "@/lib/authz";
 import { encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 import { fortigateSchema } from "@/lib/validators";
@@ -45,6 +45,7 @@ export async function POST(request: NextRequest) {
   const data = fortigateSchema.parse(await request.json());
   const customer = await prisma.customer.findUniqueOrThrow({ where: { id: data.customerId } });
   await assertOperationalTenant(user, customer.tenantId);
+  await assertPermission(user, "fortigates.create");
   const device = await prisma.fortiGate.create({
     data: {
       customerId: data.customerId,

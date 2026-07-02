@@ -6,6 +6,7 @@ import { Modal } from "@/components/modal";
 import { ActionLink, Badge, Button, Card, Field, PageHeader, Shell, TableShell } from "@/components/ui";
 import { assertTenantAccess, requireTenantUser } from "@/lib/authz";
 import { prisma } from "@/lib/db";
+import { hasPermission } from "@/lib/rbac";
 import { formatDateTime } from "@/lib/time";
 import { getTenantTimeZone } from "@/lib/tenant-timezone";
 
@@ -33,6 +34,14 @@ export default async function CustomerDetailPage({
   });
   if (!customer) notFound();
   assertTenantAccess(user, customer.tenantId);
+  const [canCreateFortiGate, canDeleteCustomer, canRunBackup, canUpdateFortiGate, canDownloadBackup, canReadDiff] = await Promise.all([
+    hasPermission(user, "fortigates.create"),
+    hasPermission(user, "customers.delete"),
+    hasPermission(user, "fortigates.backup.run"),
+    hasPermission(user, "fortigates.update"),
+    hasPermission(user, "backups.download"),
+    hasPermission(user, "backups.diff.read")
+  ]);
   const backups = customer.devices.flatMap((device) =>
     device.backups.map((backup) => ({ ...backup, device }))
   );
@@ -48,25 +57,27 @@ export default async function CustomerDetailPage({
         actions={
           <>
             <ActionLink href="/customers">Klanten</ActionLink>
-            <ActionLink href={`/fortigates?add=1&customerId=${customer.id}`} variant="primary">FortiGate toevoegen</ActionLink>
-            <Modal
-              title="Klant verwijderen"
-              description="Verwijder de klant inclusief FortiGates, backuprecords en opgeslagen configbestanden."
-              trigger={<Button variant="danger">Klant verwijderen</Button>}
-            >
-              <form action={deleteCustomer} className="grid gap-4">
-                <input type="hidden" name="id" value={customer.id} />
-                <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-950 dark:border-red-900 dark:bg-red-950 dark:text-red-100">
-                  <p className="font-semibold">Definitieve verwijdering</p>
-                  <p className="mt-2">
-                    Hiermee verdwijnen {customer.devices.length} FortiGates, {backups.length} backuprecords
-                    en alle opgeslagen configuratiebestanden voor deze klant.
-                  </p>
-                </div>
-                <Field label={`Typ de klantnaam "${customer.name}" ter bevestiging`} name="confirmName" required />
-                <Button variant="danger">Klant definitief verwijderen</Button>
-              </form>
-            </Modal>
+            {canCreateFortiGate ? <ActionLink href={`/fortigates?add=1&customerId=${customer.id}`} variant="primary">FortiGate toevoegen</ActionLink> : null}
+            {canDeleteCustomer ? (
+              <Modal
+                title="Klant verwijderen"
+                description="Verwijder de klant inclusief FortiGates, backuprecords en opgeslagen configbestanden."
+                trigger={<Button variant="danger">Klant verwijderen</Button>}
+              >
+                <form action={deleteCustomer} className="grid gap-4">
+                  <input type="hidden" name="id" value={customer.id} />
+                  <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-950 dark:border-red-900 dark:bg-red-950 dark:text-red-100">
+                    <p className="font-semibold">Definitieve verwijdering</p>
+                    <p className="mt-2">
+                      Hiermee verdwijnen {customer.devices.length} FortiGates, {backups.length} backuprecords
+                      en alle opgeslagen configuratiebestanden voor deze klant.
+                    </p>
+                  </div>
+                  <Field label={`Typ de klantnaam "${customer.name}" ter bevestiging`} name="confirmName" required />
+                  <Button variant="danger">Klant definitief verwijderen</Button>
+                </form>
+              </Modal>
+            ) : null}
           </>
         }
       />
@@ -143,11 +154,13 @@ export default async function CustomerDetailPage({
                       >
                         <FortiGateSummary device={device} timeZone={timeZone} />
                       </Modal>
-                      <form action={runBackupAction}>
-                        <input type="hidden" name="id" value={device.id} />
-                        <Button>Backup</Button>
-                      </form>
-                      <ActionLink href={`/fortigates?edit=${device.id}`}>Edit</ActionLink>
+                      {canRunBackup ? (
+                        <form action={runBackupAction}>
+                          <input type="hidden" name="id" value={device.id} />
+                          <Button>Backup</Button>
+                        </form>
+                      ) : null}
+                      {canUpdateFortiGate ? <ActionLink href={`/fortigates?edit=${device.id}`}>Edit</ActionLink> : null}
                     </td>
                   </tr>
                 );
@@ -192,8 +205,8 @@ export default async function CustomerDetailPage({
                     <td className="flex flex-wrap gap-2 px-3 py-2">
                       {backup.filename ? (
                         <>
-                          <ActionLink href={`/api/backups/${backup.id}/download`}>Download</ActionLink>
-                          <ActionLink href={`/backups/${backup.id}/diff`}>Diff</ActionLink>
+                          {canDownloadBackup ? <ActionLink href={`/api/backups/${backup.id}/download`}>Download</ActionLink> : null}
+                          {canReadDiff ? <ActionLink href={`/backups/${backup.id}/diff`}>Diff</ActionLink> : null}
                         </>
                       ) : (
                         <span className="text-muted-foreground">Geen bestand</span>

@@ -5,18 +5,16 @@ import { TenantSwitcher } from "@/components/tenant-switcher";
 import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { currentUser } from "@/lib/session";
-import { mainTenantId } from "@/lib/tenant-main";
+import { isGlobalTenantId } from "@/lib/tenant-main";
 
 export async function Shell({ children }: { children: React.ReactNode }) {
   const user = await currentUser();
   const canManageTenants = user ? isSuperAdmin(user) : false;
-  const [tenants, globalTenantId] = canManageTenants
-    ? await Promise.all([
-        prisma.tenant.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
-        mainTenantId()
-      ])
-    : [[], null];
-  const isGlobalContext = Boolean(user?.activeTenantId && user.activeTenantId === globalTenantId);
+  const tenants = canManageTenants
+    ? await prisma.tenant.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } })
+    : [];
+  const currentTenantId = user?.activeTenantId ?? user?.tenantId ?? null;
+  const isGlobalContext = await isGlobalTenantId(currentTenantId);
   const tenantName = user?.activeTenant?.name ?? user?.tenant?.name ?? "Geen tenant";
 
   return (

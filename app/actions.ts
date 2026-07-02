@@ -827,6 +827,7 @@ export async function createCustomer(formData: FormData) {
   });
   assertTenantAccess(user, data.tenantId);
   await assertOperationalTenant(user, data.tenantId);
+  await assertPermission(user, "customers.create");
   if ((await isItGlueEnabled(data.tenantId)) && !data.itGlueOrganizationId) {
     throw new Error("IT Glue organization ID is verplicht wanneer IT Glue actief is voor deze tenant.");
   }
@@ -855,6 +856,7 @@ export async function deleteCustomer(formData: FormData) {
   });
   assertTenantAccess(user, customer.tenantId);
   await assertOperationalTenant(user, customer.tenantId);
+  await assertPermission(user, "customers.delete");
   if (confirmName !== customer.name) {
     throw new Error("Bevestiging mislukt. Typ de klantnaam exact over.");
   }
@@ -900,6 +902,7 @@ export async function createFortiGate(formData: FormData) {
   const customer = await prisma.customer.findUniqueOrThrow({ where: { id: parsed.customerId } });
   assertTenantAccess(user, customer.tenantId);
   await assertOperationalTenant(user, customer.tenantId);
+  await assertPermission(user, "fortigates.create");
   if ((await isItGlueEnabled(customer.tenantId)) && !parsed.itGlueConfigurationId) {
     throw new Error("IT Glue configuration ID is verplicht wanneer IT Glue actief is voor deze tenant.");
   }
@@ -935,6 +938,7 @@ export async function updateFortiGate(formData: FormData) {
   });
   assertTenantAccess(user, existing.customer.tenantId);
   await assertOperationalTenant(user, existing.customer.tenantId);
+  await assertPermission(user, "fortigates.update");
   const parsed = fortigateUpdateSchema.parse({
     customerId: formData.get("customerId"),
     managementUrl: formData.get("managementUrl"),
@@ -991,6 +995,7 @@ export async function deleteFortiGate(formData: FormData) {
   });
   assertTenantAccess(user, device.customer.tenantId);
   await assertOperationalTenant(user, device.customer.tenantId);
+  await assertPermission(user, "fortigates.delete");
   await auditLog({
     action: "fortigate.deleted",
     tenantId: device.customer.tenantId,
@@ -1022,6 +1027,7 @@ export async function runBackupAction(formData: FormData) {
   });
   assertTenantAccess(user, device.customer.tenantId);
   await assertOperationalTenant(user, device.customer.tenantId);
+  await assertPermission(user, "fortigates.backup.run");
   await runBackup(id);
   revalidatePath("/fortigates");
   revalidatePath("/backups");

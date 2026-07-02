@@ -6,7 +6,7 @@ import {
   readBackupText,
   unifiedDiff
 } from "@/lib/backups";
-import { requireTenantUser } from "@/lib/authz";
+import { assertPermission, requireTenantUser } from "@/lib/authz";
 import { ActionLink, Card, PageHeader, Panel, Shell } from "@/components/ui";
 import { formatDateTime } from "@/lib/time";
 import { getTenantTimeZone } from "@/lib/tenant-timezone";
@@ -19,6 +19,7 @@ export default async function BackupDiffPage({
   params: Promise<{ id: string }>;
 }) {
   const user = await requireTenantUser();
+  await assertPermission(user, "backups.diff.read");
   const { id } = await params;
   const backup = await getBackupForUser(id, user);
   if (!backup.filename) notFound();
