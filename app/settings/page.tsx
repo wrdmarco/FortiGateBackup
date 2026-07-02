@@ -5,7 +5,7 @@ import { Badge, Button, PageHeader, Panel, Shell } from "@/components/ui";
 import { getAppUpdateStatus } from "@/lib/app-update";
 import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
-import { getEffectiveMailSetting, getMailProviderMode } from "@/lib/mail";
+import { getMailProviderMode } from "@/lib/mail";
 import { hasPermission } from "@/lib/rbac";
 import { getSetting } from "@/lib/settings";
 import { requireUser } from "@/lib/session";
@@ -34,7 +34,7 @@ export default async function SettingsPage({
     user.activeTenant?.name ??
     (user.tenantId === selectedTenantId ? user.tenant?.name : null) ??
     (selectedTenantId === globalTenantId ? "Global" : "Deze tenant");
-  const secretScopeWhere = tenantId ? { OR: [{ tenantId }, { tenantId: null }] } : { tenantId: null };
+  const secretScopeWhere = { tenantId: tenantId ?? null };
 
   const [
     portalSiteUrl,
@@ -74,13 +74,13 @@ export default async function SettingsPage({
     getSetting("itglue.enabled", tenantId),
     getSetting("itglue.baseUrl", tenantId),
     getMailProviderMode(tenantId),
-    getEffectiveMailSetting("smtp.host", tenantId),
-    getEffectiveMailSetting("smtp.port", tenantId),
-    getEffectiveMailSetting("smtp.user", tenantId),
-    getEffectiveMailSetting("smtp.from", tenantId),
-    getEffectiveMailSetting("graph.from", tenantId),
-    getEffectiveMailSetting("graph.tenantId", tenantId),
-    getEffectiveMailSetting("graph.clientId", tenantId),
+    getSetting("smtp.host", tenantId),
+    getSetting("smtp.port", tenantId),
+    getSetting("smtp.user", tenantId),
+    getSetting("smtp.from", tenantId),
+    getSetting("graph.from", tenantId),
+    getSetting("graph.tenantId", tenantId),
+    getSetting("graph.clientId", tenantId),
     getSetting("entra.enabled", tenantId),
     getSetting("entra.tenantId", tenantId),
     getSetting("entra.clientId", tenantId),

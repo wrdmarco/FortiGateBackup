@@ -136,8 +136,8 @@ async function getGraphAccessToken(tenantId?: string | null) {
 
 async function getMailSetting(key: string, tenantId?: string | null) {
   const effectiveTenantId = await effectiveMailTenantId(tenantId);
-  const tenantValue = effectiveTenantId ? await getSetting(key, effectiveTenantId) : null;
-  return tenantValue ?? getSetting(key, null);
+  if (effectiveTenantId) return getSetting(key, effectiveTenantId);
+  return getSetting(key, null);
 }
 
 async function effectiveMailTenantId(tenantId?: string | null) {
