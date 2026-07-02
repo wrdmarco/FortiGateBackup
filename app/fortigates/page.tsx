@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { createFortiGate, deleteFortiGate, runBackupAction, updateFortiGate } from "@/app/actions";
+import { createFortiGateWithState, deleteFortiGate, runBackupAction, updateFortiGate } from "@/app/actions";
 import { FortiGateWizard } from "@/components/fortigate-wizard";
 import { FortiGateSummary } from "@/components/fortigate-summary";
 import { FirmwareStatus } from "@/components/firmware-status";
@@ -7,6 +7,7 @@ import { Modal } from "@/components/modal";
 import { Badge, Button, Field, PageHeader, Shell, TableShell } from "@/components/ui";
 import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
+import { isItGlueEnabled } from "@/lib/itglue";
 import { hasPermission } from "@/lib/rbac";
 import { getSetting } from "@/lib/settings";
 import { requireUser } from "@/lib/session";
@@ -34,7 +35,7 @@ export default async function FortiGatesPage({
   ]);
   const customerWhere = { active: true, tenantId: isGlobalContext ? "__global_has_no_customers__" : activeTenantId };
   const fortigateWhere = { customer: { tenantId: isGlobalContext ? "__global_has_no_fortigates__" : activeTenantId } };
-  const [customers, devices, defaultScheduleType] = await Promise.all([
+  const [customers, devices, defaultScheduleType, itGlueEnabled] = await Promise.all([
     prisma.customer.findMany({ where: customerWhere, orderBy: { name: "asc" } }),
     prisma.fortiGate.findMany({
       where: fortigateWhere,
@@ -45,11 +46,11 @@ export default async function FortiGatesPage({
       },
       orderBy: { createdAt: "desc" }
     }),
-    getSetting("backup.defaultSchedule", activeTenantId)
+    getSetting("backup.defaultSchedule", activeTenantId),
+    isGlobalContext ? Promise.resolve(false) : isItGlueEnabled(activeTenantId)
   ]);
   const editDevice = devices.find((device) => device.id === params?.edit);
   const timeZones = await getTenantTimeZoneMap(devices.map((device) => device.customer.tenantId));
-  const formAction = editDevice ? updateFortiGate : createFortiGate;
   const selectedCustomerId = customers.some((customer) => customer.id === params?.customerId)
     ? params?.customerId
     : undefined;
@@ -69,9 +70,10 @@ export default async function FortiGatesPage({
           >
             <FortiGateWizard
               customers={customers}
-              action={createFortiGate}
+              action={createFortiGateWithState}
               defaultCustomerId={selectedCustomerId}
               defaultScheduleType={defaultScheduleType ?? "DAILY"}
+              itGlueEnabled={itGlueEnabled}
             />
           </Modal>
         ) : null}
@@ -88,7 +90,7 @@ export default async function FortiGatesPage({
           defaultOpen
           trigger={<span />}
         >
-        <form action={formAction} className="grid gap-4">
+        <form action={updateFortiGate} className="grid gap-4">
           {editDevice ? <input type="hidden" name="id" value={editDevice.id} /> : null}
           <label className="grid gap-1 text-sm">
             <span className="font-medium">Klant</span>
@@ -130,7 +132,9 @@ export default async function FortiGatesPage({
             </p>
           ) : null}
           <Field label="VDOM" name="vdom" defaultValue={editDevice?.vdom ?? ""} />
-          <Field label="IT Glue configuration ID" name="itGlueConfigurationId" defaultValue={editDevice?.itGlueConfigurationId ?? ""} />
+          {itGlueEnabled ? (
+            <Field label="IT Glue configuration ID" name="itGlueConfigurationId" defaultValue={editDevice?.itGlueConfigurationId ?? ""} />
+          ) : null}
           <label className="grid gap-1 text-sm">
             <span className="font-medium">Schema</span>
             <select

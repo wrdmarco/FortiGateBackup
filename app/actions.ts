@@ -15,7 +15,7 @@ import { assignDefaultTenantRole, ensureTenantRbac, permissions, type Permission
 import { createSession, destroySession, requireUser, setActiveTenantContext } from "@/lib/session";
 import { deleteSetting, setSetting } from "@/lib/settings";
 import { isItGlueEnabled } from "@/lib/itglue";
-import { normalizeSiteUrl } from "@/lib/site-url";
+import { getTenantSiteUrl, normalizeSiteUrl } from "@/lib/site-url";
 import { mainTenantId } from "@/lib/tenant-main";
 import { defaultTimeZone, isValidTimeZone } from "@/lib/time";
 import { startAppUpdate } from "@/lib/app-update";
@@ -32,6 +32,7 @@ export type TenantUserCreateState = ActionState;
 export type TenantUserUpdateState = ActionState;
 export type AccessRoleCreateState = ActionState;
 export type AccessRoleEditState = ActionState;
+export type FortiGateCreateState = ActionState;
 
 function bool(value: FormDataEntryValue | null) {
   return value === "on" || value === "true";
@@ -136,6 +137,8 @@ async function sendTemporaryPasswordMail(input: {
   name: string;
   password: string;
 }) {
+  const siteUrl = await getTenantSiteUrl(input.tenantId);
+  const loginUrl = siteUrl ? `${siteUrl}/login` : null;
   await sendMail({
     tenantId: input.tenantId,
     to: input.to,
@@ -145,6 +148,7 @@ async function sendTemporaryPasswordMail(input: {
       "",
       `Er is een account voor je aangemaakt in de FortiGate Backup portal voor tenant ${input.tenantName}.`,
       "",
+      ...(loginUrl ? [`Login URL: ${loginUrl}`, ""] : []),
       `Gebruikersnaam: ${input.to}`,
       `Tijdelijk wachtwoord: ${input.password}`,
       "",
@@ -1133,10 +1137,23 @@ export async function createFortiGate(formData: FormData) {
   await auditLog({
     action: "fortigate.created",
     tenantId: device.customer.tenantId,
+    userId: user.id,
     entity: "FortiGate",
     entityId: device.id
   });
   revalidatePath("/fortigates");
+}
+
+export async function createFortiGateWithState(_state: FortiGateCreateState, formData: FormData): Promise<FortiGateCreateState> {
+  try {
+    await createFortiGate(formData);
+    return { ok: true, message: "FortiGate is opgeslagen." };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "FortiGate kon niet worden opgeslagen."
+    };
+  }
 }
 
 export async function updateFortiGate(formData: FormData) {

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useActionState, useEffect, useState } from "react";
+import type { FortiGateCreateState } from "@/app/actions";
 
 type CustomerOption = {
   id: string;
@@ -45,20 +46,27 @@ export function FortiGateWizard({
   customers,
   action,
   defaultCustomerId,
-  defaultScheduleType = "DAILY"
+  defaultScheduleType = "DAILY",
+  itGlueEnabled = false
 }: {
   customers: CustomerOption[];
-  action: (formData: FormData) => void | Promise<void>;
+  action: (state: FortiGateCreateState, formData: FormData) => Promise<FortiGateCreateState>;
   defaultCustomerId?: string;
   defaultScheduleType?: string;
+  itGlueEnabled?: boolean;
 }) {
   const [step, setStep] = useState(0);
+  const [state, formAction, pending] = useActionState(action, { ok: false, message: "" });
   const selectedCustomerId = customers.some((customer) => customer.id === defaultCustomerId)
     ? defaultCustomerId
     : customers[0]?.id;
 
+  useEffect(() => {
+    if (state.ok) window.location.href = "/fortigates";
+  }, [state.ok]);
+
   return (
-    <form action={action} className="grid gap-6">
+    <form action={formAction} className="grid gap-6" noValidate>
       <div className="grid gap-3 lg:grid-cols-[220px_1fr]">
         <nav className="grid gap-2 self-start rounded-md border border-border bg-surface-soft p-2">
           {steps.map((item, index) => (
@@ -174,13 +182,15 @@ export function FortiGateWizard({
               </label>
             </div>
 
-            <label className="grid gap-1 text-sm">
-              <span className="font-medium">IT Glue configuration ID</span>
-              <input className="rounded-md border border-border bg-surface px-3 py-2" name="itGlueConfigurationId" placeholder="Bijvoorbeeld 123456789" />
-              <span className="text-xs text-muted-foreground">
-                Vul dit in als IT Glue actief is. Dit is de configuration waar de gewijzigde FortiGate configs als bijlage onder komen.
-              </span>
-            </label>
+            {itGlueEnabled ? (
+              <label className="grid gap-1 text-sm">
+                <span className="font-medium">IT Glue configuration ID</span>
+                <input className="rounded-md border border-border bg-surface px-3 py-2" name="itGlueConfigurationId" placeholder="Bijvoorbeeld 123456789" />
+                <span className="text-xs text-muted-foreground">
+                  Verplicht omdat IT Glue actief is voor deze tenant. Dit is de configuration waar gewijzigde configs als bijlage onder komen.
+                </span>
+              </label>
+            ) : null}
 
             <label className="grid gap-1 text-sm">
               <span className="font-medium">API-token</span>
@@ -230,7 +240,9 @@ export function FortiGateWizard({
               <CheckItem text="Firmware, model en hostname worden waar mogelijk uitgelezen en bijgewerkt." />
               <CheckItem text="Alleen echte configuratiewijzigingen tellen als changed; dynamische ruis wordt genegeerd." />
               <CheckItem text="Bij fouten zie je per FortiGate een logregel met endpoint, statuscode en diagnose." />
-              <CheckItem text="Als IT Glue actief is, wordt alleen een gewijzigde backup als bijlage aan de gekoppelde configuration toegevoegd." />
+              {itGlueEnabled ? (
+                <CheckItem text="Omdat IT Glue actief is, wordt alleen een gewijzigde backup als bijlage aan de gekoppelde configuration toegevoegd." />
+              ) : null}
             </div>
           </section>
 
@@ -265,10 +277,15 @@ export function FortiGateWizard({
               Volgende
             </WizardButton>
           ) : (
-            <WizardButton>FortiGate opslaan</WizardButton>
+            <WizardButton disabled={pending}>{pending ? "Opslaan..." : "FortiGate opslaan"}</WizardButton>
           )}
         </div>
       </div>
+      {state.message ? (
+        <p className={state.ok ? "text-sm text-emerald-600 dark:text-emerald-300" : "text-sm text-red-600 dark:text-red-300"}>
+          {state.message}
+        </p>
+      ) : null}
     </form>
   );
 }
