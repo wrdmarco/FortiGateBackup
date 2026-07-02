@@ -126,6 +126,7 @@ async function onboardingMailTenantId() {
 export async function switchTenantContextAction(formData: FormData) {
   const user = await requireSuperAdmin();
   const tenantId = String(formData.get("tenantId") ?? "");
+  const returnTo = safeReturnTo(formData.get("returnTo"));
   if (!tenantId) throw new Error("Tenant is verplicht.");
   const tenant = await prisma.tenant.findFirstOrThrow({
     where: { id: tenantId, active: true },
@@ -141,6 +142,13 @@ export async function switchTenantContextAction(formData: FormData) {
     metadata: { name: user.name, email: user.email, source: "tenant_switcher" }
   });
   revalidatePath("/", "layout");
+  redirect(returnTo);
+}
+
+function safeReturnTo(value: FormDataEntryValue | null) {
+  const returnTo = String(value ?? "/");
+  if (!returnTo.startsWith("/") || returnTo.startsWith("//")) return "/";
+  return returnTo;
 }
 
 function recordLoginFailure(email: string) {
