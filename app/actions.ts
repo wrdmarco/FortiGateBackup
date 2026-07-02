@@ -379,25 +379,46 @@ export async function createTenantUser(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
-  const roleInput = String(formData.get("role") ?? "VIEWER");
-  const role = roleInput === "ADMIN" ? "ADMIN" : "VIEWER";
+  const roleId = String(formData.get("roleId") ?? "");
 
   if (!tenantId) throw new Error("Tenant is verplicht.");
+  if (!roleId) throw new Error("Rol is verplicht.");
   if (!email.includes("@")) throw new Error("Vul een geldig e-mailadres in.");
   if (password.length < 12) throw new Error("Het tijdelijke wachtwoord moet minimaal 12 tekens zijn.");
 
   const tenant = await prisma.tenant.findUniqueOrThrow({ where: { id: tenantId } });
+  await ensureTenantRbac(tenant.id);
+  const accessRole = await prisma.accessRole.findFirst({
+    where: { id: roleId, tenantId: tenant.id },
+    select: { id: true, name: true }
+  });
+  if (!accessRole) throw new Error("De gekozen rol bestaat niet binnen deze tenant.");
+  const legacyRole =
+    accessRole.name === "Super Admin" && tenant.id === (await mainTenantId())
+      ? "SUPER_ADMIN"
+      : accessRole.name === "Tenant Admin"
+        ? "ADMIN"
+        : "VIEWER";
   await assertMailReady(tenant.id);
-  const created = await prisma.user.create({
-    data: {
-      tenantId: tenant.id,
-      name: name || null,
-      email,
-      passwordHash: await bcrypt.hash(password, 12),
-      mustChangePassword: true,
-      role,
-      provider: "LOCAL"
-    }
+  const created = await prisma.$transaction(async (tx) => {
+    const createdUser = await tx.user.create({
+      data: {
+        tenantId: tenant.id,
+        name: name || null,
+        email,
+        passwordHash: await bcrypt.hash(password, 12),
+        mustChangePassword: true,
+        role: legacyRole,
+        provider: "LOCAL"
+      }
+    });
+    await tx.userAccessRole.create({
+      data: {
+        userId: createdUser.id,
+        roleId: accessRole.id
+      }
+    });
+    return createdUser;
   });
 
   await auditLog({
@@ -406,9 +427,8 @@ export async function createTenantUser(formData: FormData) {
     userId: user.id,
     entity: "User",
     entityId: created.id,
-    metadata: { email: created.email, role: created.role }
+    metadata: { email: created.email, role: accessRole.name, roleId: accessRole.id, legacyRole: created.role }
   });
-  await assignDefaultTenantRole(created.id, tenant.id, created.role);
   try {
     await sendTemporaryPasswordMail({
       tenantId: tenant.id,

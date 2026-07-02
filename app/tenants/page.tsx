@@ -6,6 +6,7 @@ import { TenantUserCreateForm } from "@/components/tenant-user-create-form";
 import { Badge, Button, Field, PageHeader, Shell, TableShell } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
+import { ensureTenantRbac } from "@/lib/rbac";
 import { mainTenantId } from "@/lib/tenant-main";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +17,21 @@ export default async function TenantsPage() {
     prisma.tenant.findMany({
       include: {
         users: {
-          select: { id: true, name: true, email: true, role: true, active: true, createdAt: true },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            active: true,
+            createdAt: true,
+            accessRoles: {
+              select: {
+                role: {
+                  select: { id: true, name: true }
+                }
+              }
+            }
+          },
           orderBy: { email: "asc" }
         },
         customers: {
@@ -24,12 +39,26 @@ export default async function TenantsPage() {
             id: true,
             devices: { select: { id: true } }
           }
+        },
+        accessRoles: {
+          orderBy: [{ system: "desc" }, { name: "asc" }],
+          select: { id: true, name: true, description: true, system: true }
         }
       },
       orderBy: { name: "asc" }
     }),
     mainTenantId()
   ]);
+  await Promise.all(tenants.map((tenant) => ensureTenantRbac(tenant.id)));
+  const rolesByTenant = await prisma.accessRole.findMany({
+    where: { tenantId: { in: tenants.map((tenant) => tenant.id) } },
+    orderBy: [{ system: "desc" }, { name: "asc" }],
+    select: { id: true, tenantId: true, name: true, description: true, system: true }
+  });
+  const roleOptionsByTenant = new Map<string, typeof rolesByTenant>();
+  for (const role of rolesByTenant) {
+    roleOptionsByTenant.set(role.tenantId, [...(roleOptionsByTenant.get(role.tenantId) ?? []), role]);
+  }
 
   return (
     <Shell>
@@ -99,7 +128,7 @@ export default async function TenantsPage() {
                           <div className="grid gap-6">
                             <section>
                               <h3 className="font-semibold">Nieuwe gebruiker</h3>
-                              <TenantUserCreateForm tenantId={tenant.id} />
+                              <TenantUserCreateForm tenantId={tenant.id} roles={roleOptionsByTenant.get(tenant.id) ?? tenant.accessRoles} />
                             </section>
 
                             <section className="border-t border-border pt-5">
@@ -123,7 +152,7 @@ export default async function TenantsPage() {
                                         </td>
                                         <td className="px-3 py-2">
                                           <Badge tone={tenantUser.role === "ADMIN" || tenantUser.role === "SUPER_ADMIN" ? "warning" : "neutral"}>
-                                            {tenantUser.role}
+                                            {tenantUser.accessRoles.map((assignment) => assignment.role.name).join(", ") || tenantUser.role}
                                           </Badge>
                                         </td>
                                         <td className="px-3 py-2">

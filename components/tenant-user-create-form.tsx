@@ -5,7 +5,14 @@ import { createTenantUserWithState } from "@/app/actions";
 
 const initialState = { ok: false, message: "" };
 
-export function TenantUserCreateForm({ tenantId }: { tenantId: string }) {
+type RoleOption = {
+  id: string;
+  name: string;
+  description: string | null;
+  system: boolean;
+};
+
+export function TenantUserCreateForm({ tenantId, roles }: { tenantId: string; roles: RoleOption[] }) {
   const [state, formAction, pending] = useActionState(createTenantUserWithState, initialState);
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -23,16 +30,29 @@ export function TenantUserCreateForm({ tenantId }: { tenantId: string }) {
       <div className="grid gap-4 md:grid-cols-2">
         <label className="grid gap-1 text-sm">
           <span className="font-medium">Rol</span>
-          <select className="rounded-md border border-border bg-surface px-3 py-2" name="role" defaultValue="VIEWER">
-            <option value="ADMIN">Admin</option>
-            <option value="VIEWER">Viewer</option>
+          <select className="rounded-md border border-border bg-surface px-3 py-2" name="roleId" required>
+            {roles.map((role) => (
+              <option key={role.id} value={role.id}>
+                {role.name}
+              </option>
+            ))}
           </select>
+          <span className="text-xs text-muted-foreground">
+            De gebruiker krijgt exact de geselecteerde RBAC-rol binnen deze tenant.
+          </span>
         </label>
         <Field label="Tijdelijk wachtwoord" name="password" type="password" required />
       </div>
-      <div className="rounded-md border border-border bg-surface-soft p-3 text-sm text-muted-foreground">
-        Admins kunnen klanten, FortiGates en backups binnen deze tenant beheren. Viewers zijn bedoeld voor meekijken en controle.
-      </div>
+      {roles.length ? (
+        <div className="rounded-md border border-border bg-surface-soft p-3 text-sm text-muted-foreground">
+          {roles.map((role) => (
+            <div key={role.id}>
+              <span className="font-medium text-foreground">{role.name}</span>
+              {role.description ? ` - ${role.description}` : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
       {state.message ? (
         <p className={state.ok ? "text-sm text-emerald-600 dark:text-emerald-300" : "text-sm text-red-600 dark:text-red-300"}>
           {state.message}

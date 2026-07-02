@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { getSetting } from "@/lib/settings";
+import { mainTenantId } from "@/lib/tenant-main";
 
 type MailInput = {
   tenantId?: string | null;
@@ -44,7 +45,19 @@ export async function assertMailReady(tenantId?: string | null) {
 }
 
 export async function getMailProvider(tenantId?: string | null) {
-  return (await getMailSetting("mail.provider", tenantId)) === "MICROSOFT_GRAPH" ? "MICROSOFT_GRAPH" : "SMTP";
+  const effectiveTenantId = await effectiveMailTenantId(tenantId);
+  const provider = effectiveTenantId
+    ? await getSetting("mail.provider", effectiveTenantId)
+    : await getSetting("mail.provider", null);
+  return provider === "MICROSOFT_GRAPH" ? "MICROSOFT_GRAPH" : "SMTP";
+}
+
+export async function getMailProviderMode(tenantId?: string | null) {
+  if (!tenantId) return getMailProvider(tenantId);
+  const globalTenantId = await mainTenantId();
+  const provider = await getSetting("mail.provider", tenantId);
+  if (tenantId !== globalTenantId && provider === "SYSTEM") return "SYSTEM";
+  return provider === "MICROSOFT_GRAPH" ? "MICROSOFT_GRAPH" : "SMTP";
 }
 
 export async function getEffectiveMailSetting(key: string, tenantId?: string | null) {
@@ -115,6 +128,14 @@ async function getGraphAccessToken(tenantId?: string | null) {
 }
 
 async function getMailSetting(key: string, tenantId?: string | null) {
-  const tenantValue = tenantId ? await getSetting(key, tenantId) : null;
+  const effectiveTenantId = await effectiveMailTenantId(tenantId);
+  const tenantValue = effectiveTenantId ? await getSetting(key, effectiveTenantId) : null;
   return tenantValue ?? getSetting(key, null);
+}
+
+async function effectiveMailTenantId(tenantId?: string | null) {
+  if (!tenantId) return null;
+  const globalTenantId = await mainTenantId();
+  if (tenantId === globalTenantId) return tenantId;
+  return (await getSetting("mail.provider", tenantId)) === "SYSTEM" ? globalTenantId : tenantId;
 }

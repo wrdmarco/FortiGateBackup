@@ -5,7 +5,7 @@ import { Badge, Button, PageHeader, Panel, Shell } from "@/components/ui";
 import { getAppUpdateStatus } from "@/lib/app-update";
 import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
-import { getEffectiveMailSetting, getMailProvider } from "@/lib/mail";
+import { getEffectiveMailSetting, getMailProviderMode } from "@/lib/mail";
 import { getSetting } from "@/lib/settings";
 import { requireUser } from "@/lib/session";
 import { mainTenantId } from "@/lib/tenant-main";
@@ -23,7 +23,7 @@ export default async function SettingsPage({
   const user = await requireUser();
   const canUpdateApp = isSuperAdmin(user);
   const params = await searchParams;
-  const globalTenantId = canUpdateApp ? await mainTenantId() : null;
+  const globalTenantId = await mainTenantId();
   const selectedTenantId = canUpdateApp ? user.activeTenantId ?? globalTenantId ?? "" : user.tenantId ?? "";
   const tenantId = selectedTenantId || null;
   const isGlobalScope = Boolean(tenantId && tenantId === globalTenantId);
@@ -65,7 +65,7 @@ export default async function SettingsPage({
     getSetting("ui.timeZone", tenantId),
     getSetting("itglue.enabled", tenantId),
     getSetting("itglue.baseUrl", tenantId),
-    getMailProvider(tenantId),
+    getMailProviderMode(tenantId),
     getEffectiveMailSetting("smtp.host", tenantId),
     getEffectiveMailSetting("smtp.port", tenantId),
     getEffectiveMailSetting("smtp.user", tenantId),
@@ -100,7 +100,7 @@ export default async function SettingsPage({
     itGlueEnabled: itGlueEnabled === "true",
     itGlueBaseUrl: itGlueBaseUrl ?? "https://api.itglue.com",
     hasItGlueApiKey: secretKeys.has("itglue.apiKey"),
-    mailProvider: mailProvider === "MICROSOFT_GRAPH" ? ("MICROSOFT_GRAPH" as const) : ("SMTP" as const),
+    mailProvider: mailProvider === "SYSTEM" ? ("SYSTEM" as const) : mailProvider === "MICROSOFT_GRAPH" ? ("MICROSOFT_GRAPH" as const) : ("SMTP" as const),
     smtpHost: smtpHost ?? "",
     smtpPort: smtpPort ?? "587",
     smtpUser: smtpUser ?? "",
@@ -123,7 +123,7 @@ export default async function SettingsPage({
     backupRetryCount: backupRetryCount ?? "2",
     backupNotifyFailures: backupNotifyFailures !== "false"
   };
-  const formProps = { action: saveSettings, testMailAction: testMailSettings, tenants: [], selectedTenantId, selectedTenantName, values };
+  const formProps = { action: saveSettings, testMailAction: testMailSettings, tenants: [], selectedTenantId, selectedTenantName, values, allowSystemMail: !isGlobalScope };
   const configTabs = isGlobalScope ? ["mail", "sso", "scheduler"] : ["portal", "itglue", "mail", "sso", "scheduler"];
   const tabIds = [...configTabs, ...(updateStatus ? ["updates"] : [])];
   const activeTab = params?.tab && tabIds.includes(params.tab) ? params.tab : configTabs[0];

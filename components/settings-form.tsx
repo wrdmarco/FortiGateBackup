@@ -17,7 +17,7 @@ type SettingsValues = {
   itGlueEnabled: boolean;
   itGlueBaseUrl: string;
   hasItGlueApiKey: boolean;
-  mailProvider: "SMTP" | "MICROSOFT_GRAPH";
+  mailProvider: "SYSTEM" | "SMTP" | "MICROSOFT_GRAPH";
   smtpHost: string;
   smtpPort: string;
   smtpUser: string;
@@ -59,7 +59,8 @@ export function SettingsForm({
   selectedTenantName,
   values,
   visibleTabs,
-  initialTab = "portal"
+  initialTab = "portal",
+  allowSystemMail = false
 }: {
   action: (formData: FormData) => void | Promise<void>;
   testMailAction: (state: MailTestState, formData: FormData) => Promise<MailTestState>;
@@ -69,6 +70,7 @@ export function SettingsForm({
   values: SettingsValues;
   visibleTabs?: SettingsTabId[];
   initialTab?: SettingsTabId;
+  allowSystemMail?: boolean;
 }) {
   const availableTabs = visibleTabs?.length ? tabs.filter((tab) => visibleTabs.includes(tab.id)) : tabs;
   const firstTab = availableTabs.some((tab) => tab.id === initialTab) ? initialTab : availableTabs[0]?.id ?? "portal";
@@ -198,10 +200,17 @@ export function SettingsForm({
               value={mailProvider}
               onChange={(event) => setMailProvider(event.target.value as SettingsValues["mailProvider"])}
             >
+              {allowSystemMail ? <option value="SYSTEM">System (Global)</option> : null}
               <option value="SMTP">SMTP</option>
               <option value="MICROSOFT_GRAPH">Microsoft Graph</option>
             </select>
           </label>
+
+          {mailProvider === "SYSTEM" ? (
+            <div className="rounded-md border border-border bg-surface p-3 text-sm text-muted-foreground">
+              Deze tenant gebruikt de mailinstellingen van Global. Pas Global aan om de systeemmailconfiguratie te wijzigen.
+            </div>
+          ) : null}
 
           {mailProvider === "SMTP" ? (
             <div key="smtp-settings" className="grid gap-4 md:grid-cols-2">
@@ -216,7 +225,7 @@ export function SettingsForm({
               />
               <TextField label="SMTP afzender" name="smtp.from" type="email" defaultValue={values.smtpFrom} required />
             </div>
-          ) : (
+          ) : mailProvider === "MICROSOFT_GRAPH" ? (
             <div key="graph-settings" className="grid gap-4 md:grid-cols-2">
               <TextField label="Graph afzender" name="graph.from" type="email" defaultValue={values.graphFrom} required />
               <TextField label="Tenant ID" name="graph.tenantId" defaultValue={values.graphTenantId} required />
@@ -228,7 +237,7 @@ export function SettingsForm({
                 help={values.hasGraphClientSecret ? "Er is al een Graph client secret opgeslagen. Laat leeg om dit te behouden." : "Gebruik de secret value uit Microsoft Entra, niet de secret ID."}
               />
             </div>
-          )}
+          ) : null}
 
           <div className="grid gap-3 rounded-md border border-border bg-surface p-3">
             <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
