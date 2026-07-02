@@ -39,6 +39,11 @@ type SettingsValues = {
   backupRetentionCount: string;
   backupRetryCount: string;
   backupNotifyFailures: boolean;
+  backupNotifySuccess: boolean;
+  backupNotifyEmail: boolean;
+  backupNotifyWebhook: boolean;
+  backupNotifyRecipients: string;
+  backupWebhookUrl: string;
 };
 
 type SettingsTabId = "portal" | "itglue" | "mail" | "sso" | "scheduler";
@@ -351,11 +356,51 @@ export function SettingsForm({
                 </label>
                 <TextField label="Backups bewaren" name="backup.retention.count" type="number" defaultValue={values.backupRetentionCount} required />
                 <TextField label="Retries bij fout" name="backup.retry.count" type="number" defaultValue={values.backupRetryCount} required />
-                <label className="flex items-center gap-2 rounded-md border border-border bg-surface px-3 py-2 text-sm">
-                  <input name="backup.notifyFailures" type="hidden" value="false" />
-                  <input name="backup.notifyFailures" type="checkbox" value="true" defaultChecked={values.backupNotifyFailures} />
-                  Mail bij mislukte backup
-                </label>
+              </div>
+              <div className="grid gap-4 rounded-md border border-border bg-surface p-4">
+                <div>
+                  <h3 className="text-sm font-semibold">Backup notificaties</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Kies welke backupresultaten worden doorgestuurd en via welk kanaal.
+                  </p>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="flex items-center gap-2 rounded-md border border-border bg-surface-soft px-3 py-2 text-sm">
+                    <input name="backup.notifySuccess" type="hidden" value="false" />
+                    <input name="backup.notifySuccess" type="checkbox" value="true" defaultChecked={values.backupNotifySuccess} />
+                    Notificatie bij succesvolle backup
+                  </label>
+                  <label className="flex items-center gap-2 rounded-md border border-border bg-surface-soft px-3 py-2 text-sm">
+                    <input name="backup.notifyFailures" type="hidden" value="false" />
+                    <input name="backup.notifyFailures" type="checkbox" value="true" defaultChecked={values.backupNotifyFailures} />
+                    Notificatie bij mislukte backup
+                  </label>
+                  <label className="flex items-center gap-2 rounded-md border border-border bg-surface-soft px-3 py-2 text-sm">
+                    <input name="backup.notifyEmail" type="hidden" value="false" />
+                    <input name="backup.notifyEmail" type="checkbox" value="true" defaultChecked={values.backupNotifyEmail} />
+                    Mail gebruiken
+                  </label>
+                  <label className="flex items-center gap-2 rounded-md border border-border bg-surface-soft px-3 py-2 text-sm">
+                    <input name="backup.notifyWebhook" type="hidden" value="false" />
+                    <input name="backup.notifyWebhook" type="checkbox" value="true" defaultChecked={values.backupNotifyWebhook} />
+                    Webhook gebruiken
+                  </label>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <TextField
+                    label="Mail ontvangers"
+                    name="backup.notifyRecipients"
+                    defaultValue={values.backupNotifyRecipients}
+                    help="Een of meerdere adressen, gescheiden met komma's."
+                  />
+                  <TextField
+                    label="Webhook URL"
+                    name="backup.webhookUrl"
+                    type="url"
+                    defaultValue={values.backupWebhookUrl}
+                    help="HTTPS endpoint voor JSON notificaties."
+                  />
+                </div>
               </div>
             </>
           )}

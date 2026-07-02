@@ -9,6 +9,13 @@ type MailInput = {
   text: string;
 };
 
+function mailRecipients(to: string) {
+  return to
+    .split(/[,\n;]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 export async function sendMail(input: MailInput) {
   const provider = await getMailProvider(input.tenantId);
   if (provider === "MICROSOFT_GRAPH") {
@@ -96,7 +103,7 @@ async function sendGraphMail(input: MailInput) {
       message: {
         subject: input.subject,
         body: { contentType: "Text", content: input.text },
-        toRecipients: [{ emailAddress: { address: input.to } }]
+        toRecipients: mailRecipients(input.to).map((address) => ({ emailAddress: { address } }))
       }
     })
   });

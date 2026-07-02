@@ -1,12 +1,11 @@
-import { deleteTenant, deleteTenantUser, setTenantActive } from "@/app/actions";
+import { deleteTenant, setTenantActive } from "@/app/actions";
 import { DeleteConfirmInput } from "@/components/delete-confirm-input";
 import { Modal } from "@/components/modal";
 import { TenantCreateForm } from "@/components/tenant-create-form";
-import { TenantUserCreateForm } from "@/components/tenant-user-create-form";
-import { Badge, Button, Field, PageHeader, Shell, TableShell } from "@/components/ui";
+import { ActionLink, Badge, Button, Field, PageHeader, Shell, TableShell } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
-import { ensureTenantRbac } from "@/lib/rbac";
+import { hasPermission } from "@/lib/rbac";
 import { mainTenantId } from "@/lib/tenant-main";
 
 export const dynamic = "force-dynamic";
@@ -23,14 +22,7 @@ export default async function TenantsPage() {
             email: true,
             role: true,
             active: true,
-            createdAt: true,
-            accessRoles: {
-              select: {
-                role: {
-                  select: { id: true, name: true }
-                }
-              }
-            }
+            createdAt: true
           },
           orderBy: { email: "asc" }
         },
@@ -39,26 +31,13 @@ export default async function TenantsPage() {
             id: true,
             devices: { select: { id: true } }
           }
-        },
-        accessRoles: {
-          orderBy: [{ system: "desc" }, { name: "asc" }],
-          select: { id: true, name: true, description: true, system: true }
         }
       },
       orderBy: { name: "asc" }
     }),
     mainTenantId()
   ]);
-  await Promise.all(tenants.map((tenant) => ensureTenantRbac(tenant.id)));
-  const rolesByTenant = await prisma.accessRole.findMany({
-    where: { tenantId: { in: tenants.map((tenant) => tenant.id) } },
-    orderBy: [{ system: "desc" }, { name: "asc" }],
-    select: { id: true, tenantId: true, name: true, description: true, system: true }
-  });
-  const roleOptionsByTenant = new Map<string, typeof rolesByTenant>();
-  for (const role of rolesByTenant) {
-    roleOptionsByTenant.set(role.tenantId, [...(roleOptionsByTenant.get(role.tenantId) ?? []), role]);
-  }
+  const canArchiveTenants = currentUser.activeTenantId === mainTenant && (await hasPermission(currentUser, "platform.tenants.export"));
 
   return (
     <Shell>
@@ -66,13 +45,34 @@ export default async function TenantsPage() {
         title="Tenants"
         description="Alleen platformbeheerders kunnen tenants aanmaken. Tenantadmins beheren daarna uitsluitend hun eigen klanten, FortiGates, backups en instellingen."
         actions={
-          <Modal
-            title="Tenant aanmaken"
-            description="Maak een tenant inclusief eerste tenantadmin."
-            trigger={<Button>Tenant aanmaken</Button>}
-          >
-            <TenantCreateForm />
-          </Modal>
+          <div className="flex flex-wrap gap-2">
+            <Modal
+              title="Tenant aanmaken"
+              description="Maak een tenant inclusief eerste tenantadmin."
+              trigger={<Button>Tenant aanmaken</Button>}
+            >
+              <TenantCreateForm />
+            </Modal>
+            {canArchiveTenants ? (
+              <Modal
+                title="Tenant herstellen uit zip"
+                description="Upload een tenant backup zip om een ontbrekende tenant opnieuw aan te maken."
+                trigger={<Button variant="secondary">Tenant restore zip</Button>}
+              >
+                <form action="/api/tenants/archive" method="post" encType="multipart/form-data" className="grid gap-4">
+                  <div className="grid gap-3 rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+                    <p className="text-base font-semibold">Restore maakt de tenant aan als deze ontbreekt</p>
+                    <p>
+                      Bestaat de tenant-id al, dan wordt dezelfde tenant hersteld. Bestaat deze niet, dan wordt de tenant uit de zip aangemaakt.
+                    </p>
+                    <p>De Global tenant kan hiermee niet worden hersteld.</p>
+                  </div>
+                  <Field label="Tenant backup zip" name="archive" type="file" required />
+                  <Button variant="danger">Zip uploaden en tenant herstellen</Button>
+                </form>
+              </Modal>
+            ) : null}
+          </div>
         }
       />
 
@@ -120,64 +120,11 @@ export default async function TenantsPage() {
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex flex-wrap gap-2">
-                        <Modal
-                          title={`Gebruikers beheren - ${tenant.name}`}
-                          description="Voeg tenantgebruikers toe, kies hun rol en verwijder accounts die geen toegang meer nodig hebben."
-                          trigger={<Button variant="secondary">Gebruikers</Button>}
-                        >
-                          <div className="grid gap-6">
-                            <section>
-                              <h3 className="font-semibold">Nieuwe gebruiker</h3>
-                              <TenantUserCreateForm tenantId={tenant.id} roles={roleOptionsByTenant.get(tenant.id) ?? tenant.accessRoles} />
-                            </section>
-
-                            <section className="border-t border-border pt-5">
-                              <h3 className="font-semibold">Bestaande gebruikers</h3>
-                              <div className="mt-3 overflow-hidden rounded-md border border-border">
-                                <table className="w-full text-left text-sm">
-                                  <thead className="bg-surface-soft text-muted-foreground">
-                                    <tr>
-                                      <th className="px-3 py-2">Gebruiker</th>
-                                      <th className="px-3 py-2">Rol</th>
-                                      <th className="px-3 py-2">Status</th>
-                                      <th className="px-3 py-2">Actie</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {tenant.users.map((tenantUser) => (
-                                      <tr key={tenantUser.id} className="border-t border-border">
-                                        <td className="px-3 py-2">
-                                          <div className="font-medium">{tenantUser.name ?? tenantUser.email}</div>
-                                          <div className="text-xs text-muted-foreground">{tenantUser.email}</div>
-                                        </td>
-                                        <td className="px-3 py-2">
-                                          <Badge tone={tenantUser.role === "ADMIN" || tenantUser.role === "SUPER_ADMIN" ? "warning" : "neutral"}>
-                                            {tenantUser.accessRoles.map((assignment) => assignment.role.name).join(", ") || tenantUser.role}
-                                          </Badge>
-                                        </td>
-                                        <td className="px-3 py-2">
-                                          <Badge tone={tenantUser.active ? "success" : "danger"}>
-                                            {tenantUser.active ? "Actief" : "Inactief"}
-                                          </Badge>
-                                        </td>
-                                        <td className="px-3 py-2">
-                                          {tenantUser.id === currentUser.id ? (
-                                            <Button variant="secondary" disabled>Eigen account</Button>
-                                          ) : (
-                                            <form action={deleteTenantUser}>
-                                              <input type="hidden" name="id" value={tenantUser.id} />
-                                              <Button variant="danger">Verwijderen</Button>
-                                            </form>
-                                          )}
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            </section>
-                          </div>
-                        </Modal>
+                        {tenant.id === currentUser.activeTenantId ? (
+                          <ActionLink href="/users" variant="secondary">Gebruikers</ActionLink>
+                        ) : (
+                          <Button variant="secondary" disabled>Wissel tenant</Button>
+                        )}
                         {isMainTenant ? (
                           <Button variant="secondary" disabled>Global actief</Button>
                         ) : (
@@ -187,6 +134,29 @@ export default async function TenantsPage() {
                             <Button>{tenant.active ? "Deactiveren" : "Activeren"}</Button>
                           </form>
                         )}
+                        {!isMainTenant && canArchiveTenants ? (
+                          <>
+                            <ActionLink href={`/api/tenants/${tenant.id}/archive`} variant="secondary">Backup zip</ActionLink>
+                            <Modal
+                              title={`Tenant restore - ${tenant.name}`}
+                              description="Upload een tenant backup zip. Dit vervangt klant-, FortiGate-, backup- en tenantinstellingen voor deze tenant."
+                              trigger={<Button variant="secondary">Restore</Button>}
+                            >
+                              <form action={`/api/tenants/${tenant.id}/archive`} method="post" encType="multipart/form-data" className="grid gap-4">
+                                <div className="grid gap-3 rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+                                  <p className="text-base font-semibold">Let op: restore vervangt operationele tenantdata</p>
+                                  <p>
+                                    Klanten, FortiGates, backuprecords, configuratiebestanden en tenantinstellingen worden vervangen door de inhoud van de zip.
+                                    Gebruikers en sessies blijven intact.
+                                  </p>
+                                  <p>De zip moet bij exact deze tenant horen.</p>
+                                </div>
+                                <Field label="Tenant backup zip" name="archive" type="file" required />
+                                <Button variant="danger">Zip uploaden en restore starten</Button>
+                              </form>
+                            </Modal>
+                          </>
+                        ) : null}
                         {isMainTenant ? (
                           <Button variant="secondary" disabled>Global beschermd</Button>
                         ) : (

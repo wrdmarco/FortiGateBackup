@@ -3,6 +3,7 @@ import { ActionLink, Badge, Card, PageHeader, Shell, TableShell } from "@/compon
 import { getAppUpdateStatus } from "@/lib/app-update";
 import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
+import { hasPermission } from "@/lib/rbac";
 import { requireUser } from "@/lib/session";
 import { isGlobalTenantId, mainTenantId } from "@/lib/tenant-main";
 import { formatDateTime } from "@/lib/time";
@@ -16,6 +17,7 @@ export default async function DashboardPage() {
   const globalTenantId = await mainTenantId();
   const tenantId = canManagePlatform ? user.activeTenantId ?? globalTenantId ?? undefined : user.tenantId ?? undefined;
   const isGlobalContext = await isGlobalTenantId(tenantId);
+  const canReadUpdates = isGlobalContext && (await hasPermission(user, "platform.updates.read"));
   const timeZone = await getTenantTimeZone(tenantId);
   const customerWhere = tenantId && !isGlobalContext ? { tenantId } : { tenantId: "__global_has_no_customers__" };
   const fortigateWhere = tenantId && !isGlobalContext ? { customer: { tenantId } } : { customer: { tenantId: "__global_has_no_fortigates__" } };
@@ -27,9 +29,14 @@ export default async function DashboardPage() {
     prisma.fortiGate.count({ where: fortigateWhere }),
     prisma.backup.count({ where: backupWhere }),
     prisma.backup.count({ where: { ...backupWhere, status: BackupStatus.FAILED } }),
-    prisma.auditLog.findMany({ where: auditWhere, orderBy: { createdAt: "desc" }, take: 8 }),
+    prisma.auditLog.findMany({
+      where: auditWhere,
+      include: { user: { select: { name: true, email: true } } },
+      orderBy: { createdAt: "desc" },
+      take: 8
+    }),
     prisma.backup.count({ where: { ...backupWhere, status: BackupStatus.CHANGED } }),
-    canManagePlatform ? getAppUpdateStatus() : Promise.resolve(null)
+    canReadUpdates ? getAppUpdateStatus() : Promise.resolve(null)
   ]);
 
   return (
@@ -45,11 +52,13 @@ export default async function DashboardPage() {
         <Card title="FortiGates" value={fortigates} />
         <Card title="Backups" value={backups} detail={`${changed} gewijzigd`} />
         <Card title="Fouten" value={failures} />
-        <Card
-          title="Applicatie"
-          value={updateStatus?.updateAvailable ? "Update" : updateStatus?.updateRunning ? "Bezig" : updateStatus?.currentVersion ?? "0.1.5"}
-          detail={updateStatus?.updateAvailable ? "Nieuwe GitHub versie beschikbaar" : updateStatus?.updateRunning ? "Update draait" : "Actueel"}
-        />
+        {canReadUpdates ? (
+          <Card
+            title="Applicatie"
+            value={updateStatus?.updateAvailable ? "Update" : updateStatus?.updateRunning ? "Bezig" : updateStatus?.currentVersion ?? "0.1.5"}
+            detail={updateStatus?.updateAvailable ? "Nieuwe GitHub versie beschikbaar" : updateStatus?.updateRunning ? "Update draait" : "Actueel"}
+          />
+        ) : null}
       </div>
 
       {updateStatus?.updateAvailable || updateStatus?.updateRunning ? (
@@ -78,18 +87,26 @@ export default async function DashboardPage() {
             <thead className="bg-surface-soft">
               <tr>
                 <th className="px-3 py-2">Actie</th>
+                <th className="px-3 py-2">Wie</th>
                 <th className="px-3 py-2">Entiteit</th>
                 <th className="px-3 py-2">Tijd</th>
               </tr>
             </thead>
             <tbody>
-              {latestAudit.map((item) => (
-                <tr key={item.id} className="border-t border-border">
-                  <td className="px-3 py-2">{item.action}</td>
-                  <td className="px-3 py-2">{item.entity ?? "-"}</td>
-                  <td className="px-3 py-2">{formatDateTime(item.createdAt, timeZone)}</td>
-                </tr>
-              ))}
+              {latestAudit.map((item) => {
+                const metadata = parseMetadata(item.metadata);
+                return (
+                  <tr key={item.id} className="border-t border-border">
+                    <td className="px-3 py-2">{item.action}</td>
+                    <td className="px-3 py-2">
+                      <div>{item.user?.name ?? metadata.actorName ?? "Systeem"}</div>
+                      <div className="text-xs text-muted-foreground">{item.user?.email ?? metadata.actorEmail ?? "-"}</div>
+                    </td>
+                    <td className="px-3 py-2">{item.entity ?? "-"}</td>
+                    <td className="px-3 py-2">{formatDateTime(item.createdAt, timeZone)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </TableShell>
@@ -100,4 +117,14 @@ export default async function DashboardPage() {
 
 function shortSha(value: string | null | undefined) {
   return value ? value.slice(0, 12) : "onbekend";
+}
+
+function parseMetadata(value: string | null) {
+  if (!value) return {} as { actorName?: string; actorEmail?: string };
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
 }

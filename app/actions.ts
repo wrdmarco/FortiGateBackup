@@ -29,6 +29,7 @@ export type ActionState = {
 };
 
 export type TenantUserCreateState = ActionState;
+export type TenantUserUpdateState = ActionState;
 export type AccessRoleCreateState = ActionState;
 export type AccessRoleEditState = ActionState;
 
@@ -52,6 +53,29 @@ function checkLoginThrottle(email: string) {
 function normalizeOptionalSiteUrl(value: FormDataEntryValue | null) {
   const raw = String(value ?? "").trim();
   return raw ? normalizeSiteUrl(raw) : "";
+}
+
+function normalizeOptionalWebhookUrl(value: FormDataEntryValue | null) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error("Webhook URL is ongeldig.");
+  }
+  if (url.protocol !== "https:") throw new Error("Webhook URL moet met https:// beginnen.");
+  return url.toString();
+}
+
+function normalizeEmailList(value: FormDataEntryValue | null) {
+  const emails = String(value ?? "")
+    .split(/[,\n;]/)
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+  const invalid = emails.find((email) => !email.includes("@"));
+  if (invalid) throw new Error(`Ongeldig e-mailadres voor backup notificaties: ${invalid}`);
+  return emails.join(", ");
 }
 
 function slugBaseFromName(name: string) {
@@ -93,6 +117,16 @@ async function assertRoleManagementAccess(tenantId: string, action: "create" | "
   const permissionPrefix = isSuperAdmin(user) && tenantId === globalTenantId ? "platform" : "tenant";
   await assertPermission(user, `${permissionPrefix}.roles.${action}` as PermissionKey);
   return user;
+}
+
+async function userManagementPermission(
+  user: Awaited<ReturnType<typeof requireTenantUser>>,
+  tenantId: string,
+  action: "create" | "update" | "delete"
+) {
+  const globalTenantId = await mainTenantId();
+  const permissionPrefix = isSuperAdmin(user) && tenantId === globalTenantId ? "platform" : "tenant";
+  return `${permissionPrefix}.users.${action}` as PermissionKey;
 }
 
 async function sendTemporaryPasswordMail(input: {
@@ -374,19 +408,20 @@ export async function createManagedTenantWithState(_state: ActionState, formData
 }
 
 export async function createTenantUser(formData: FormData) {
-  const user = await requireSuperAdmin();
+  const user = await requireTenantUser();
   const tenantId = String(formData.get("tenantId") ?? "");
   const name = String(formData.get("name") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
-  const password = String(formData.get("password") ?? "");
   const roleId = String(formData.get("roleId") ?? "");
 
   if (!tenantId) throw new Error("Tenant is verplicht.");
   if (!roleId) throw new Error("Rol is verplicht.");
   if (!email.includes("@")) throw new Error("Vul een geldig e-mailadres in.");
-  if (password.length < 12) throw new Error("Het tijdelijke wachtwoord moet minimaal 12 tekens zijn.");
+  assertTenantAccess(user, tenantId);
+  await assertPermission(user, await userManagementPermission(user, tenantId, "create"));
 
   const tenant = await prisma.tenant.findUniqueOrThrow({ where: { id: tenantId } });
+  const temporaryPassword = generateTemporaryPassword();
   await ensureTenantRbac(tenant.id);
   const accessRole = await prisma.accessRole.findFirst({
     where: { id: roleId, tenantId: tenant.id },
@@ -406,7 +441,7 @@ export async function createTenantUser(formData: FormData) {
         tenantId: tenant.id,
         name: name || null,
         email,
-        passwordHash: await bcrypt.hash(password, 12),
+        passwordHash: await bcrypt.hash(temporaryPassword, 12),
         mustChangePassword: true,
         role: legacyRole,
         provider: "LOCAL"
@@ -435,7 +470,7 @@ export async function createTenantUser(formData: FormData) {
       tenantName: tenant.name,
       to: created.email,
       name: created.name ?? "",
-      password
+      password: temporaryPassword
     });
   } catch (mailError) {
     await prisma.user.delete({ where: { id: created.id } });
@@ -454,6 +489,7 @@ export async function createTenantUser(formData: FormData) {
     metadata: { email: created.email }
   });
   revalidatePath("/tenants");
+  revalidatePath("/users");
 }
 
 export async function createTenantUserWithState(_state: TenantUserCreateState, formData: FormData): Promise<TenantUserCreateState> {
@@ -468,6 +504,174 @@ export async function createTenantUserWithState(_state: TenantUserCreateState, f
       ok: false,
       message: error instanceof Error ? error.message : "Gebruiker kon niet worden aangemaakt."
     };
+  }
+}
+
+export async function updateTenantUserWithState(_state: TenantUserUpdateState, formData: FormData): Promise<TenantUserUpdateState> {
+  try {
+    const user = await requireTenantUser();
+    const id = String(formData.get("id") ?? "");
+    const name = String(formData.get("name") ?? "").trim();
+    const email = String(formData.get("email") ?? "").trim().toLowerCase();
+    const roleId = String(formData.get("roleId") ?? "");
+    if (!id || !roleId) return { ok: false, message: "Gebruiker en rol zijn verplicht." };
+    if (!email.includes("@")) return { ok: false, message: "Vul een geldig e-mailadres in." };
+
+    const target = await prisma.user.findUniqueOrThrow({
+      where: { id },
+      include: { accessRoles: { include: { role: true } } }
+    });
+    if (!target.tenantId) return { ok: false, message: "Deze gebruiker is niet aan een tenant gekoppeld." };
+    assertTenantAccess(user, target.tenantId);
+    await assertPermission(user, await userManagementPermission(user, target.tenantId, "update"));
+
+    const accessRole = await prisma.accessRole.findFirst({
+      where: { id: roleId, tenantId: target.tenantId },
+      select: { id: true, name: true }
+    });
+    if (!accessRole) return { ok: false, message: "De gekozen rol bestaat niet binnen deze tenant." };
+    const legacyRole =
+      accessRole.name === "Super Admin" && target.tenantId === (await mainTenantId())
+        ? "SUPER_ADMIN"
+        : accessRole.name === "Tenant Admin"
+          ? "ADMIN"
+          : "VIEWER";
+    await assertUserRoleChangeSafe(target.id, target.tenantId, legacyRole);
+    const beforeRoles = target.accessRoles.map((assignment) => assignment.role.name);
+
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: target.id },
+        data: { name: name || null, email, role: legacyRole }
+      });
+      await tx.userAccessRole.deleteMany({ where: { userId: target.id } });
+      await tx.userAccessRole.create({ data: { userId: target.id, roleId: accessRole.id } });
+    });
+    await auditLog({
+      action: "user.updated",
+      tenantId: target.tenantId,
+      userId: user.id,
+      entity: "User",
+      entityId: target.id,
+      metadata: { beforeEmail: target.email, afterEmail: email, beforeRoles, afterRole: accessRole.name }
+    });
+    revalidatePath("/users");
+    revalidatePath("/tenants");
+    return { ok: true, message: "Gebruiker is bijgewerkt." };
+  } catch (error) {
+    if (isUniqueConstraintError(error)) return { ok: false, message: "Er bestaat al een gebruiker met dit e-mailadres." };
+    return { ok: false, message: error instanceof Error ? error.message : "Gebruiker kon niet worden bijgewerkt." };
+  }
+}
+
+export async function setTenantUserActive(formData: FormData) {
+  const user = await requireTenantUser();
+  const id = String(formData.get("id") ?? "");
+  const active = bool(formData.get("active"));
+  const target = await prisma.user.findUniqueOrThrow({ where: { id } });
+  if (!target.tenantId) throw new Error("Deze gebruiker is niet aan een tenant gekoppeld.");
+  if (target.id === user.id && !active) throw new Error("Je kunt je eigen account niet deactiveren.");
+  assertTenantAccess(user, target.tenantId);
+  await assertPermission(user, await userManagementPermission(user, target.tenantId, "update"));
+  if (!active) await assertUserCanBeRemovedOrDisabled(target);
+  await prisma.user.update({ where: { id: target.id }, data: { active } });
+  if (!active) await prisma.session.deleteMany({ where: { userId: target.id } });
+  await auditLog({
+    action: active ? "user.activated" : "user.deactivated",
+    tenantId: target.tenantId,
+    userId: user.id,
+    entity: "User",
+    entityId: target.id,
+    metadata: { email: target.email }
+  });
+  revalidatePath("/users");
+  revalidatePath("/tenants");
+}
+
+export async function resetTenantUserPassword(formData: FormData) {
+  const user = await requireTenantUser();
+  const id = String(formData.get("id") ?? "");
+  const target = await prisma.user.findUniqueOrThrow({
+    where: { id },
+    include: { tenant: { select: { id: true, name: true } } }
+  });
+  if (!target.tenantId || !target.tenant) throw new Error("Deze gebruiker is niet aan een tenant gekoppeld.");
+  if (!target.active) throw new Error("Wachtwoord resetten kan alleen voor actieve gebruikers.");
+  assertTenantAccess(user, target.tenantId);
+  await assertPermission(user, await userManagementPermission(user, target.tenantId, "update"));
+  await assertMailReady(target.tenantId);
+
+  const temporaryPassword = generateTemporaryPassword();
+  const previousPasswordState = {
+    passwordHash: target.passwordHash,
+    mustChangePassword: target.mustChangePassword,
+    provider: target.provider
+  };
+  await prisma.user.update({
+    where: { id: target.id },
+    data: {
+      passwordHash: await bcrypt.hash(temporaryPassword, 12),
+      mustChangePassword: true,
+      provider: "LOCAL"
+    }
+  });
+  await prisma.session.deleteMany({ where: { userId: target.id } });
+
+  try {
+    await sendTemporaryPasswordMail({
+      tenantId: target.tenantId,
+      tenantName: target.tenant.name,
+      to: target.email,
+      name: target.name ?? "",
+      password: temporaryPassword
+    });
+  } catch (mailError) {
+    await prisma.user.update({ where: { id: target.id }, data: previousPasswordState });
+    throw new Error(
+      `Het wachtwoord is niet gewijzigd, omdat de mail met het tijdelijke wachtwoord niet kon worden verzonden: ${
+        mailError instanceof Error ? mailError.message : "onbekende mailfout"
+      }`
+    );
+  }
+
+  await auditLog({
+    action: "user.password_reset",
+    tenantId: target.tenantId,
+    userId: user.id,
+    entity: "User",
+    entityId: target.id,
+    metadata: { email: target.email, mustChangePassword: true }
+  });
+  revalidatePath("/users");
+}
+
+async function assertUserRoleChangeSafe(userId: string, tenantId: string, nextRole: "SUPER_ADMIN" | "ADMIN" | "VIEWER") {
+  const current = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+  if ((current.role === "ADMIN" || current.role === "SUPER_ADMIN") && nextRole === "VIEWER") {
+    const tenantAdmins = await prisma.user.count({
+      where: { tenantId, active: true, role: { in: ["ADMIN", "SUPER_ADMIN"] }, id: { not: userId } }
+    });
+    if (tenantAdmins < 1) throw new Error("De laatste beheerder van deze tenant kan niet worden aangepast naar een niet-beheerrol.");
+  }
+  if (current.role === "SUPER_ADMIN" && nextRole !== "SUPER_ADMIN") {
+    const superAdmins = await prisma.user.count({ where: { role: "SUPER_ADMIN", active: true, id: { not: userId } } });
+    if (superAdmins < 1) throw new Error("De laatste superadmin kan niet worden aangepast.");
+  }
+}
+
+async function assertUserCanBeRemovedOrDisabled(target: { id: string; tenantId: string | null; role: "SUPER_ADMIN" | "ADMIN" | "VIEWER"; active: boolean }) {
+  if (!target.tenantId) throw new Error("Deze gebruiker is niet aan een tenant gekoppeld.");
+  const tenantUsers = await prisma.user.count({ where: { tenantId: target.tenantId, active: true, id: { not: target.id } } });
+  if (tenantUsers < 1) throw new Error("De laatste gebruiker van een tenant kan niet los verwijderd of gedeactiveerd worden.");
+  if (target.role === "SUPER_ADMIN") {
+    const superAdmins = await prisma.user.count({ where: { role: "SUPER_ADMIN", active: true, id: { not: target.id } } });
+    if (superAdmins < 1) throw new Error("De laatste superadmin kan niet verwijderd of gedeactiveerd worden.");
+  }
+  if (target.role === "ADMIN" || target.role === "SUPER_ADMIN") {
+    const tenantAdmins = await prisma.user.count({
+      where: { tenantId: target.tenantId, active: true, role: { in: ["ADMIN", "SUPER_ADMIN"] }, id: { not: target.id } }
+    });
+    if (tenantAdmins < 1) throw new Error("De laatste beheerder van deze tenant kan niet verwijderd of gedeactiveerd worden.");
   }
 }
 
@@ -618,7 +822,7 @@ export async function deleteAccessRole(formData: FormData) {
 }
 
 export async function deleteTenantUser(formData: FormData) {
-  const user = await requireSuperAdmin();
+  const user = await requireTenantUser();
   const id = String(formData.get("id") ?? "");
   const target = await prisma.user.findUniqueOrThrow({
     where: { id },
@@ -631,32 +835,9 @@ export async function deleteTenantUser(formData: FormData) {
   if (!target.tenantId) {
     throw new Error("Deze gebruiker is niet aan een tenant gekoppeld.");
   }
-
-  const tenantUsers = await prisma.user.count({
-    where: {
-      tenantId: target.tenantId,
-      active: true
-    }
-  });
-  if (tenantUsers <= 1) {
-    throw new Error("De laatste gebruiker van een tenant kan niet los verwijderd worden. Verwijder de tenant als alles weg mag.");
-  }
-
-  if (target.role === "SUPER_ADMIN") {
-    const superAdmins = await prisma.user.count({ where: { role: "SUPER_ADMIN", active: true } });
-    if (superAdmins <= 1) throw new Error("De laatste superadmin kan niet verwijderd worden.");
-  }
-
-  if (target.role === "ADMIN" || target.role === "SUPER_ADMIN") {
-    const tenantAdmins = await prisma.user.count({
-      where: {
-        tenantId: target.tenantId,
-        active: true,
-        role: { in: ["ADMIN", "SUPER_ADMIN"] }
-      }
-    });
-    if (tenantAdmins <= 1) throw new Error("De laatste beheerder van deze tenant kan niet verwijderd worden.");
-  }
+  assertTenantAccess(user, target.tenantId);
+  await assertPermission(user, await userManagementPermission(user, target.tenantId, "delete"));
+  await assertUserCanBeRemovedOrDisabled(target);
 
   await auditLog({
     action: "user.deleted",
@@ -674,6 +855,7 @@ export async function deleteTenantUser(formData: FormData) {
   });
 
   revalidatePath("/tenants");
+  revalidatePath("/users");
 }
 
 export async function setTenantActive(formData: FormData) {
@@ -1074,6 +1256,8 @@ export async function saveSettings(formData: FormData) {
     if (!isValidTimeZone(timeZone)) throw new Error("Ongeldige tijdzone.");
     await setSetting("ui.timeZone", timeZone, { tenantId });
   }
+  const backupNotifyRecipients = normalizeEmailList(formData.get("backup.notifyRecipients"));
+  const backupWebhookUrl = normalizeOptionalWebhookUrl(formData.get("backup.webhookUrl"));
   const entries = [
     ["itglue.baseUrl", formData.get("itglue.baseUrl")],
     ["mail.provider", formData.get("mail.provider")],
@@ -1089,8 +1273,20 @@ export async function saveSettings(formData: FormData) {
     ["scheduler.maxParallelJobs", formData.get("scheduler.maxParallelJobs")],
     ["backup.defaultSchedule", formData.get("backup.defaultSchedule")],
     ["backup.retention.count", formData.get("backup.retention.count")],
-    ["backup.retry.count", formData.get("backup.retry.count")]
+    ["backup.retry.count", formData.get("backup.retry.count")],
+    ["backup.notifyRecipients", backupNotifyRecipients],
+    ["backup.webhookUrl", backupWebhookUrl]
   ] as const;
+  if (formData.has("backup.notifyEmail") || formData.has("backup.notifyWebhook")) {
+    const notificationEventsEnabled =
+      boolField(formData, "backup.notifySuccess") || boolField(formData, "backup.notifyFailures");
+    if (notificationEventsEnabled && boolField(formData, "backup.notifyEmail") && !backupNotifyRecipients) {
+      throw new Error("Vul minimaal een mailontvanger in voor backup notificaties.");
+    }
+    if (notificationEventsEnabled && boolField(formData, "backup.notifyWebhook") && !backupWebhookUrl) {
+      throw new Error("Vul een webhook URL in voor backup notificaties.");
+    }
+  }
   if (formData.has("itglue.enabled")) {
     await setSetting("itglue.enabled", boolField(formData, "itglue.enabled") ? "true" : "false", { tenantId });
   }
@@ -1106,8 +1302,23 @@ export async function saveSettings(formData: FormData) {
   if (formData.has("backup.notifyFailures")) {
     await setSetting("backup.notifyFailures", boolField(formData, "backup.notifyFailures") ? "true" : "false", { tenantId });
   }
+  if (formData.has("backup.notifySuccess")) {
+    await setSetting("backup.notifySuccess", boolField(formData, "backup.notifySuccess") ? "true" : "false", { tenantId });
+  }
+  if (formData.has("backup.notifyEmail")) {
+    await setSetting("backup.notifyEmail", boolField(formData, "backup.notifyEmail") ? "true" : "false", { tenantId });
+  }
+  if (formData.has("backup.notifyWebhook")) {
+    await setSetting("backup.notifyWebhook", boolField(formData, "backup.notifyWebhook") ? "true" : "false", { tenantId });
+  }
   for (const [key, value] of entries) {
     if (value) await setSetting(key, String(value), { tenantId });
+  }
+  if (formData.has("backup.notifyRecipients") && !backupNotifyRecipients) {
+    await deleteSetting("backup.notifyRecipients", tenantId);
+  }
+  if (formData.has("backup.webhookUrl") && !backupWebhookUrl) {
+    await deleteSetting("backup.webhookUrl", tenantId);
   }
   const smtpPassword = formData.get("smtp.password");
   const itGlueApiKey = formData.get("itglue.apiKey");
@@ -1128,10 +1339,12 @@ export async function saveSettings(formData: FormData) {
 
 export async function startAppUpdateAction() {
   const user = await requireSuperAdmin();
+  await assertPermission(user, "platform.updates.run");
   const result = await startAppUpdate();
+  const globalTenantId = await mainTenantId();
   await auditLog({
     action: "app.update.started",
-    tenantId: user.tenantId,
+    tenantId: globalTenantId,
     userId: user.id,
     entity: "System",
     metadata: result
@@ -1164,7 +1377,7 @@ export async function testMailSettings(_state: MailTestState, formData: FormData
       text: "Deze testmail bevestigt dat de mailconfiguratie correct werkt."
     });
 
-    await auditLog({ action: "settings.mail_test.sent", tenantId, metadata: { provider: formData.get("mail.provider"), to } });
+    await auditLog({ action: "settings.mail_test.sent", tenantId, userId: user.id, metadata: { provider: formData.get("mail.provider"), to } });
     revalidatePath("/settings");
     return { ok: true, message: `Testmail verzonden naar ${to}.` };
   } catch (error) {

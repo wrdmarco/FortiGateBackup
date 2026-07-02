@@ -8,6 +8,7 @@ export const permissions = [
   { key: "platform.tenants.create", category: "Platform", description: "Nieuwe tenants aanmaken" },
   { key: "platform.tenants.update", category: "Platform", description: "Tenantstatus en tenantgegevens wijzigen" },
   { key: "platform.tenants.delete", category: "Platform", description: "Tenants verwijderen" },
+  { key: "platform.tenants.export", category: "Platform", description: "Tenantdata exporteren" },
   { key: "platform.users.read", category: "Platform", description: "Platformbreed gebruikers bekijken" },
   { key: "platform.users.create", category: "Platform", description: "Gebruikers voor tenants aanmaken" },
   { key: "platform.users.update", category: "Platform", description: "Platformbreed gebruikers wijzigen" },

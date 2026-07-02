@@ -6,6 +6,7 @@ import { getAppUpdateStatus } from "@/lib/app-update";
 import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { getEffectiveMailSetting, getMailProviderMode } from "@/lib/mail";
+import { hasPermission } from "@/lib/rbac";
 import { getSetting } from "@/lib/settings";
 import { requireUser } from "@/lib/session";
 import { mainTenantId } from "@/lib/tenant-main";
@@ -21,12 +22,14 @@ export default async function SettingsPage({
   searchParams?: Promise<{ tab?: string }>;
 }) {
   const user = await requireUser();
-  const canUpdateApp = isSuperAdmin(user);
+  const canManagePlatform = isSuperAdmin(user);
   const params = await searchParams;
   const globalTenantId = await mainTenantId();
-  const selectedTenantId = canUpdateApp ? user.activeTenantId ?? globalTenantId ?? "" : user.tenantId ?? "";
+  const selectedTenantId = canManagePlatform ? user.activeTenantId ?? globalTenantId ?? "" : user.tenantId ?? "";
   const tenantId = selectedTenantId || null;
   const isGlobalScope = Boolean(tenantId && tenantId === globalTenantId);
+  const canReadUpdates = isGlobalScope && (await hasPermission(user, "platform.updates.read"));
+  const canRunUpdates = isGlobalScope && (await hasPermission(user, "platform.updates.run"));
   const selectedTenantName =
     user.activeTenant?.name ??
     (user.tenantId === selectedTenantId ? user.tenant?.name : null) ??
@@ -57,6 +60,11 @@ export default async function SettingsPage({
     backupRetentionCount,
     backupRetryCount,
     backupNotifyFailures,
+    backupNotifySuccess,
+    backupNotifyEmail,
+    backupNotifyWebhook,
+    backupNotifyRecipients,
+    backupWebhookUrl,
     savedSecrets,
     updateStatus
   ] = await Promise.all([
@@ -83,6 +91,11 @@ export default async function SettingsPage({
     getSetting("backup.retention.count", tenantId),
     getSetting("backup.retry.count", tenantId),
     getSetting("backup.notifyFailures", tenantId),
+    getSetting("backup.notifySuccess", tenantId),
+    getSetting("backup.notifyEmail", tenantId),
+    getSetting("backup.notifyWebhook", tenantId),
+    getSetting("backup.notifyRecipients", tenantId),
+    getSetting("backup.webhookUrl", tenantId),
     prisma.systemSetting.findMany({
       where: {
         ...secretScopeWhere,
@@ -90,7 +103,7 @@ export default async function SettingsPage({
       },
       select: { key: true }
     }),
-    canUpdateApp ? getAppUpdateStatus() : Promise.resolve(null)
+    canReadUpdates ? getAppUpdateStatus() : Promise.resolve(null)
   ]);
   const secretKeys = new Set(savedSecrets.map((setting) => setting.key));
   const values = {
@@ -121,7 +134,12 @@ export default async function SettingsPage({
     backupDefaultSchedule: backupDefaultSchedule ?? "DAILY",
     backupRetentionCount: backupRetentionCount ?? "30",
     backupRetryCount: backupRetryCount ?? "2",
-    backupNotifyFailures: backupNotifyFailures !== "false"
+    backupNotifyFailures: backupNotifyFailures !== "false",
+    backupNotifySuccess: backupNotifySuccess === "true",
+    backupNotifyEmail: backupNotifyEmail === "true",
+    backupNotifyWebhook: backupNotifyWebhook === "true",
+    backupNotifyRecipients: backupNotifyRecipients ?? "",
+    backupWebhookUrl: backupWebhookUrl ?? ""
   };
   const formProps = { action: saveSettings, testMailAction: testMailSettings, tenants: [], selectedTenantId, selectedTenantName, values, allowSystemMail: !isGlobalScope };
   const configTabs = isGlobalScope ? ["mail", "sso", "scheduler"] : ["portal", "itglue", "mail", "sso", "scheduler"];
@@ -219,11 +237,13 @@ export default async function SettingsPage({
                             {updateStatus.lastLog}
                           </pre>
                         ) : null}
-                        <form action={startAppUpdateAction}>
-                          <Button disabled={updateStatus.updateRunning} variant={updateStatus.updateAvailable ? "primary" : "secondary"}>
-                            {updateStatus.updateAvailable ? "Check en update nu" : "Opnieuw checken / update starten"}
-                          </Button>
-                        </form>
+                        {canRunUpdates ? (
+                          <form action={startAppUpdateAction}>
+                            <Button disabled={updateStatus.updateRunning} variant={updateStatus.updateAvailable ? "primary" : "secondary"}>
+                              {updateStatus.updateAvailable ? "Check en update nu" : "Opnieuw checken / update starten"}
+                            </Button>
+                          </form>
+                        ) : null}
                       </div>
                     </Panel>
                   )

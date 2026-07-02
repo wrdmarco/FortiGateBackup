@@ -41,7 +41,9 @@ export function TenantUserCreateForm({ tenantId, roles }: { tenantId: string; ro
             De gebruiker krijgt exact de geselecteerde RBAC-rol binnen deze tenant.
           </span>
         </label>
-        <Field label="Tijdelijk wachtwoord" name="password" type="password" required />
+        <div className="rounded-md border border-border bg-surface-soft p-3 text-sm text-muted-foreground">
+          Er wordt automatisch een tijdelijk wachtwoord gegenereerd en per mail verstuurd. De gebruiker moet dit bij de eerste login wijzigen.
+        </div>
       </div>
       {roles.length ? (
         <div className="rounded-md border border-border bg-surface-soft p-3 text-sm text-muted-foreground">

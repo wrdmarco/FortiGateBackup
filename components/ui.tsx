@@ -4,6 +4,7 @@ import { logoutAction, switchTenantContextAction } from "@/app/actions";
 import { TenantSwitcher } from "@/components/tenant-switcher";
 import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
+import { hasPermission } from "@/lib/rbac";
 import { currentUser } from "@/lib/session";
 import { isGlobalTenantId } from "@/lib/tenant-main";
 
@@ -15,6 +16,8 @@ export async function Shell({ children }: { children: React.ReactNode }) {
     : [];
   const currentTenantId = user?.activeTenantId ?? user?.tenantId ?? null;
   const isGlobalContext = await isGlobalTenantId(currentTenantId);
+  const canReadUsers = user ? await hasPermission(user, isSuperAdmin(user) && isGlobalContext ? "platform.users.read" : "tenant.users.read") : false;
+  const canReadAudit = user ? await hasPermission(user, isSuperAdmin(user) && isGlobalContext ? "platform.audit.read" : "audit.read") : false;
   const tenantName = user?.activeTenant?.name ?? user?.tenant?.name ?? "Geen tenant";
 
   return (
@@ -80,9 +83,19 @@ export async function Shell({ children }: { children: React.ReactNode }) {
                     Tenants
                   </Link>
                 ) : null}
+                {canReadUsers ? (
+                  <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/users">
+                    Gebruikers
+                  </Link>
+                ) : null}
                 <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/roles">
                   Rollen
                 </Link>
+                {canReadAudit ? (
+                  <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/audit">
+                    Audit
+                  </Link>
+                ) : null}
                 <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/settings">
                   Instellingen
                 </Link>

@@ -4,6 +4,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { BackupStatus, FortiGate, FortiGateLogLevel } from "@prisma/client";
 import { auditLog } from "@/lib/audit";
+import { notifyBackupResult } from "@/lib/backup-notifications";
 import { decryptSecret, sha256 } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 import { uploadBackupToItGlue } from "@/lib/itglue";
@@ -497,7 +498,7 @@ export async function runBackup(deviceId: string) {
         "Backup voltooid; configuratie is ongewijzigd.",
         { sha256: digest, bytes: config.byteLength }
       );
-      return prisma.backup.create({
+      const backup = await prisma.backup.create({
         data: {
           fortigateId: device.id,
           sha256: digest,
@@ -505,6 +506,8 @@ export async function runBackup(deviceId: string) {
           status: BackupStatus.UNCHANGED
         }
       });
+      await notifyBackupResult(backup.id);
+      return backup;
     }
 
     const directory = path.join(process.cwd(), "data", "backups", device.id);
@@ -555,7 +558,7 @@ export async function runBackup(deviceId: string) {
           "Backupconfiguratie als IT Glue bijlage verwerkt.",
           { attachmentId: upload.attachmentId, configurationId: uploadTarget.itGlueConfigurationId }
         );
-        return prisma.backup.update({
+        const updatedBackup = await prisma.backup.update({
           where: { id: backup.id },
           data: {
             itGlueAttachmentId: upload.attachmentId,
@@ -563,6 +566,8 @@ export async function runBackup(deviceId: string) {
             itGlueError: null
           }
         });
+        await notifyBackupResult(updatedBackup.id);
+        return updatedBackup;
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Onbekende IT Glue upload fout.";
@@ -572,11 +577,14 @@ export async function runBackup(deviceId: string) {
         "itglue.upload_failed",
         message
       );
-      return prisma.backup.update({
+      const updatedBackup = await prisma.backup.update({
         where: { id: backup.id },
         data: { itGlueError: message }
       });
+      await notifyBackupResult(updatedBackup.id);
+      return updatedBackup;
     }
+    await notifyBackupResult(backup.id);
     return backup;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown backup error.";
@@ -592,12 +600,14 @@ export async function runBackup(deviceId: string) {
       "backup.failed",
       message
     );
-    return prisma.backup.create({
+    const backup = await prisma.backup.create({
       data: {
         fortigateId: device.id,
         status: BackupStatus.FAILED,
         error: message
       }
     });
+    await notifyBackupResult(backup.id);
+    return backup;
   }
 }
