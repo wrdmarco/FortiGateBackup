@@ -44,11 +44,13 @@ const steps: WizardStep[] = [
 export function FortiGateWizard({
   customers,
   action,
-  defaultCustomerId
+  defaultCustomerId,
+  defaultScheduleType = "DAILY"
 }: {
   customers: CustomerOption[];
   action: (formData: FormData) => void | Promise<void>;
   defaultCustomerId?: string;
+  defaultScheduleType?: string;
 }) {
   const [step, setStep] = useState(0);
   const selectedCustomerId = customers.some((customer) => customer.id === defaultCustomerId)
@@ -207,7 +209,7 @@ export function FortiGateWizard({
           <section className={step === 3 ? "grid gap-5" : "hidden"}>
             <label className="grid gap-1 text-sm">
               <span className="font-medium">Backupschema</span>
-              <select className="rounded-md border border-border bg-surface px-3 py-2" name="scheduleType" defaultValue="DAILY">
+              <select className="rounded-md border border-border bg-surface px-3 py-2" name="scheduleType" defaultValue={defaultScheduleType}>
                 <option value="HOURLY">Elk uur</option>
                 <option value="DAILY">Dagelijks</option>
                 <option value="WEEKLY">Wekelijks</option>

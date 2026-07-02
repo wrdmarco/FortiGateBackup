@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auditLog } from "@/lib/audit";
 import { isSuperAdmin, requireTenantUser } from "@/lib/authz";
 import { setSetting } from "@/lib/settings";
+import { mainTenantId } from "@/lib/tenant-main";
 
 export async function POST(request: NextRequest) {
   const user = await requireTenantUser();
@@ -11,7 +12,7 @@ export async function POST(request: NextRequest) {
     value: string;
     encrypted?: boolean;
   };
-  const tenantId = isSuperAdmin(user) ? body.tenantId ?? null : user.tenantId;
+  const tenantId = isSuperAdmin(user) ? user.activeTenantId ?? (await mainTenantId()) : user.tenantId;
   const setting = await setSetting(body.key, body.value, {
     tenantId,
     encrypted: body.encrypted ?? false

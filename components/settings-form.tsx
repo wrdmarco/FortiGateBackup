@@ -32,15 +32,23 @@ type SettingsValues = {
   hasGraphClientSecret: boolean;
   hasEntraSecret: boolean;
   testMailTo: string;
+  schedulerEnabled: boolean;
+  schedulerMaxParallelJobs: string;
+  backupScheduleEnabled: boolean;
+  backupDefaultSchedule: string;
+  backupRetentionCount: string;
+  backupRetryCount: string;
+  backupNotifyFailures: boolean;
 };
 
-type SettingsTabId = "portal" | "itglue" | "mail" | "sso";
+type SettingsTabId = "portal" | "itglue" | "mail" | "sso" | "scheduler";
 
 const tabs: { id: SettingsTabId; label: string }[] = [
   { id: "portal", label: "Portal" },
   { id: "itglue", label: "IT Glue" },
   { id: "mail", label: "Mail" },
-  { id: "sso", label: "SSO" }
+  { id: "sso", label: "SSO" },
+  { id: "scheduler", label: "Scheduler" }
 ];
 
 export function SettingsForm({
@@ -68,10 +76,7 @@ export function SettingsForm({
   const [mailProvider, setMailProvider] = useState(values.mailProvider);
   const [entraEnabled, setEntraEnabled] = useState(values.entraEnabled);
   const [mailTestState, runMailTest, mailTestPending] = useActionState(testMailAction, { ok: false, message: "" });
-  const scopeLabel = useMemo(
-    () => tenants.find((tenant) => tenant.id === selectedTenantId)?.name ?? selectedTenantName,
-    [selectedTenantId, selectedTenantName, tenants]
-  );
+  const scopeLabel = useMemo(() => tenants.find((tenant) => tenant.id === selectedTenantId)?.name ?? selectedTenantName, [selectedTenantId, selectedTenantName, tenants]);
   const showTab = (id: SettingsTabId) => availableTabs.some((tab) => tab.id === id);
 
   useEffect(() => {
@@ -91,31 +96,7 @@ export function SettingsForm({
             Je bewerkt nu instellingen voor <strong>{scopeLabel}</strong>.
           </p>
         </div>
-        {tenants.length ? (
-          <label className="grid gap-1 text-sm">
-            <span className="font-medium">Tenant</span>
-            <select
-              className="rounded-md border border-border bg-surface px-3 py-2"
-              name="tenantId"
-              value={selectedTenantId}
-              onChange={(event) => {
-                const value = event.target.value;
-                const params = new URLSearchParams({ tab: activeTab });
-                if (value) params.set("tenantId", value);
-                window.location.href = `/settings?${params.toString()}`;
-              }}
-            >
-              {tenants.map((tenant) => (
-                <option key={tenant.id} value={tenant.id}>
-                  {tenant.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : (
-          <input type="hidden" name="tenantId" value={selectedTenantId} />
-        )}
-        {tenants.length ? <input type="hidden" name="tenantId" value={selectedTenantId} /> : null}
+        <input type="hidden" name="tenantId" value={selectedTenantId} />
       </section>
 
       {availableTabs.length > 1 ? (
@@ -304,6 +285,71 @@ export function SettingsForm({
               />
             </div>
           ) : null}
+        </section>
+      ) : null}
+
+      {showTab("scheduler") ? (
+        <section hidden={activeTab !== "scheduler"} className="grid gap-4 rounded-md border border-border bg-surface-soft p-4">
+          {selectedTenantName === "Global" ? (
+            <>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="font-semibold">Scheduler engine</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Beheer alleen de platformworker en globale veiligheidslimieten.
+                  </p>
+                </div>
+                <label className="flex items-center gap-2 rounded-md border border-border bg-surface px-3 py-2 text-sm">
+                  <input name="scheduler.enabled" type="hidden" value="false" />
+                  <input name="scheduler.enabled" type="checkbox" value="true" defaultChecked={values.schedulerEnabled} />
+                  Scheduler actief
+                </label>
+              </div>
+              <TextField
+                label="Maximum parallelle jobs"
+                name="scheduler.maxParallelJobs"
+                type="number"
+                defaultValue={values.schedulerMaxParallelJobs}
+                help="Globale bovengrens voor gelijktijdige backupjobs."
+                required
+              />
+            </>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="font-semibold">Tenant backupschema</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Beheer automatische backups, retentie, retry en foutnotificaties voor deze tenant.
+                  </p>
+                </div>
+                <label className="flex items-center gap-2 rounded-md border border-border bg-surface px-3 py-2 text-sm">
+                  <input name="backup.schedule.enabled" type="hidden" value="false" />
+                  <input name="backup.schedule.enabled" type="checkbox" value="true" defaultChecked={values.backupScheduleEnabled} />
+                  Automatische backups
+                </label>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="grid gap-1 text-sm">
+                  <span className="font-medium">Standaard schema</span>
+                  <select className="rounded-md border border-border bg-surface px-3 py-2" name="backup.defaultSchedule" defaultValue={values.backupDefaultSchedule}>
+                    <option value="HOURLY">Elk uur</option>
+                    <option value="DAILY">Dagelijks</option>
+                    <option value="WEEKLY">Wekelijks</option>
+                    <option value="MONTHLY">Maandelijks</option>
+                    <option value="CRON">Cron / per FortiGate</option>
+                  </select>
+                </label>
+                <TextField label="Backups bewaren" name="backup.retention.count" type="number" defaultValue={values.backupRetentionCount} required />
+                <TextField label="Retries bij fout" name="backup.retry.count" type="number" defaultValue={values.backupRetryCount} required />
+                <label className="flex items-center gap-2 rounded-md border border-border bg-surface px-3 py-2 text-sm">
+                  <input name="backup.notifyFailures" type="hidden" value="false" />
+                  <input name="backup.notifyFailures" type="checkbox" value="true" defaultChecked={values.backupNotifyFailures} />
+                  Mail bij mislukte backup
+                </label>
+              </div>
+            </>
+          )}
         </section>
       ) : null}
 

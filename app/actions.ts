@@ -6,13 +6,13 @@ import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
 import { auditLog } from "@/lib/audit";
 import { removeBackupFiles } from "@/lib/backup-cleanup";
-import { assertPermission, assertTenantAccess, isSuperAdmin, requireSuperAdmin, requireTenantUser } from "@/lib/authz";
+import { assertOperationalTenant, assertPermission, assertTenantAccess, isSuperAdmin, requireSuperAdmin, requireTenantUser } from "@/lib/authz";
 import { encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 import { runBackup } from "@/lib/fortigate";
 import { assertMailReady, sendMail } from "@/lib/mail";
-import { assignDefaultTenantRole, ensureTenantRbac, permissions } from "@/lib/rbac";
-import { createSession, destroySession, requireUser } from "@/lib/session";
+import { assignDefaultTenantRole, ensureTenantRbac, permissions, type PermissionKey } from "@/lib/rbac";
+import { createSession, destroySession, requireUser, setActiveTenantContext } from "@/lib/session";
 import { deleteSetting, setSetting } from "@/lib/settings";
 import { isItGlueEnabled } from "@/lib/itglue";
 import { normalizeSiteUrl } from "@/lib/site-url";
@@ -30,6 +30,7 @@ export type ActionState = {
 
 export type TenantUserCreateState = ActionState;
 export type AccessRoleCreateState = ActionState;
+export type AccessRoleEditState = ActionState;
 
 function bool(value: FormDataEntryValue | null) {
   return value === "on" || value === "true";
@@ -85,10 +86,12 @@ function isUniqueConstraintError(error: unknown) {
   return typeof error === "object" && error !== null && "code" in error && error.code === "P2002";
 }
 
-async function assertRoleManagementAccess(tenantId: string, action: "create" | "delete") {
+async function assertRoleManagementAccess(tenantId: string, action: "create" | "update" | "delete") {
   const user = await requireTenantUser();
   assertTenantAccess(user, tenantId);
-  await assertPermission(user, isSuperAdmin(user) ? `platform.roles.${action}` : `tenant.roles.${action}`);
+  const globalTenantId = await mainTenantId();
+  const permissionPrefix = isSuperAdmin(user) && tenantId === globalTenantId ? "platform" : "tenant";
+  await assertPermission(user, `${permissionPrefix}.roles.${action}` as PermissionKey);
   return user;
 }
 
@@ -118,6 +121,26 @@ async function sendTemporaryPasswordMail(input: {
 
 async function onboardingMailTenantId() {
   return mainTenantId();
+}
+
+export async function switchTenantContextAction(formData: FormData) {
+  const user = await requireSuperAdmin();
+  const tenantId = String(formData.get("tenantId") ?? "");
+  if (!tenantId) throw new Error("Tenant is verplicht.");
+  const tenant = await prisma.tenant.findFirstOrThrow({
+    where: { id: tenantId, active: true },
+    select: { id: true, name: true }
+  });
+  await setActiveTenantContext(tenant.id);
+  await auditLog({
+    action: "tenant.access.entered",
+    tenantId: tenant.id,
+    userId: user.id,
+    entity: "Tenant",
+    entityId: tenant.id,
+    metadata: { name: user.name, email: user.email, source: "tenant_switcher" }
+  });
+  revalidatePath("/", "layout");
 }
 
 function recordLoginFailure(email: string) {
@@ -430,9 +453,10 @@ export async function createAccessRoleWithState(_state: AccessRoleCreateState, f
     if (!tenantId) return { ok: false, message: "Tenant is verplicht." };
     if (name.length < 2) return { ok: false, message: "Rolnaam moet minimaal 2 tekens bevatten." };
     const user = await assertRoleManagementAccess(tenantId, "create");
+    const globalTenantId = await mainTenantId();
     const allowedKeys = new Set<string>(
       permissions
-        .filter((permission) => isSuperAdmin(user) || !permission.key.startsWith("platform."))
+        .filter((permission) => tenantId === globalTenantId || !permission.key.startsWith("platform."))
         .map((permission) => permission.key)
     );
     const permissionKeys = [...new Set(selectedKeys)].filter((key) => allowedKeys.has(key));
@@ -460,7 +484,7 @@ export async function createAccessRoleWithState(_state: AccessRoleCreateState, f
       userId: user.id,
       entity: "AccessRole",
       entityId: role.id,
-      metadata: { name, permissions: permissionKeys.length }
+      metadata: { name, permissions: permissionKeys.length, addedPermissions: permissionKeys }
     });
     revalidatePath("/roles");
     return { ok: true, message: `Rol ${name} is aangemaakt.` };
@@ -471,6 +495,73 @@ export async function createAccessRoleWithState(_state: AccessRoleCreateState, f
     return {
       ok: false,
       message: error instanceof Error ? error.message : "Rol kon niet worden aangemaakt."
+    };
+  }
+}
+
+export async function updateAccessRoleWithState(_state: AccessRoleEditState, formData: FormData): Promise<AccessRoleEditState> {
+  try {
+    const roleId = String(formData.get("roleId") ?? "");
+    const name = String(formData.get("name") ?? "").trim();
+    const description = String(formData.get("description") ?? "").trim();
+    const selectedKeys = formData.getAll("permissionKeys").map(String);
+    if (!roleId) return { ok: false, message: "Rol is verplicht." };
+    if (name.length < 2) return { ok: false, message: "Rolnaam moet minimaal 2 tekens bevatten." };
+
+    const role = await prisma.accessRole.findUniqueOrThrow({
+      where: { id: roleId },
+      include: { permissions: { include: { permission: true } } }
+    });
+    if (role.system) return { ok: false, message: "Systeemrollen kunnen niet worden aangepast." };
+    const user = await assertRoleManagementAccess(role.tenantId, "update");
+    const globalTenantId = await mainTenantId();
+    const allowedKeys = new Set<string>(
+      permissions
+        .filter((permission) => role.tenantId === globalTenantId || !permission.key.startsWith("platform."))
+        .map((permission) => permission.key)
+    );
+    const permissionKeys = [...new Set(selectedKeys)].filter((key) => allowedKeys.has(key));
+    const beforeKeys = role.permissions.map(({ permission }) => permission.key);
+    const addedPermissions = permissionKeys.filter((key) => !beforeKeys.includes(key));
+    const removedPermissions = beforeKeys.filter((key) => !permissionKeys.includes(key));
+    const permissionRecords = permissionKeys.length
+      ? await prisma.accessPermission.findMany({ where: { key: { in: permissionKeys } } })
+      : [];
+
+    await prisma.$transaction(async (tx) => {
+      await tx.accessRole.update({
+        where: { id: role.id },
+        data: { name, description: description || null }
+      });
+      await tx.accessRolePermission.deleteMany({ where: { roleId: role.id } });
+      if (permissionRecords.length) {
+        await tx.accessRolePermission.createMany({
+          data: permissionRecords.map((permission) => ({ roleId: role.id, permissionId: permission.id }))
+        });
+      }
+    });
+    await auditLog({
+      action: "role.updated",
+      tenantId: role.tenantId,
+      userId: user.id,
+      entity: "AccessRole",
+      entityId: role.id,
+      metadata: {
+        beforeName: role.name,
+        afterName: name,
+        addedPermissions,
+        removedPermissions
+      }
+    });
+    revalidatePath("/roles");
+    return { ok: true, message: `Rol ${name} is bijgewerkt.` };
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      return { ok: false, message: "Er bestaat al een rol met deze naam binnen deze tenant." };
+    }
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Rol kon niet worden bijgewerkt."
     };
   }
 }
@@ -735,6 +826,7 @@ export async function createCustomer(formData: FormData) {
     active: true
   });
   assertTenantAccess(user, data.tenantId);
+  await assertOperationalTenant(user, data.tenantId);
   if ((await isItGlueEnabled(data.tenantId)) && !data.itGlueOrganizationId) {
     throw new Error("IT Glue organization ID is verplicht wanneer IT Glue actief is voor deze tenant.");
   }
@@ -762,6 +854,7 @@ export async function deleteCustomer(formData: FormData) {
     }
   });
   assertTenantAccess(user, customer.tenantId);
+  await assertOperationalTenant(user, customer.tenantId);
   if (confirmName !== customer.name) {
     throw new Error("Bevestiging mislukt. Typ de klantnaam exact over.");
   }
@@ -806,6 +899,7 @@ export async function createFortiGate(formData: FormData) {
   });
   const customer = await prisma.customer.findUniqueOrThrow({ where: { id: parsed.customerId } });
   assertTenantAccess(user, customer.tenantId);
+  await assertOperationalTenant(user, customer.tenantId);
   if ((await isItGlueEnabled(customer.tenantId)) && !parsed.itGlueConfigurationId) {
     throw new Error("IT Glue configuration ID is verplicht wanneer IT Glue actief is voor deze tenant.");
   }
@@ -840,6 +934,7 @@ export async function updateFortiGate(formData: FormData) {
     include: { customer: true }
   });
   assertTenantAccess(user, existing.customer.tenantId);
+  await assertOperationalTenant(user, existing.customer.tenantId);
   const parsed = fortigateUpdateSchema.parse({
     customerId: formData.get("customerId"),
     managementUrl: formData.get("managementUrl"),
@@ -853,6 +948,7 @@ export async function updateFortiGate(formData: FormData) {
   });
   const customer = await prisma.customer.findUniqueOrThrow({ where: { id: parsed.customerId } });
   assertTenantAccess(user, customer.tenantId);
+  await assertOperationalTenant(user, customer.tenantId);
   if ((await isItGlueEnabled(customer.tenantId)) && !parsed.itGlueConfigurationId) {
     throw new Error("IT Glue configuration ID is verplicht wanneer IT Glue actief is voor deze tenant.");
   }
@@ -894,6 +990,7 @@ export async function deleteFortiGate(formData: FormData) {
     }
   });
   assertTenantAccess(user, device.customer.tenantId);
+  await assertOperationalTenant(user, device.customer.tenantId);
   await auditLog({
     action: "fortigate.deleted",
     tenantId: device.customer.tenantId,
@@ -924,6 +1021,7 @@ export async function runBackupAction(formData: FormData) {
     include: { customer: true }
   });
   assertTenantAccess(user, device.customer.tenantId);
+  await assertOperationalTenant(user, device.customer.tenantId);
   await runBackup(id);
   revalidatePath("/fortigates");
   revalidatePath("/backups");
@@ -931,8 +1029,7 @@ export async function runBackupAction(formData: FormData) {
 
 export async function saveSettings(formData: FormData) {
   const user = await requireTenantUser();
-  const requestedTenantId = String(formData.get("tenantId") || "") || null;
-  const tenantId = isSuperAdmin(user) ? requestedTenantId : user.tenantId;
+  const tenantId = isSuperAdmin(user) ? user.activeTenantId ?? (await mainTenantId()) : user.tenantId;
   const portalSiteUrl = normalizeOptionalSiteUrl(formData.get("portal.siteUrl"));
   if (formData.has("portal.siteUrl")) {
     if (portalSiteUrl) await setSetting("portal.siteUrl", portalSiteUrl, { tenantId });
@@ -954,13 +1051,26 @@ export async function saveSettings(formData: FormData) {
     ["graph.tenantId", formData.get("graph.tenantId")],
     ["graph.clientId", formData.get("graph.clientId")],
     ["entra.tenantId", formData.get("entra.tenantId")],
-    ["entra.clientId", formData.get("entra.clientId")]
+    ["entra.clientId", formData.get("entra.clientId")],
+    ["scheduler.maxParallelJobs", formData.get("scheduler.maxParallelJobs")],
+    ["backup.defaultSchedule", formData.get("backup.defaultSchedule")],
+    ["backup.retention.count", formData.get("backup.retention.count")],
+    ["backup.retry.count", formData.get("backup.retry.count")]
   ] as const;
   if (formData.has("itglue.enabled")) {
     await setSetting("itglue.enabled", boolField(formData, "itglue.enabled") ? "true" : "false", { tenantId });
   }
   if (formData.has("entra.enabled")) {
     await setSetting("entra.enabled", boolField(formData, "entra.enabled") ? "true" : "false", { tenantId });
+  }
+  if (formData.has("scheduler.enabled")) {
+    await setSetting("scheduler.enabled", boolField(formData, "scheduler.enabled") ? "true" : "false", { tenantId });
+  }
+  if (formData.has("backup.schedule.enabled")) {
+    await setSetting("backup.schedule.enabled", boolField(formData, "backup.schedule.enabled") ? "true" : "false", { tenantId });
+  }
+  if (formData.has("backup.notifyFailures")) {
+    await setSetting("backup.notifyFailures", boolField(formData, "backup.notifyFailures") ? "true" : "false", { tenantId });
   }
   for (const [key, value] of entries) {
     if (value) await setSetting(key, String(value), { tenantId });
@@ -975,7 +1085,7 @@ export async function saveSettings(formData: FormData) {
   if (graphToken) await setSetting("graph.accessToken", String(graphToken), { tenantId, encrypted: true });
   if (graphClientSecret) await setSetting("graph.clientSecret", String(graphClientSecret), { tenantId, encrypted: true });
   if (entraSecret) await setSetting("entra.clientSecret", String(entraSecret), { tenantId, encrypted: true });
-  await auditLog({ action: "settings.updated", tenantId });
+  await auditLog({ action: "settings.updated", tenantId, userId: user.id });
   revalidatePath("/settings");
 }
 
@@ -1011,8 +1121,7 @@ export async function testMailSettings(_state: MailTestState, formData: FormData
     const user = await requireTenantUser();
     await saveSettings(formData);
 
-    const requestedTenantId = String(formData.get("tenantId") || "") || null;
-    const tenantId = isSuperAdmin(user) ? requestedTenantId : user.tenantId;
+    const tenantId = isSuperAdmin(user) ? user.activeTenantId ?? (await mainTenantId()) : user.tenantId;
 
     await sendMail({
       tenantId,

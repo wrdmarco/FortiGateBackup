@@ -3,6 +3,7 @@ import { checkFortiOsFirmware } from "@/lib/firmware-check";
 import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { mainTenantId } from "@/lib/tenant-main";
 import { formatDateOnly, formatDateTime } from "@/lib/time";
 import { getTenantTimeZoneMap } from "@/lib/tenant-timezone";
 
@@ -26,7 +27,9 @@ type AlertRow = {
 
 export default async function AlertsPage() {
   const user = await requireUser();
-  const where = isSuperAdmin(user) ? {} : { customer: { tenantId: user.tenantId ?? "" } };
+  const globalTenantId = isSuperAdmin(user) ? await mainTenantId() : null;
+  const activeTenantId = isSuperAdmin(user) ? user.activeTenantId ?? globalTenantId ?? "" : user.tenantId ?? "";
+  const where = { customer: { tenantId: activeTenantId } };
   const devices = await prisma.fortiGate.findMany({
     where,
     include: {

@@ -18,26 +18,17 @@ const settingKeys = ["smtp.password", "itglue.apiKey", "graph.accessToken", "gra
 export default async function SettingsPage({
   searchParams
 }: {
-  searchParams?: Promise<{ tenantId?: string; tab?: string }>;
+  searchParams?: Promise<{ tab?: string }>;
 }) {
   const user = await requireUser();
   const canUpdateApp = isSuperAdmin(user);
   const params = await searchParams;
-  const tenants = canUpdateApp
-    ? await prisma.tenant.findMany({ where: { active: true }, orderBy: { name: "asc" } })
-    : [];
   const globalTenantId = canUpdateApp ? await mainTenantId() : null;
-  const requestedTenantId = canUpdateApp ? params?.tenantId ?? globalTenantId ?? "" : user.tenantId ?? "";
-  const selectedTenantId = canUpdateApp
-    ? tenants.some((tenant) => tenant.id === requestedTenantId)
-      ? requestedTenantId
-      : tenants.some((tenant) => tenant.id === globalTenantId)
-        ? globalTenantId ?? ""
-        : ""
-    : user.tenantId ?? "";
+  const selectedTenantId = canUpdateApp ? user.activeTenantId ?? globalTenantId ?? "" : user.tenantId ?? "";
   const tenantId = selectedTenantId || null;
+  const isGlobalScope = Boolean(tenantId && tenantId === globalTenantId);
   const selectedTenantName =
-    tenants.find((tenant) => tenant.id === selectedTenantId)?.name ??
+    user.activeTenant?.name ??
     (user.tenantId === selectedTenantId ? user.tenant?.name : null) ??
     (selectedTenantId === globalTenantId ? "Global" : "Deze tenant");
   const secretScopeWhere = tenantId ? { OR: [{ tenantId }, { tenantId: null }] } : { tenantId: null };
@@ -59,6 +50,13 @@ export default async function SettingsPage({
     entraEnabled,
     entraTenantId,
     entraClientId,
+    schedulerEnabled,
+    schedulerMaxParallelJobs,
+    backupScheduleEnabled,
+    backupDefaultSchedule,
+    backupRetentionCount,
+    backupRetryCount,
+    backupNotifyFailures,
     savedSecrets,
     updateStatus
   ] = await Promise.all([
@@ -78,6 +76,13 @@ export default async function SettingsPage({
     getSetting("entra.enabled", tenantId),
     getSetting("entra.tenantId", tenantId),
     getSetting("entra.clientId", tenantId),
+    getSetting("scheduler.enabled", tenantId),
+    getSetting("scheduler.maxParallelJobs", tenantId),
+    getSetting("backup.schedule.enabled", tenantId),
+    getSetting("backup.defaultSchedule", tenantId),
+    getSetting("backup.retention.count", tenantId),
+    getSetting("backup.retry.count", tenantId),
+    getSetting("backup.notifyFailures", tenantId),
     prisma.systemSetting.findMany({
       where: {
         ...secretScopeWhere,
@@ -109,48 +114,56 @@ export default async function SettingsPage({
     hasSmtpPassword: secretKeys.has("smtp.password"),
     hasGraphClientSecret: secretKeys.has("graph.clientSecret") || secretKeys.has("graph.accessToken"),
     hasEntraSecret: secretKeys.has("entra.clientSecret"),
-    testMailTo: user.email
+    testMailTo: user.email,
+    schedulerEnabled: schedulerEnabled !== "false",
+    schedulerMaxParallelJobs: schedulerMaxParallelJobs ?? "20",
+    backupScheduleEnabled: backupScheduleEnabled !== "false",
+    backupDefaultSchedule: backupDefaultSchedule ?? "DAILY",
+    backupRetentionCount: backupRetentionCount ?? "30",
+    backupRetryCount: backupRetryCount ?? "2",
+    backupNotifyFailures: backupNotifyFailures !== "false"
   };
-  const formProps = { action: saveSettings, testMailAction: testMailSettings, tenants, selectedTenantId, selectedTenantName, values };
-  const tabIds = ["portal", "itglue", "mail", "sso", ...(updateStatus ? ["updates"] : [])];
-  const activeTab = params?.tab && tabIds.includes(params.tab) ? params.tab : "portal";
+  const formProps = { action: saveSettings, testMailAction: testMailSettings, tenants: [], selectedTenantId, selectedTenantName, values };
+  const configTabs = isGlobalScope ? ["mail", "sso", "scheduler"] : ["portal", "itglue", "mail", "sso", "scheduler"];
+  const tabIds = [...configTabs, ...(updateStatus ? ["updates"] : [])];
+  const activeTab = params?.tab && tabIds.includes(params.tab) ? params.tab : configTabs[0];
 
   return (
     <Shell>
       <PageHeader
         title="Instellingen"
-        description="Beheer portal, IT Glue, mail, SSO en applicatie-updates per tenant of globaal."
+        description={isGlobalScope ? "Beheer platforminstellingen voor Global." : `Beheer tenantinstellingen voor ${selectedTenantName}.`}
       />
       <SettingsTabs
         activeTab={activeTab}
         tabs={[
-          {
+          ...(!isGlobalScope ? [{
             id: "portal",
             label: "Portal",
-            href: settingsHref("portal", selectedTenantId),
+            href: settingsHref("portal"),
             description: "Beheer de publieke URL per tenant voor links, notificaties en portalverwijzingen.",
             content: (
               <Panel className="max-w-4xl">
                 <SettingsForm {...formProps} visibleTabs={["portal"]} initialTab="portal" />
               </Panel>
             )
-          },
-          {
+          }] : []),
+          ...(!isGlobalScope ? [{
             id: "itglue",
             label: "IT Glue",
-            href: settingsHref("itglue", selectedTenantId),
+            href: settingsHref("itglue"),
             description: "Koppel FortiGate backups aan IT Glue organizations en configurations.",
             content: (
               <Panel className="max-w-4xl">
                 <SettingsForm {...formProps} visibleTabs={["itglue"]} initialTab="itglue" />
               </Panel>
             )
-          },
+          }] : []),
           {
             id: "mail",
             label: "Mail",
-            href: settingsHref("mail", selectedTenantId),
-            description: "Beheer SMTP of Microsoft Graph mailconfiguratie voor deze scope.",
+            href: settingsHref("mail"),
+            description: isGlobalScope ? "Beheer de globale maildefaults voor onboarding en notificaties." : "Beheer SMTP of Microsoft Graph mailconfiguratie voor deze tenant.",
             content: (
               <Panel className="max-w-4xl">
                 <SettingsForm {...formProps} visibleTabs={["mail"]} initialTab="mail" />
@@ -158,10 +171,21 @@ export default async function SettingsPage({
             )
           },
           {
+            id: "scheduler",
+            label: isGlobalScope ? "Scheduler" : "Backupschema",
+            href: settingsHref("scheduler"),
+            description: isGlobalScope ? "Beheer scheduler-engine en globale veiligheidslimieten." : "Beheer automatische backupinstellingen voor deze tenant.",
+            content: (
+              <Panel className="max-w-4xl">
+                <SettingsForm {...formProps} visibleTabs={["scheduler"]} initialTab="scheduler" />
+              </Panel>
+            )
+          },
+          {
             id: "sso",
             label: "SSO",
-            href: settingsHref("sso", selectedTenantId),
-            description: "Beheer Microsoft Entra ID login voor deze tenant.",
+            href: settingsHref("sso"),
+            description: isGlobalScope ? "Beheer Microsoft Entra ID login voor platformbeheerders." : "Beheer Microsoft Entra ID login voor deze tenant.",
             content: (
               <Panel className="max-w-4xl">
                 <SettingsForm {...formProps} visibleTabs={["sso"]} initialTab="sso" />
@@ -173,7 +197,7 @@ export default async function SettingsPage({
                 {
                   id: "updates",
                   label: "Updates",
-                  href: settingsHref("updates", selectedTenantId),
+                  href: settingsHref("updates"),
                   description: "Controleer GitHub op een nieuwe versie en start de serverupdate direct vanaf het portaal.",
                   content: (
                     <Panel title="Applicatie update" className="max-w-4xl">
@@ -224,8 +248,7 @@ function Info({ label, value, mono = false }: { label: string; value: string; mo
 function shortSha(value: string | null) {
   return value ? value.slice(0, 12) : "Onbekend";
 }
-function settingsHref(tab: string, tenantId: string) {
+function settingsHref(tab: string) {
   const params = new URLSearchParams({ tab });
-  if (tenantId) params.set("tenantId", tenantId);
   return `/settings?${params.toString()}`;
 }

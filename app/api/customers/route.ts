@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auditLog } from "@/lib/audit";
-import { assertTenantAccess, isSuperAdmin, requireTenantUser } from "@/lib/authz";
+import { assertOperationalTenant, requireTenantUser, tenantFilter } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { customerSchema } from "@/lib/validators";
 
 export async function GET() {
   const user = await requireTenantUser();
   const customers = await prisma.customer.findMany({
-    where: isSuperAdmin(user) ? {} : { tenantId: user.tenantId ?? "" },
+    where: { tenantId: tenantFilter(user) ?? "" },
     include: { tenant: true, devices: true },
     orderBy: { name: "asc" }
   });
@@ -17,7 +17,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const user = await requireTenantUser();
   const data = customerSchema.parse(await request.json());
-  assertTenantAccess(user, data.tenantId);
+  await assertOperationalTenant(user, data.tenantId);
   const customer = await prisma.customer.create({ data });
   await auditLog({
     action: "customer.created",

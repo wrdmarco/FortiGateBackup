@@ -2,6 +2,11 @@ import { User, UserRole } from "@prisma/client";
 import { notFound, redirect } from "next/navigation";
 import { hasPermission, PermissionKey } from "@/lib/rbac";
 import { requireUser } from "@/lib/session";
+import { mainTenantId } from "@/lib/tenant-main";
+
+type UserWithContext = Pick<User, "id" | "role" | "tenantId"> & {
+  activeTenantId?: string | null;
+};
 
 export function isSuperAdmin(user: Pick<User, "role">) {
   return user.role === UserRole.SUPER_ADMIN;
@@ -19,14 +24,24 @@ export async function requireTenantUser() {
   return user;
 }
 
-export function tenantFilter(user: Pick<User, "role" | "tenantId">) {
-  return isSuperAdmin(user) ? undefined : user.tenantId;
+export function tenantFilter(user: UserWithContext) {
+  return isSuperAdmin(user) ? user.activeTenantId ?? undefined : user.tenantId;
 }
 
-export function assertTenantAccess(user: Pick<User, "role" | "tenantId">, tenantId: string | null) {
-  if (isSuperAdmin(user)) return;
+export function assertTenantAccess(user: UserWithContext, tenantId: string | null) {
+  if (isSuperAdmin(user)) {
+    if (!user.activeTenantId || tenantId === user.activeTenantId) return;
+    throw new Error("Geen toegang tot deze tenant binnen de actieve tenantcontext.");
+  }
   if (!tenantId || tenantId !== user.tenantId) {
     throw new Error("Geen toegang tot deze tenant.");
+  }
+}
+
+export async function assertOperationalTenant(user: UserWithContext, tenantId: string | null) {
+  assertTenantAccess(user, tenantId);
+  if (tenantId && tenantId === (await mainTenantId())) {
+    throw new Error("Global is een platformtenant en kan geen klanten, FortiGates of backups bevatten.");
   }
 }
 
@@ -36,7 +51,7 @@ export async function requirePermission(permission: PermissionKey) {
   return user;
 }
 
-export async function assertPermission(user: Pick<User, "id" | "role" | "tenantId">, permission: PermissionKey) {
+export async function assertPermission(user: UserWithContext, permission: PermissionKey) {
   if (!(await hasPermission(user, permission))) {
     throw new Error("Geen toestemming voor deze actie.");
   }

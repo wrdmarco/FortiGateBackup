@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auditLog } from "@/lib/audit";
-import { assertTenantAccess, isSuperAdmin, requireTenantUser } from "@/lib/authz";
+import { assertOperationalTenant, requireTenantUser, tenantFilter } from "@/lib/authz";
 import { encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 import { fortigateSchema } from "@/lib/validators";
@@ -33,7 +33,7 @@ const fortigateSelect = {
 export async function GET() {
   const user = await requireTenantUser();
   const devices = await prisma.fortiGate.findMany({
-    where: isSuperAdmin(user) ? {} : { customer: { tenantId: user.tenantId ?? "" } },
+    where: { customer: { tenantId: tenantFilter(user) ?? "" } },
     select: fortigateSelect,
     orderBy: { createdAt: "desc" }
   });
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
   const user = await requireTenantUser();
   const data = fortigateSchema.parse(await request.json());
   const customer = await prisma.customer.findUniqueOrThrow({ where: { id: data.customerId } });
-  assertTenantAccess(user, customer.tenantId);
+  await assertOperationalTenant(user, customer.tenantId);
   const device = await prisma.fortiGate.create({
     data: {
       customerId: data.customerId,

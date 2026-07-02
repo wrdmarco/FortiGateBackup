@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { assertTenantAccess, requireTenantUser } from "@/lib/authz";
+import { assertOperationalTenant, requireTenantUser } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 
 export async function GET(
@@ -14,7 +14,7 @@ export async function GET(
     where: { id },
     include: { customer: true }
   });
-  assertTenantAccess(user, device.customer.tenantId);
+  await assertOperationalTenant(user, device.customer.tenantId);
   const logs = await prisma.fortiGateLog.findMany({
     where: { fortigateId: id },
     orderBy: { createdAt: "desc" },

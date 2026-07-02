@@ -1,12 +1,23 @@
 import Link from "next/link";
 import { clsx } from "clsx";
-import { logoutAction } from "@/app/actions";
+import { logoutAction, switchTenantContextAction } from "@/app/actions";
+import { TenantSwitcher } from "@/components/tenant-switcher";
 import { isSuperAdmin } from "@/lib/authz";
+import { prisma } from "@/lib/db";
 import { currentUser } from "@/lib/session";
+import { mainTenantId } from "@/lib/tenant-main";
 
 export async function Shell({ children }: { children: React.ReactNode }) {
   const user = await currentUser();
   const canManageTenants = user ? isSuperAdmin(user) : false;
+  const [tenants, globalTenantId] = canManageTenants
+    ? await Promise.all([
+        prisma.tenant.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+        mainTenantId()
+      ])
+    : [[], null];
+  const isGlobalContext = Boolean(user?.activeTenantId && user.activeTenantId === globalTenantId);
+  const tenantName = user?.activeTenant?.name ?? user?.tenant?.name ?? "Geen tenant";
 
   return (
     <div className="min-h-screen bg-background/80">
@@ -24,11 +35,20 @@ export async function Shell({ children }: { children: React.ReactNode }) {
               </span>
             </Link>
             {user ? (
-              <form action={logoutAction}>
-                <button className="rounded-md border border-white/12 bg-white/[0.04] px-3 py-2 text-sm font-medium text-white/72 transition hover:bg-white/10 hover:text-white">
-                  Uitloggen
-                </button>
-              </form>
+              <div className="flex flex-wrap items-center gap-2">
+                <TenantSwitcher
+                  action={switchTenantContextAction}
+                  activeTenantId={user.activeTenantId}
+                  canSwitch={canManageTenants}
+                  tenantName={tenantName}
+                  tenants={tenants}
+                />
+                <form action={logoutAction}>
+                  <button className="rounded-md border border-white/12 bg-white/[0.04] px-3 py-2 text-sm font-medium text-white/72 transition hover:bg-white/10 hover:text-white">
+                    Uitloggen
+                  </button>
+                </form>
+              </div>
             ) : (
               <Link className="rounded-md border border-white/12 bg-white/[0.04] px-3 py-2 text-sm font-medium text-white/72 transition hover:bg-white/10 hover:text-white" href="/login">
                 Inloggen
@@ -41,19 +61,23 @@ export async function Shell({ children }: { children: React.ReactNode }) {
                 <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/">
                   Dashboard
                 </Link>
-                <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/customers">
-                  Klanten
-                </Link>
-                <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/fortigates">
-                  FortiGates
-                </Link>
-                <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/backups">
-                  Backups
-                </Link>
-                <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/alerts">
-                  Alerts
-                </Link>
-                {canManageTenants ? (
+                {!isGlobalContext ? (
+                  <>
+                    <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/customers">
+                      Klanten
+                    </Link>
+                    <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/fortigates">
+                      FortiGates
+                    </Link>
+                    <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/backups">
+                      Backups
+                    </Link>
+                    <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/alerts">
+                      Alerts
+                    </Link>
+                  </>
+                ) : null}
+                {canManageTenants && isGlobalContext ? (
                   <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/tenants">
                     Tenants
                   </Link>

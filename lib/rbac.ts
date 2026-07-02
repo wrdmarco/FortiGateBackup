@@ -198,19 +198,22 @@ export async function assignDefaultTenantRole(userId: string, tenantId: string, 
   });
 }
 
-export async function userPermissionKeys(user: Pick<User, "id" | "role" | "tenantId">) {
-  if (user.role === UserRole.SUPER_ADMIN) return new Set(allPermissionKeys);
+export async function userPermissionKeys(user: Pick<User, "id" | "role" | "tenantId"> & { activeTenantId?: string | null }) {
+  if (user.role === UserRole.SUPER_ADMIN) {
+    const globalTenantId = await mainTenantId();
+    return new Set(user.activeTenantId === globalTenantId ? allPermissionKeys : tenantPermissionKeys);
+  }
   if (!user.tenantId) return new Set<string>();
   const assignments = await prisma.userAccessRole.findMany({
     where: { userId: user.id, role: { tenantId: user.tenantId } },
     include: { role: { include: { permissions: { include: { permission: true } } } } }
   });
   if (!assignments.length) {
-    return new Set(user.role === UserRole.ADMIN ? allPermissionKeys : readPermissionKeys);
+    return new Set(user.role === UserRole.ADMIN ? tenantPermissionKeys : readPermissionKeys);
   }
   return new Set(assignments.flatMap((assignment) => assignment.role.permissions.map((item) => item.permission.key)));
 }
 
-export async function hasPermission(user: Pick<User, "id" | "role" | "tenantId">, permission: PermissionKey) {
+export async function hasPermission(user: Pick<User, "id" | "role" | "tenantId"> & { activeTenantId?: string | null }, permission: PermissionKey) {
   return (await userPermissionKeys(user)).has(permission);
 }

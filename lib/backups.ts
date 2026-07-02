@@ -30,7 +30,7 @@ export function backupFilePath(filename: string) {
   return fullPath;
 }
 
-export async function getBackupForUser(id: string, user: Pick<User, "role" | "tenantId">) {
+export async function getBackupForUser(id: string, user: Pick<User, "id" | "role" | "tenantId"> & { activeTenantId?: string | null }) {
   const backup = await prisma.backup.findUniqueOrThrow({
     where: { id },
     include: { fortigate: { include: { customer: true } } }

@@ -2,6 +2,7 @@ import { ActionLink, Badge, PageHeader, Shell, TableShell } from "@/components/u
 import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { mainTenantId } from "@/lib/tenant-main";
 import { formatDateTime } from "@/lib/time";
 import { getTenantTimeZoneMap } from "@/lib/tenant-timezone";
 
@@ -9,8 +10,10 @@ export const dynamic = "force-dynamic";
 
 export default async function BackupsPage() {
   const user = await requireUser();
+  const globalTenantId = isSuperAdmin(user) ? await mainTenantId() : null;
+  const activeTenantId = isSuperAdmin(user) ? user.activeTenantId ?? globalTenantId ?? "" : user.tenantId ?? "";
   const backups = await prisma.backup.findMany({
-    where: isSuperAdmin(user) ? {} : { fortigate: { customer: { tenantId: user.tenantId ?? "" } } },
+    where: { fortigate: { customer: { tenantId: activeTenantId } } },
     include: { fortigate: { include: { customer: true } } },
     orderBy: { createdAt: "desc" },
     take: 100

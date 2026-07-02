@@ -1,6 +1,8 @@
 import { ScheduleType } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { runBackup } from "@/lib/fortigate";
+import { getSetting } from "@/lib/settings";
+import { mainTenantId } from "@/lib/tenant-main";
 
 const activeJobs = new Set<string>();
 
@@ -15,15 +17,22 @@ export function nextRun(type: ScheduleType, from = new Date()) {
 }
 
 export async function runDueBackups() {
+  const globalTenantId = await mainTenantId();
+  const schedulerEnabled = (await getSetting("scheduler.enabled", globalTenantId)) !== "false";
+  if (!schedulerEnabled) return;
+  const maxParallelJobs = Math.max(1, Math.min(Number(await getSetting("scheduler.maxParallelJobs", globalTenantId)) || 20, 100));
   const due = await prisma.fortiGate.findMany({
     where: {
       active: true,
       OR: [{ nextRunAt: null }, { nextRunAt: { lte: new Date() } }]
     },
-    take: 20
+    include: { customer: true },
+    take: maxParallelJobs
   });
 
   for (const device of due) {
+    const tenantScheduleEnabled = (await getSetting("backup.schedule.enabled", device.customer.tenantId)) !== "false";
+    if (!tenantScheduleEnabled) continue;
     if (activeJobs.has(device.id)) continue;
     activeJobs.add(device.id);
     try {

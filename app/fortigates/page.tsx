@@ -7,7 +7,9 @@ import { Modal } from "@/components/modal";
 import { Badge, Button, Field, PageHeader, Shell, TableShell } from "@/components/ui";
 import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
+import { getSetting } from "@/lib/settings";
 import { requireUser } from "@/lib/session";
+import { mainTenantId } from "@/lib/tenant-main";
 import { formatDateTime } from "@/lib/time";
 import { getTenantTimeZoneMap } from "@/lib/tenant-timezone";
 
@@ -20,9 +22,12 @@ export default async function FortiGatesPage({
 }) {
   const user = await requireUser();
   const params = await searchParams;
-  const customerWhere = isSuperAdmin(user) ? { active: true } : { active: true, tenantId: user.tenantId ?? "" };
-  const fortigateWhere = isSuperAdmin(user) ? {} : { customer: { tenantId: user.tenantId ?? "" } };
-  const [customers, devices] = await Promise.all([
+  const globalTenantId = isSuperAdmin(user) ? await mainTenantId() : null;
+  const activeTenantId = isSuperAdmin(user) ? user.activeTenantId ?? globalTenantId ?? "" : user.tenantId ?? "";
+  const isGlobalContext = Boolean(activeTenantId && activeTenantId === globalTenantId);
+  const customerWhere = { active: true, tenantId: activeTenantId };
+  const fortigateWhere = { customer: { tenantId: activeTenantId } };
+  const [customers, devices, defaultScheduleType] = await Promise.all([
     prisma.customer.findMany({ where: customerWhere, orderBy: { name: "asc" } }),
     prisma.fortiGate.findMany({
       where: fortigateWhere,
@@ -32,7 +37,8 @@ export default async function FortiGatesPage({
         logs: { orderBy: { createdAt: "desc" }, take: 3 }
       },
       orderBy: { createdAt: "desc" }
-    })
+    }),
+    getSetting("backup.defaultSchedule", activeTenantId)
   ]);
   const editDevice = devices.find((device) => device.id === params?.edit);
   const timeZones = await getTenantTimeZoneMap(devices.map((device) => device.customer.tenantId));
@@ -47,17 +53,27 @@ export default async function FortiGatesPage({
       <PageHeader
         title="FortiGates"
         description="Beheer API-toegang, backupstatus, firmware en diagnose per firewall."
-        actions={
+        actions={!isGlobalContext ? (
           <Modal
             title="FortiGate toevoegen"
             description="Begeleide setup voor REST API-token, connectiegegevens en backupschema."
             defaultOpen={shouldOpenAddWizard}
             trigger={<Button>FortiGate toevoegen</Button>}
           >
-            <FortiGateWizard customers={customers} action={createFortiGate} defaultCustomerId={selectedCustomerId} />
+            <FortiGateWizard
+              customers={customers}
+              action={createFortiGate}
+              defaultCustomerId={selectedCustomerId}
+              defaultScheduleType={defaultScheduleType ?? "DAILY"}
+            />
           </Modal>
-        }
+        ) : null}
       />
+      {isGlobalContext ? (
+        <div className="rounded-md border border-border bg-surface-soft p-4 text-sm text-muted-foreground">
+          Global is alleen voor platformbeheer. Wissel naar een tenant om FortiGates en backups te beheren.
+        </div>
+      ) : null}
       {editDevice ? (
         <Modal
           title="FortiGate bewerken"

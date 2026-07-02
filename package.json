@@ -13,7 +13,8 @@
     "prisma:migrate": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "worker": "tsx scripts/worker.ts",
-    "health": "tsx scripts/healthcheck.ts"
+    "health": "tsx scripts/healthcheck.ts",
+    "migrate:global-data": "tsx scripts/migrate-global-operational-data.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.7.4",

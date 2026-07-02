@@ -4,6 +4,7 @@ import { getAppUpdateStatus } from "@/lib/app-update";
 import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { mainTenantId } from "@/lib/tenant-main";
 import { formatDateTime } from "@/lib/time";
 import { getTenantTimeZone } from "@/lib/tenant-timezone";
 
@@ -12,11 +13,13 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage() {
   const user = await requireUser();
   const canManagePlatform = isSuperAdmin(user);
-  const tenantId = canManagePlatform ? undefined : user.tenantId ?? undefined;
+  const globalTenantId = canManagePlatform ? await mainTenantId() : null;
+  const tenantId = canManagePlatform ? user.activeTenantId ?? globalTenantId ?? undefined : user.tenantId ?? undefined;
+  const isGlobalContext = Boolean(tenantId && tenantId === globalTenantId);
   const timeZone = await getTenantTimeZone(tenantId);
-  const customerWhere = tenantId ? { tenantId } : {};
-  const fortigateWhere = tenantId ? { customer: { tenantId } } : {};
-  const backupWhere = tenantId ? { fortigate: { customer: { tenantId } } } : {};
+  const customerWhere = tenantId && !isGlobalContext ? { tenantId } : { tenantId: "__global_has_no_customers__" };
+  const fortigateWhere = tenantId && !isGlobalContext ? { customer: { tenantId } } : { customer: { tenantId: "__global_has_no_fortigates__" } };
+  const backupWhere = tenantId && !isGlobalContext ? { fortigate: { customer: { tenantId } } } : { fortigate: { customer: { tenantId: "__global_has_no_backups__" } } };
   const auditWhere = tenantId ? { tenantId } : {};
   const [tenants, customers, fortigates, backups, failures, latestAudit, changed, updateStatus] = await Promise.all([
     canManagePlatform ? prisma.tenant.count() : Promise.resolve(1),
@@ -33,8 +36,8 @@ export default async function DashboardPage() {
     <Shell>
       <PageHeader
         title="Dashboard"
-        description="Centrale status van tenants, FortiGates, backups, alerts en applicatie-updates."
-        actions={<ActionLink href="/alerts" variant="secondary">Alerts bekijken</ActionLink>}
+        description={isGlobalContext ? "Platformstatus, tenants, updates en Global audit." : "Tenantstatus van FortiGates, backups en alerts."}
+        actions={!isGlobalContext ? <ActionLink href="/alerts" variant="secondary">Alerts bekijken</ActionLink> : null}
       />
       <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
         <Card title={canManagePlatform ? "Tenants" : "Tenant"} value={tenants} />

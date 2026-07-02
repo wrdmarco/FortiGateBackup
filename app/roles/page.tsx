@@ -1,9 +1,9 @@
 import { Fragment } from "react";
-import Link from "next/link";
 import type { Prisma } from "@prisma/client";
 import { deleteAccessRole } from "@/app/actions";
 import { Modal } from "@/components/modal";
 import { RoleCreateForm } from "@/components/role-create-form";
+import { RoleEditForm } from "@/components/role-edit-form";
 import { isSuperAdmin, requireTenantUser } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { ensureTenantRbac, permissions } from "@/lib/rbac";
@@ -24,21 +24,11 @@ type PermissionForDisplay = {
   description: string;
 };
 
-export default async function RolesPage({
-  searchParams
-}: {
-  searchParams?: Promise<{ tenantId?: string }>;
-}) {
+export default async function RolesPage() {
   const user = await requireTenantUser();
-  const params = await searchParams;
   const canManagePlatform = isSuperAdmin(user);
-  const tenants = canManagePlatform
-    ? await prisma.tenant.findMany({ where: { active: true }, orderBy: { name: "asc" } })
-    : [];
   const globalTenantId = canManagePlatform ? await mainTenantId() : null;
-  const selectedTenantId = canManagePlatform
-    ? tenants.find((tenant) => tenant.id === params?.tenantId)?.id ?? tenants[0]?.id ?? null
-    : user.tenantId;
+  const selectedTenantId = canManagePlatform ? user.activeTenantId ?? globalTenantId : user.tenantId;
 
   let roles: RoleWithDetails[] = [];
   let rolesError: string | null = null;
@@ -62,8 +52,7 @@ export default async function RolesPage({
     }
   }
   const selectedTenant = selectedTenantId
-    ? tenants.find((tenant) => tenant.id === selectedTenantId) ??
-      (await prisma.tenant.findUnique({ where: { id: selectedTenantId }, select: { id: true, name: true } }))
+    ? await prisma.tenant.findUnique({ where: { id: selectedTenantId }, select: { id: true, name: true } })
     : null;
   const showPlatformPermissions = selectedTenantId === globalTenantId;
   const visiblePermissions: PermissionForDisplay[] = permissions
@@ -101,24 +90,6 @@ export default async function RolesPage({
           ) : null
         }
       />
-
-      {tenants.length ? (
-        <div className="mb-5 flex flex-wrap gap-2">
-          {tenants.map((tenant) => (
-            <Link
-              key={tenant.id}
-              className={
-                tenant.id === selectedTenantId
-                  ? "rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
-                  : "rounded-md border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground hover:bg-muted"
-              }
-              href={`/roles?tenantId=${tenant.id}`}
-            >
-              {tenant.name}
-            </Link>
-          ))}
-        </div>
-      ) : null}
 
       <div className="grid gap-6">
         <Panel
@@ -201,6 +172,21 @@ export default async function RolesPage({
                       <span className="text-xs text-muted-foreground">
                         {role._count.users} gebruiker{role._count.users === 1 ? "" : "s"}
                       </span>
+                      <Modal
+                        title={`Rol ${role.name} aanpassen`}
+                        description="Wijzig de naam, omschrijving en permissies van deze custom rol."
+                        trigger={<Button variant="secondary">Aanpassen</Button>}
+                      >
+                        <RoleEditForm
+                          groupedPermissions={groupedPermissionEntries}
+                          role={{
+                            id: role.id,
+                            name: role.name,
+                            description: role.description,
+                            permissionKeys: role.permissions.map(({ permission }) => permission.key)
+                          }}
+                        />
+                      </Modal>
                       {role._count.users === 0 ? (
                         <form action={deleteAccessRole}>
                           <input type="hidden" name="roleId" value={role.id} />
