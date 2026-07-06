@@ -47,13 +47,15 @@ export function FortiGateWizard({
   action,
   defaultCustomerId,
   defaultScheduleType = "DAILY",
-  itGlueEnabled = false
+  itGlueEnabled = false,
+  successHref
 }: {
   customers: CustomerOption[];
   action: (state: FortiGateCreateState, formData: FormData) => Promise<FortiGateCreateState>;
   defaultCustomerId?: string;
   defaultScheduleType?: string;
   itGlueEnabled?: boolean;
+  successHref?: string;
 }) {
   const [step, setStep] = useState(0);
   const [state, formAction, pending] = useActionState(action, { ok: false, message: "" });
@@ -62,8 +64,11 @@ export function FortiGateWizard({
     : customers[0]?.id;
 
   useEffect(() => {
-    if (state.ok) window.location.href = "/fortigates";
-  }, [state.ok]);
+    if (!state.ok) return;
+    window.location.href = state.customerId && state.deviceId
+      ? `/customers/${state.customerId}/fortigates/${state.deviceId}`
+      : successHref ?? "/customers";
+  }, [state.customerId, state.deviceId, state.ok, successHref]);
 
   return (
     <form action={formAction} className="grid gap-6" noValidate>

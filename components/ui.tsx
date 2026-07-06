@@ -67,12 +67,6 @@ export async function Shell({ children }: { children: React.ReactNode }) {
                     <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/customers">
                       Klanten
                     </Link>
-                    <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/fortigates">
-                      FortiGates
-                    </Link>
-                    <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/backups">
-                      Backups
-                    </Link>
                     <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/alerts">
                       Alerts
                     </Link>

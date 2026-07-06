@@ -34,13 +34,11 @@ export default async function CustomerDetailPage({
   });
   if (!customer) notFound();
   assertTenantAccess(user, customer.tenantId);
-  const [canCreateFortiGate, canDeleteCustomer, canRunBackup, canUpdateFortiGate, canDownloadBackup, canReadDiff] = await Promise.all([
+  const [canCreateFortiGate, canDeleteCustomer, canRunBackup, canUpdateFortiGate] = await Promise.all([
     hasPermission(user, "fortigates.create"),
     hasPermission(user, "customers.delete"),
     hasPermission(user, "fortigates.backup.run"),
-    hasPermission(user, "fortigates.update"),
-    hasPermission(user, "backups.download"),
-    hasPermission(user, "backups.diff.read")
+    hasPermission(user, "fortigates.update")
   ]);
   const backups = customer.devices.flatMap((device) =>
     device.backups.map((backup) => ({ ...backup, device }))
@@ -57,7 +55,7 @@ export default async function CustomerDetailPage({
         actions={
           <>
             <ActionLink href="/customers">Klanten</ActionLink>
-            {canCreateFortiGate ? <ActionLink href={`/fortigates?add=1&customerId=${customer.id}`} variant="primary">FortiGate toevoegen</ActionLink> : null}
+            {canCreateFortiGate ? <ActionLink href={`/customers/${customer.id}/fortigates/new`} variant="primary">FortiGate toevoegen</ActionLink> : null}
             {canDeleteCustomer ? (
               <Modal
                 title="Klant verwijderen"
@@ -147,6 +145,8 @@ export default async function CustomerDetailPage({
                       )}
                     </td>
                     <td className="flex flex-wrap gap-2 px-3 py-2">
+                      <ActionLink href={`/customers/${customer.id}/fortigates/${device.id}`} variant="secondary">Open</ActionLink>
+                      <ActionLink href={`/customers/${customer.id}/fortigates/${device.id}/backups`} variant="secondary">Backups</ActionLink>
                       <Modal
                         title="FortiGate informatie"
                         description="Technische summary, bereikbaarheid, licenties, backups en diagnose."
@@ -160,7 +160,7 @@ export default async function CustomerDetailPage({
                           <Button>Backup</Button>
                         </form>
                       ) : null}
-                      {canUpdateFortiGate ? <ActionLink href={`/fortigates?edit=${device.id}`}>Edit</ActionLink> : null}
+                      {canUpdateFortiGate ? <ActionLink href={`/customers/${customer.id}/fortigates/${device.id}/edit`}>Edit</ActionLink> : null}
                     </td>
                   </tr>
                 );
@@ -170,54 +170,6 @@ export default async function CustomerDetailPage({
         </TableShell>
       </section>
 
-      <section className="mt-8">
-        <h2 className="text-xl font-semibold">Backups</h2>
-        <TableShell className="mt-4">
-          <table className="table-pro w-full min-w-[1100px] text-left text-sm">
-            <thead className="bg-surface-soft">
-              <tr>
-                <th className="px-3 py-2">Datum</th>
-                <th className="px-3 py-2">FortiGate</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">SHA256 / fout</th>
-                <th className="px-3 py-2">Grootte</th>
-                <th className="px-3 py-2">IT Glue</th>
-                <th className="px-3 py-2">Acties</th>
-              </tr>
-            </thead>
-            <tbody>
-              {backups
-                .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-                .map((backup) => (
-                  <tr key={backup.id} className="border-t border-border align-top">
-                    <td className="px-3 py-2">{formatDateTime(backup.createdAt, timeZone)}</td>
-                    <td className="px-3 py-2">{backup.device.hostname ?? backup.device.managementUrl}</td>
-                    <td className="px-3 py-2">
-                      <Badge tone={backup.status === "FAILED" ? "danger" : backup.status === "CHANGED" ? "warning" : "success"}>
-                        {backup.status}
-                      </Badge>
-                    </td>
-                    <td className="max-w-[360px] truncate px-3 py-2 font-mono text-xs">{backup.sha256 ?? backup.error ?? "-"}</td>
-                    <td className="px-3 py-2">{backup.filesize}</td>
-                    <td className="px-3 py-2">
-                      {backup.itGlueUploadedAt ? <Badge tone="success">Geupload</Badge> : backup.itGlueError ? <Badge tone="warning">Fout</Badge> : <Badge>-</Badge>}
-                    </td>
-                    <td className="flex flex-wrap gap-2 px-3 py-2">
-                      {backup.filename ? (
-                        <>
-                          {canDownloadBackup ? <ActionLink href={`/api/backups/${backup.id}/download`}>Download</ActionLink> : null}
-                          {canReadDiff ? <ActionLink href={`/backups/${backup.id}/diff`}>Diff</ActionLink> : null}
-                        </>
-                      ) : (
-                        <span className="text-muted-foreground">Geen bestand</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </TableShell>
-      </section>
     </Shell>
   );
 }

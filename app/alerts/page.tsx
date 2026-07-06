@@ -54,7 +54,7 @@ export default async function AlertsPage() {
       customer: device.customer.name,
       tenant: device.customer.tenant.name,
       fortigate: label,
-      href: `/fortigates?info=${device.id}`
+      href: `/customers/${device.customerId}/fortigates/${device.id}`
     };
     const rows: AlertRow[] = [];
     const firmware = firmwareByDevice.get(device.id);
@@ -109,7 +109,7 @@ export default async function AlertsPage() {
       <PageHeader
         title="Alerts"
         description="Actieve meldingen op basis van echte inventory, firmware-checks, licenties en backupresultaten."
-        actions={<ActionLink href="/fortigates" variant="secondary">FortiGates beheren</ActionLink>}
+        actions={<ActionLink href="/customers" variant="secondary">Klanten beheren</ActionLink>}
       />
       <div className="mb-4 grid gap-4 md:grid-cols-3">
         <Metric label="Kritiek" value={alerts.filter((item) => item.severity === "danger").length} tone="danger" />

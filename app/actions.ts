@@ -32,7 +32,10 @@ export type TenantUserCreateState = ActionState;
 export type TenantUserUpdateState = ActionState;
 export type AccessRoleCreateState = ActionState;
 export type AccessRoleEditState = ActionState;
-export type FortiGateCreateState = ActionState;
+export type FortiGateCreateState = ActionState & {
+  customerId?: string;
+  deviceId?: string;
+};
 
 function bool(value: FormDataEntryValue | null) {
   return value === "on" || value === "true";
@@ -40,6 +43,11 @@ function bool(value: FormDataEntryValue | null) {
 
 function boolField(formData: FormData, name: string) {
   return formData.getAll(name).some((value) => value === "on" || value === "true");
+}
+
+function safeReturnTo(value: FormDataEntryValue | null, fallback: string) {
+  const raw = String(value ?? "");
+  return raw.startsWith("/") && !raw.startsWith("//") ? raw : fallback;
 }
 
 function checkLoginThrottle(email: string) {
@@ -940,8 +948,6 @@ export async function deleteTenant(formData: FormData) {
 
   revalidatePath("/tenants");
   revalidatePath("/customers");
-  revalidatePath("/fortigates");
-  revalidatePath("/backups");
 }
 
 export type LoginState = { error?: string };
@@ -1088,8 +1094,6 @@ export async function deleteCustomer(formData: FormData) {
 
   await prisma.customer.delete({ where: { id: customer.id } });
   revalidatePath("/customers");
-  revalidatePath("/fortigates");
-  revalidatePath("/backups");
   redirect("/customers");
 }
 
@@ -1134,13 +1138,15 @@ export async function createFortiGate(formData: FormData) {
     entity: "FortiGate",
     entityId: device.id
   });
-  revalidatePath("/fortigates");
+  revalidatePath(`/customers/${device.customerId}`);
+  revalidatePath(`/customers/${device.customerId}/fortigates/${device.id}`);
+  return { customerId: device.customerId, deviceId: device.id };
 }
 
 export async function createFortiGateWithState(_state: FortiGateCreateState, formData: FormData): Promise<FortiGateCreateState> {
   try {
-    await createFortiGate(formData);
-    return { ok: true, message: "FortiGate is opgeslagen." };
+    const device = await createFortiGate(formData);
+    return { ok: true, message: "FortiGate is opgeslagen.", ...device };
   } catch (error) {
     return {
       ok: false,
@@ -1195,12 +1201,14 @@ export async function updateFortiGate(formData: FormData) {
   await auditLog({
     action: "fortigate.updated",
     tenantId: device.customer.tenantId,
+    userId: user.id,
     entity: "FortiGate",
     entityId: device.id,
     metadata: { tokenUpdated: Boolean(parsed.apiToken) }
   });
-  revalidatePath("/fortigates");
-  redirect("/fortigates");
+  revalidatePath(`/customers/${device.customerId}`);
+  revalidatePath(`/customers/${device.customerId}/fortigates/${device.id}`);
+  redirect(safeReturnTo(formData.get("returnTo"), `/customers/${device.customerId}/fortigates/${device.id}`));
 }
 
 export async function deleteFortiGate(formData: FormData) {
@@ -1219,6 +1227,7 @@ export async function deleteFortiGate(formData: FormData) {
   await auditLog({
     action: "fortigate.deleted",
     tenantId: device.customer.tenantId,
+    userId: user.id,
     entity: "FortiGate",
     entityId: device.id,
     metadata: {
@@ -1233,9 +1242,9 @@ export async function deleteFortiGate(formData: FormData) {
     filenames: device.backups.map((backup) => backup.filename)
   });
   await prisma.fortiGate.delete({ where: { id } });
-  revalidatePath("/fortigates");
   revalidatePath("/customers");
-  revalidatePath("/backups");
+  revalidatePath(`/customers/${device.customerId}`);
+  redirect(safeReturnTo(formData.get("returnTo"), `/customers/${device.customerId}`));
 }
 
 export async function runBackupAction(formData: FormData) {
@@ -1249,8 +1258,9 @@ export async function runBackupAction(formData: FormData) {
   await assertOperationalTenant(user, device.customer.tenantId);
   await assertPermission(user, "fortigates.backup.run");
   await runBackup(id);
-  revalidatePath("/fortigates");
-  revalidatePath("/backups");
+  revalidatePath(`/customers/${device.customerId}`);
+  revalidatePath(`/customers/${device.customerId}/fortigates/${device.id}`);
+  revalidatePath(`/customers/${device.customerId}/fortigates/${device.id}/backups`);
 }
 
 export async function saveSettings(formData: FormData) {

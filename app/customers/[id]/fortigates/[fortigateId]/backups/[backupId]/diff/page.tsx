@@ -6,32 +6,35 @@ import {
   readBackupText,
   unifiedDiff
 } from "@/lib/backups";
-import { assertPermission, requireTenantUser } from "@/lib/authz";
+import { assertOperationalTenant, assertPermission, requireTenantUser } from "@/lib/authz";
 import { ActionLink, Card, PageHeader, Panel, Shell } from "@/components/ui";
 import { formatDateTime } from "@/lib/time";
 import { getTenantTimeZone } from "@/lib/tenant-timezone";
 
 export const dynamic = "force-dynamic";
 
-export default async function BackupDiffPage({
+export default async function CustomerFortiGateBackupDiffPage({
   params
 }: {
-  params: Promise<{ id: string }>;
+  params: Promise<{ id: string; fortigateId: string; backupId: string }>;
 }) {
   const user = await requireTenantUser();
   await assertPermission(user, "backups.diff.read");
-  const { id } = await params;
-  const backup = await getBackupForUser(id, user);
+  const { id, fortigateId, backupId } = await params;
+  const backup = await getBackupForUser(backupId, user);
+  if (backup.fortigateId !== fortigateId || backup.fortigate.customer.id !== id) notFound();
+  await assertOperationalTenant(user, backup.fortigate.customer.tenantId);
   if (!backup.filename) notFound();
   const previous = await previousStoredBackup(backup);
   const timeZone = await getTenantTimeZone(backup.fortigate.customer.tenantId);
+  const backupsHref = `/customers/${id}/fortigates/${fortigateId}/backups`;
   if (!previous?.filename) {
     return (
       <Shell>
         <PageHeader
           title="Backup diff"
           description={`${backup.fortigate.customer.name} - ${backup.fortigate.hostname ?? backup.fortigate.managementUrl}`}
-          actions={<ActionLink href="/backups">Terug</ActionLink>}
+          actions={<ActionLink href={backupsHref}>Terug naar backups</ActionLink>}
         />
         <Panel>
           <div className="text-sm text-muted-foreground">
@@ -65,7 +68,7 @@ export default async function BackupDiffPage({
           <>
             <ActionLink href={`/api/backups/${previous.id}/download`}>Vorige downloaden</ActionLink>
             <ActionLink href={`/api/backups/${backup.id}/download`}>Huidige downloaden</ActionLink>
-            <ActionLink href="/backups">Terug</ActionLink>
+            <ActionLink href={backupsHref}>Terug naar backups</ActionLink>
           </>
         }
       />
