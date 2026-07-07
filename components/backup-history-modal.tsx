@@ -12,6 +12,8 @@ type BackupHistoryItem = {
   filename: string | null;
   itGlueUploaded: boolean;
   itGlueError: string | null;
+  autotaskTicketId: string | null;
+  autotaskError: string | null;
   downloadHref: string;
   diffHref: string;
 };
@@ -68,6 +70,7 @@ export function BackupHistoryModal({
               <th className="px-3 py-2">SHA256 / fout</th>
               <th className="px-3 py-2">Grootte</th>
               <th className="px-3 py-2">IT Glue</th>
+              <th className="px-3 py-2">Autotask</th>
               <th className="px-3 py-2">Acties</th>
             </tr>
           </thead>
@@ -89,6 +92,15 @@ export function BackupHistoryModal({
                     <span className={neutralBadge}>-</span>
                   )}
                 </td>
+                <td className="px-3 py-2">
+                  {backup.autotaskTicketId ? (
+                    <span className={successBadge}>Ticket {backup.autotaskTicketId}</span>
+                  ) : backup.autotaskError ? (
+                    <span className={warningBadge}>Fout</span>
+                  ) : (
+                    <span className={neutralBadge}>-</span>
+                  )}
+                </td>
                 <td className="flex flex-wrap gap-2 px-3 py-2">
                   {backup.filename ? (
                     <>
@@ -102,7 +114,7 @@ export function BackupHistoryModal({
               </tr>
             )) : (
               <tr className="border-t border-border">
-                <td className="px-3 py-8 text-center text-muted-foreground" colSpan={6}>
+                <td className="px-3 py-8 text-center text-muted-foreground" colSpan={7}>
                   Geen backups voor dit filter.
                 </td>
               </tr>

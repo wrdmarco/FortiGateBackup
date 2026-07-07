@@ -17,6 +17,18 @@ type SettingsValues = {
   itGlueEnabled: boolean;
   itGlueBaseUrl: string;
   hasItGlueApiKey: boolean;
+  autotaskEnabled: boolean;
+  autotaskBaseUrl: string;
+  autotaskUsername: string;
+  hasAutotaskIntegrationCode: boolean;
+  hasAutotaskSecret: boolean;
+  autotaskQueueId: string;
+  autotaskPriorityId: string;
+  autotaskWorkTypeId: string;
+  autotaskStatusId: string;
+  autotaskSourceId: string;
+  autotaskIssueTypeId: string;
+  autotaskSubIssueTypeId: string;
   mailProvider: "SYSTEM" | "SMTP" | "MICROSOFT_GRAPH";
   smtpHost: string;
   smtpPort: string;
@@ -42,15 +54,17 @@ type SettingsValues = {
   backupNotifySuccess: boolean;
   backupNotifyEmail: boolean;
   backupNotifyWebhook: boolean;
+  backupNotifyAutotask: boolean;
   backupNotifyRecipients: string;
   backupWebhookUrl: string;
 };
 
-type SettingsTabId = "portal" | "itglue" | "mail" | "sso" | "scheduler";
+type SettingsTabId = "portal" | "itglue" | "autotask" | "mail" | "sso" | "scheduler";
 
 const tabs: { id: SettingsTabId; label: string }[] = [
   { id: "portal", label: "Portal" },
   { id: "itglue", label: "IT Glue" },
+  { id: "autotask", label: "Autotask" },
   { id: "mail", label: "Mail" },
   { id: "sso", label: "SSO" },
   { id: "scheduler", label: "Scheduler" }
@@ -185,6 +199,65 @@ export function SettingsForm({
           </div>
           <div className="rounded-md border border-border bg-surface p-3 text-sm text-muted-foreground">
             Vul bij klanten het IT Glue organization ID in en bij FortiGates het IT Glue configuration ID. Bij elke gewijzigde backup wordt het configbestand daar als bijlage verwerkt.
+          </div>
+        </section>
+      ) : null}
+
+      {showTab("autotask") ? (
+        <section hidden={activeTab !== "autotask"} className="grid gap-4 rounded-md border border-border bg-surface-soft p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">Autotask integratie</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Maak backupreports als Autotask ticket onder de gekoppelde klant.
+              </p>
+            </div>
+            <label className="flex items-center gap-2 rounded-md border border-border bg-surface px-3 py-2 text-sm">
+              <input name="autotask.enabled" type="hidden" value="false" />
+              <input name="autotask.enabled" type="checkbox" value="true" defaultChecked={values.autotaskEnabled} />
+              Autotask actief
+            </label>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <TextField
+              label="API base URL"
+              name="autotask.baseUrl"
+              defaultValue={values.autotaskBaseUrl || "https://webservices.autotask.net/atservicesrest/v1.0"}
+              help="Gebruik de Autotask REST zone URL voor je omgeving."
+            />
+            <TextField label="Username" name="autotask.username" defaultValue={values.autotaskUsername} />
+            <TextField
+              label={values.hasAutotaskIntegrationCode ? "Nieuwe integration code" : "Integration code"}
+              name="autotask.integrationCode"
+              type="password"
+              help={values.hasAutotaskIntegrationCode ? "Er is al een integration code opgeslagen. Laat leeg om deze te behouden." : "Wordt versleuteld opgeslagen."}
+            />
+            <TextField
+              label={values.hasAutotaskSecret ? "Nieuw secret" : "Secret"}
+              name="autotask.secret"
+              type="password"
+              help={values.hasAutotaskSecret ? "Er is al een secret opgeslagen. Laat leeg om deze te behouden." : "Wordt versleuteld opgeslagen."}
+            />
+          </div>
+          <div className="grid gap-4 rounded-md border border-border bg-surface p-4">
+            <div>
+              <h3 className="text-sm font-semibold">Ticketwaarden</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Deze Autotask ID-waarden worden gebruikt op elk backupreport-ticket.
+              </p>
+            </div>
+            <div className="grid gap-4 md:grid-cols-3">
+              <TextField label="Queue ID" name="autotask.queueId" defaultValue={values.autotaskQueueId} />
+              <TextField label="Priority ID" name="autotask.priorityId" defaultValue={values.autotaskPriorityId} />
+              <TextField label="Worktype ID" name="autotask.workTypeId" defaultValue={values.autotaskWorkTypeId} />
+              <TextField label="Status ID" name="autotask.statusId" defaultValue={values.autotaskStatusId} />
+              <TextField label="Source ID" name="autotask.sourceId" defaultValue={values.autotaskSourceId} />
+              <TextField label="Issue type ID" name="autotask.issueTypeId" defaultValue={values.autotaskIssueTypeId} />
+              <TextField label="Sub-issue type ID" name="autotask.subIssueTypeId" defaultValue={values.autotaskSubIssueTypeId} />
+            </div>
+          </div>
+          <div className="rounded-md border border-border bg-surface p-3 text-sm text-muted-foreground">
+            Vul bij klanten het Autotask Company ID in. Backupreports worden alleen als ticket aangemaakt wanneer Autotask ook bij backup notificaties is geselecteerd.
           </div>
         </section>
       ) : null}
@@ -384,6 +457,11 @@ export function SettingsForm({
                     <input name="backup.notifyWebhook" type="hidden" value="false" />
                     <input name="backup.notifyWebhook" type="checkbox" value="true" defaultChecked={values.backupNotifyWebhook} />
                     Webhook gebruiken
+                  </label>
+                  <label className="flex items-center gap-2 rounded-md border border-border bg-surface-soft px-3 py-2 text-sm">
+                    <input name="backup.notifyAutotask" type="hidden" value="false" />
+                    <input name="backup.notifyAutotask" type="checkbox" value="true" defaultChecked={values.backupNotifyAutotask} />
+                    Autotask ticket
                   </label>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">

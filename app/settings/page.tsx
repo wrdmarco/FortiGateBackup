@@ -14,7 +14,15 @@ import { defaultTimeZone } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
-const settingKeys = ["smtp.password", "itglue.apiKey", "graph.accessToken", "graph.clientSecret", "entra.clientSecret"] as const;
+const settingKeys = [
+  "smtp.password",
+  "itglue.apiKey",
+  "autotask.integrationCode",
+  "autotask.secret",
+  "graph.accessToken",
+  "graph.clientSecret",
+  "entra.clientSecret"
+] as const;
 
 export default async function SettingsPage({
   searchParams
@@ -42,6 +50,16 @@ export default async function SettingsPage({
     timeZone,
     itGlueEnabled,
     itGlueBaseUrl,
+    autotaskEnabled,
+    autotaskBaseUrl,
+    autotaskUsername,
+    autotaskQueueId,
+    autotaskPriorityId,
+    autotaskWorkTypeId,
+    autotaskStatusId,
+    autotaskSourceId,
+    autotaskIssueTypeId,
+    autotaskSubIssueTypeId,
     mailProvider,
     smtpHost,
     smtpPort,
@@ -63,6 +81,7 @@ export default async function SettingsPage({
     backupNotifySuccess,
     backupNotifyEmail,
     backupNotifyWebhook,
+    backupNotifyAutotask,
     backupNotifyRecipients,
     backupWebhookUrl,
     savedSecrets,
@@ -73,6 +92,16 @@ export default async function SettingsPage({
     getSetting("ui.timeZone", tenantId),
     getSetting("itglue.enabled", tenantId),
     getSetting("itglue.baseUrl", tenantId),
+    getSetting("autotask.enabled", tenantId),
+    getSetting("autotask.baseUrl", tenantId),
+    getSetting("autotask.username", tenantId),
+    getSetting("autotask.queueId", tenantId),
+    getSetting("autotask.priorityId", tenantId),
+    getSetting("autotask.workTypeId", tenantId),
+    getSetting("autotask.statusId", tenantId),
+    getSetting("autotask.sourceId", tenantId),
+    getSetting("autotask.issueTypeId", tenantId),
+    getSetting("autotask.subIssueTypeId", tenantId),
     getMailProviderMode(tenantId),
     getSetting("smtp.host", tenantId),
     getSetting("smtp.port", tenantId),
@@ -94,6 +123,7 @@ export default async function SettingsPage({
     getSetting("backup.notifySuccess", tenantId),
     getSetting("backup.notifyEmail", tenantId),
     getSetting("backup.notifyWebhook", tenantId),
+    getSetting("backup.notifyAutotask", tenantId),
     getSetting("backup.notifyRecipients", tenantId),
     getSetting("backup.webhookUrl", tenantId),
     prisma.systemSetting.findMany({
@@ -113,6 +143,18 @@ export default async function SettingsPage({
     itGlueEnabled: itGlueEnabled === "true",
     itGlueBaseUrl: itGlueBaseUrl ?? "https://api.itglue.com",
     hasItGlueApiKey: secretKeys.has("itglue.apiKey"),
+    autotaskEnabled: autotaskEnabled === "true",
+    autotaskBaseUrl: autotaskBaseUrl ?? "https://webservices.autotask.net/atservicesrest/v1.0",
+    autotaskUsername: autotaskUsername ?? "",
+    hasAutotaskIntegrationCode: secretKeys.has("autotask.integrationCode"),
+    hasAutotaskSecret: secretKeys.has("autotask.secret"),
+    autotaskQueueId: autotaskQueueId ?? "",
+    autotaskPriorityId: autotaskPriorityId ?? "",
+    autotaskWorkTypeId: autotaskWorkTypeId ?? "",
+    autotaskStatusId: autotaskStatusId ?? "",
+    autotaskSourceId: autotaskSourceId ?? "",
+    autotaskIssueTypeId: autotaskIssueTypeId ?? "",
+    autotaskSubIssueTypeId: autotaskSubIssueTypeId ?? "",
     mailProvider: mailProvider === "SYSTEM" ? ("SYSTEM" as const) : mailProvider === "MICROSOFT_GRAPH" ? ("MICROSOFT_GRAPH" as const) : ("SMTP" as const),
     smtpHost: smtpHost ?? "",
     smtpPort: smtpPort ?? "587",
@@ -138,11 +180,12 @@ export default async function SettingsPage({
     backupNotifySuccess: backupNotifySuccess === "true",
     backupNotifyEmail: backupNotifyEmail === "true",
     backupNotifyWebhook: backupNotifyWebhook === "true",
+    backupNotifyAutotask: backupNotifyAutotask === "true",
     backupNotifyRecipients: backupNotifyRecipients ?? "",
     backupWebhookUrl: backupWebhookUrl ?? ""
   };
   const formProps = { action: saveSettings, testMailAction: testMailSettings, tenants: [], selectedTenantId, selectedTenantName, values, allowSystemMail: !isGlobalScope };
-  const configTabs = isGlobalScope ? ["mail", "sso", "scheduler"] : ["portal", "itglue", "mail", "sso", "scheduler"];
+  const configTabs = isGlobalScope ? ["mail", "sso", "scheduler"] : ["portal", "itglue", "autotask", "mail", "sso", "scheduler"];
   const tabIds = [...configTabs, ...(updateStatus ? ["updates"] : [])];
   const activeTab = params?.tab && tabIds.includes(params.tab) ? params.tab : configTabs[0];
 
@@ -174,6 +217,17 @@ export default async function SettingsPage({
             content: (
               <Panel className="max-w-4xl">
                 <SettingsForm {...formProps} visibleTabs={["itglue"]} initialTab="itglue" />
+              </Panel>
+            )
+          }] : []),
+          ...(!isGlobalScope ? [{
+            id: "autotask",
+            label: "Autotask",
+            href: settingsHref("autotask"),
+            description: "Maak Autotask tickets voor backupreports onder de juiste klant.",
+            content: (
+              <Panel className="max-w-4xl">
+                <SettingsForm {...formProps} visibleTabs={["autotask"]} initialTab="autotask" />
               </Panel>
             )
           }] : []),

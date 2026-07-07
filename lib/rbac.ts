@@ -56,6 +56,8 @@ export const permissions = [
   { key: "integrations.mail.test", category: "Integraties", description: "Testmail sturen" },
   { key: "integrations.itglue.read", category: "Integraties", description: "IT Glue instellingen bekijken" },
   { key: "integrations.itglue.update", category: "Integraties", description: "IT Glue instellingen wijzigen" },
+  { key: "integrations.autotask.read", category: "Integraties", description: "Autotask instellingen bekijken" },
+  { key: "integrations.autotask.update", category: "Integraties", description: "Autotask instellingen wijzigen" },
   { key: "integrations.sso.read", category: "Integraties", description: "SSO instellingen bekijken" },
   { key: "integrations.sso.update", category: "Integraties", description: "SSO instellingen wijzigen" }
 ] as const;

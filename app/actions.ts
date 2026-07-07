@@ -15,6 +15,7 @@ import { assignDefaultTenantRole, ensureTenantRbac, permissions, type Permission
 import { createSession, destroySession, requireUser, setActiveTenantContext } from "@/lib/session";
 import { deleteSetting, setSetting } from "@/lib/settings";
 import { isItGlueEnabled } from "@/lib/itglue";
+import { isAutotaskEnabled } from "@/lib/autotask";
 import { getTenantSiteUrl, normalizeSiteUrl } from "@/lib/site-url";
 import { mainTenantId } from "@/lib/tenant-main";
 import { defaultTimeZone, isValidTimeZone } from "@/lib/time";
@@ -1036,6 +1037,7 @@ export async function createCustomer(formData: FormData) {
     phone: formData.get("phone") || undefined,
     notes: formData.get("notes") || undefined,
     itGlueOrganizationId: formData.get("itGlueOrganizationId") || undefined,
+    autotaskCompanyId: formData.get("autotaskCompanyId") || undefined,
     active: true
   });
   assertTenantAccess(user, data.tenantId);
@@ -1043,6 +1045,9 @@ export async function createCustomer(formData: FormData) {
   await assertPermission(user, "customers.create");
   if ((await isItGlueEnabled(data.tenantId)) && !data.itGlueOrganizationId) {
     throw new Error("IT Glue organization ID is verplicht wanneer IT Glue actief is voor deze tenant.");
+  }
+  if ((await isAutotaskEnabled(data.tenantId)) && !data.autotaskCompanyId) {
+    throw new Error("Autotask Company ID is verplicht wanneer Autotask actief is voor deze tenant.");
   }
   const customer = await prisma.customer.create({ data });
   await auditLog({
@@ -1053,6 +1058,55 @@ export async function createCustomer(formData: FormData) {
   });
   revalidatePath("/customers");
 }
+
+export async function updateCustomer(formData: FormData) {
+  const user = await requireTenantUser();
+  const id = String(formData.get("id"));
+  const existing = await prisma.customer.findUniqueOrThrow({ where: { id } });
+  const data = customerSchema.parse({
+    tenantId: existing.tenantId,
+    name: formData.get("name"),
+    contact: formData.get("contact") || undefined,
+    email: formData.get("email") || undefined,
+    phone: formData.get("phone") || undefined,
+    notes: formData.get("notes") || undefined,
+    itGlueOrganizationId: formData.get("itGlueOrganizationId") || undefined,
+    autotaskCompanyId: formData.get("autotaskCompanyId") || undefined,
+    active: existing.active
+  });
+  assertTenantAccess(user, existing.tenantId);
+  await assertOperationalTenant(user, existing.tenantId);
+  await assertPermission(user, "customers.update");
+  if ((await isItGlueEnabled(existing.tenantId)) && !data.itGlueOrganizationId) {
+    throw new Error("IT Glue organization ID is verplicht wanneer IT Glue actief is voor deze tenant.");
+  }
+  if ((await isAutotaskEnabled(existing.tenantId)) && !data.autotaskCompanyId) {
+    throw new Error("Autotask Company ID is verplicht wanneer Autotask actief is voor deze tenant.");
+  }
+  const customer = await prisma.customer.update({ where: { id }, data });
+  await auditLog({
+    action: "customer.updated",
+    tenantId: customer.tenantId,
+    userId: user.id,
+    entity: "Customer",
+    entityId: customer.id,
+    metadata: {
+      before: {
+        name: existing.name,
+        itGlueOrganizationId: existing.itGlueOrganizationId,
+        autotaskCompanyId: existing.autotaskCompanyId
+      },
+      after: {
+        name: customer.name,
+        itGlueOrganizationId: customer.itGlueOrganizationId,
+        autotaskCompanyId: customer.autotaskCompanyId
+      }
+    }
+  });
+  revalidatePath("/customers");
+  revalidatePath(`/customers/${customer.id}`);
+}
+
 export async function deleteCustomer(formData: FormData) {
   const user = await requireTenantUser();
   const id = String(formData.get("id"));
@@ -1281,6 +1335,15 @@ export async function saveSettings(formData: FormData) {
   const backupWebhookUrl = normalizeOptionalWebhookUrl(formData.get("backup.webhookUrl"));
   const entries = [
     ["itglue.baseUrl", formData.get("itglue.baseUrl")],
+    ["autotask.baseUrl", formData.get("autotask.baseUrl")],
+    ["autotask.username", formData.get("autotask.username")],
+    ["autotask.queueId", formData.get("autotask.queueId")],
+    ["autotask.priorityId", formData.get("autotask.priorityId")],
+    ["autotask.workTypeId", formData.get("autotask.workTypeId")],
+    ["autotask.statusId", formData.get("autotask.statusId")],
+    ["autotask.sourceId", formData.get("autotask.sourceId")],
+    ["autotask.issueTypeId", formData.get("autotask.issueTypeId")],
+    ["autotask.subIssueTypeId", formData.get("autotask.subIssueTypeId")],
     ["mail.provider", formData.get("mail.provider")],
     ["smtp.host", formData.get("smtp.host")],
     ["smtp.port", formData.get("smtp.port")],
@@ -1298,7 +1361,7 @@ export async function saveSettings(formData: FormData) {
     ["backup.notifyRecipients", backupNotifyRecipients],
     ["backup.webhookUrl", backupWebhookUrl]
   ] as const;
-  if (formData.has("backup.notifyEmail") || formData.has("backup.notifyWebhook")) {
+  if (formData.has("backup.notifyEmail") || formData.has("backup.notifyWebhook") || formData.has("backup.notifyAutotask")) {
     const notificationEventsEnabled =
       boolField(formData, "backup.notifySuccess") || boolField(formData, "backup.notifyFailures");
     if (notificationEventsEnabled && boolField(formData, "backup.notifyEmail") && !backupNotifyRecipients) {
@@ -1307,9 +1370,17 @@ export async function saveSettings(formData: FormData) {
     if (notificationEventsEnabled && boolField(formData, "backup.notifyWebhook") && !backupWebhookUrl) {
       throw new Error("Vul een webhook URL in voor backup notificaties.");
     }
+    if (notificationEventsEnabled && boolField(formData, "backup.notifyAutotask")) {
+      if (!formData.get("autotask.queueId") || !formData.get("autotask.priorityId")) {
+        throw new Error("Vul een Autotask queue en priority in voor backup tickets.");
+      }
+    }
   }
   if (formData.has("itglue.enabled")) {
     await setSetting("itglue.enabled", boolField(formData, "itglue.enabled") ? "true" : "false", { tenantId });
+  }
+  if (formData.has("autotask.enabled")) {
+    await setSetting("autotask.enabled", boolField(formData, "autotask.enabled") ? "true" : "false", { tenantId });
   }
   if (formData.has("entra.enabled")) {
     await setSetting("entra.enabled", boolField(formData, "entra.enabled") ? "true" : "false", { tenantId });
@@ -1332,6 +1403,9 @@ export async function saveSettings(formData: FormData) {
   if (formData.has("backup.notifyWebhook")) {
     await setSetting("backup.notifyWebhook", boolField(formData, "backup.notifyWebhook") ? "true" : "false", { tenantId });
   }
+  if (formData.has("backup.notifyAutotask")) {
+    await setSetting("backup.notifyAutotask", boolField(formData, "backup.notifyAutotask") ? "true" : "false", { tenantId });
+  }
   for (const [key, value] of entries) {
     if (value) await setSetting(key, String(value), { tenantId });
   }
@@ -1341,13 +1415,32 @@ export async function saveSettings(formData: FormData) {
   if (formData.has("backup.webhookUrl") && !backupWebhookUrl) {
     await deleteSetting("backup.webhookUrl", tenantId);
   }
+  for (const key of [
+    "autotask.baseUrl",
+    "autotask.username",
+    "autotask.queueId",
+    "autotask.priorityId",
+    "autotask.workTypeId",
+    "autotask.statusId",
+    "autotask.sourceId",
+    "autotask.issueTypeId",
+    "autotask.subIssueTypeId"
+  ]) {
+    if (formData.has(key) && !formData.get(key)) {
+      await deleteSetting(key, tenantId);
+    }
+  }
   const smtpPassword = formData.get("smtp.password");
   const itGlueApiKey = formData.get("itglue.apiKey");
+  const autotaskIntegrationCode = formData.get("autotask.integrationCode");
+  const autotaskSecret = formData.get("autotask.secret");
   const graphToken = formData.get("graph.accessToken");
   const graphClientSecret = formData.get("graph.clientSecret");
   const entraSecret = formData.get("entra.clientSecret");
   if (smtpPassword) await setSetting("smtp.password", String(smtpPassword), { tenantId, encrypted: true });
   if (itGlueApiKey) await setSetting("itglue.apiKey", String(itGlueApiKey), { tenantId, encrypted: true });
+  if (autotaskIntegrationCode) await setSetting("autotask.integrationCode", String(autotaskIntegrationCode), { tenantId, encrypted: true });
+  if (autotaskSecret) await setSetting("autotask.secret", String(autotaskSecret), { tenantId, encrypted: true });
   if (graphToken) await setSetting("graph.accessToken", String(graphToken), { tenantId, encrypted: true });
   if (graphClientSecret) await setSetting("graph.clientSecret", String(graphClientSecret), { tenantId, encrypted: true });
   if (entraSecret) await setSetting("entra.clientSecret", String(entraSecret), { tenantId, encrypted: true });

@@ -14,6 +14,7 @@ export const customerSchema = z.object({
   phone: z.string().optional(),
   notes: z.string().optional(),
   itGlueOrganizationId: z.string().optional(),
+  autotaskCompanyId: z.string().optional(),
   active: z.boolean().default(true)
 });
 

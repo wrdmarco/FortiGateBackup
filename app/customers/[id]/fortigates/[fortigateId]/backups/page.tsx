@@ -40,7 +40,7 @@ export default async function CustomerFortiGateBackupsPage({
         actions={<ActionLink href={detailHref}>Terug naar firewall</ActionLink>}
       />
       <TableShell className="mt-6">
-        <table className="table-pro w-full min-w-[980px] text-left text-sm">
+        <table className="table-pro w-full min-w-[1080px] text-left text-sm">
           <thead className="bg-surface-soft">
             <tr>
               <th className="px-3 py-2">Datum</th>
@@ -48,6 +48,7 @@ export default async function CustomerFortiGateBackupsPage({
               <th className="px-3 py-2">SHA256 / fout</th>
               <th className="px-3 py-2">Grootte</th>
               <th className="px-3 py-2">IT Glue</th>
+              <th className="px-3 py-2">Autotask</th>
               <th className="px-3 py-2">Acties</th>
             </tr>
           </thead>
@@ -63,6 +64,9 @@ export default async function CustomerFortiGateBackupsPage({
                 <td className="px-3 py-2">
                   {backup.itGlueUploadedAt ? <Badge tone="success">Geupload</Badge> : backup.itGlueError ? <Badge tone="warning">Fout</Badge> : <Badge>-</Badge>}
                 </td>
+                <td className="px-3 py-2">
+                  {backup.autotaskTicketId ? <Badge tone="success">Ticket {backup.autotaskTicketId}</Badge> : backup.autotaskError ? <Badge tone="warning">Fout</Badge> : <Badge>-</Badge>}
+                </td>
                 <td className="flex flex-wrap gap-2 px-3 py-2">
                   {backup.filename ? (
                     <>
@@ -74,7 +78,7 @@ export default async function CustomerFortiGateBackupsPage({
               </tr>
             )) : (
               <tr className="border-t border-border">
-                <td className="px-3 py-8 text-center text-muted-foreground" colSpan={6}>Nog geen backups voor deze FortiGate.</td>
+                <td className="px-3 py-8 text-center text-muted-foreground" colSpan={7}>Nog geen backups voor deze FortiGate.</td>
               </tr>
             )}
           </tbody>

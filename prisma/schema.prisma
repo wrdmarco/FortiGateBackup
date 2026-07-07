@@ -167,6 +167,7 @@ model Customer {
   phone     String?
   notes     String?
   itGlueOrganizationId String?
+  autotaskCompanyId String?
   active    Boolean     @default(true)
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
@@ -220,6 +221,9 @@ model Backup {
   itGlueAttachmentId String?
   itGlueUploadedAt DateTime?
   itGlueError String?
+  autotaskTicketId String?
+  autotaskTicketCreatedAt DateTime?
+  autotaskError String?
   createdAt   DateTime     @default(now())
   fortigate   FortiGate    @relation(fields: [fortigateId], references: [id], onDelete: Cascade)
 

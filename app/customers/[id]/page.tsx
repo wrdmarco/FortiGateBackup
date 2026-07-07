@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { deleteCustomer } from "@/app/actions";
+import { deleteCustomer, updateCustomer } from "@/app/actions";
 import { FirmwareStatus } from "@/components/firmware-status";
 import { Modal } from "@/components/modal";
 import { ActionLink, Badge, Button, Card, Field, PageHeader, Shell, TableShell } from "@/components/ui";
@@ -33,8 +33,9 @@ export default async function CustomerDetailPage({
   });
   if (!customer) notFound();
   assertTenantAccess(user, customer.tenantId);
-  const [canCreateFortiGate, canDeleteCustomer] = await Promise.all([
+  const [canCreateFortiGate, canUpdateCustomer, canDeleteCustomer] = await Promise.all([
     hasPermission(user, "fortigates.create"),
+    hasPermission(user, "customers.update"),
     hasPermission(user, "customers.delete")
   ]);
   const backups = customer.devices.flatMap((device) =>
@@ -52,6 +53,32 @@ export default async function CustomerDetailPage({
         actions={
           <>
             <ActionLink href="/customers">Klanten</ActionLink>
+            {canUpdateCustomer ? (
+              <Modal
+                title="Klant bewerken"
+                description="Werk klantgegevens en integratiekoppelingen bij."
+                trigger={<Button variant="secondary">Klant bewerken</Button>}
+              >
+                <form action={updateCustomer} className="grid gap-4">
+                  <input type="hidden" name="id" value={customer.id} />
+                  <Field label="Naam" name="name" defaultValue={customer.name} required />
+                  <Field label="Contactpersoon" name="contact" defaultValue={customer.contact ?? ""} />
+                  <Field label="E-mail" name="email" type="email" defaultValue={customer.email ?? ""} />
+                  <Field label="Telefoon" name="phone" defaultValue={customer.phone ?? ""} />
+                  <Field label="IT Glue organization ID" name="itGlueOrganizationId" defaultValue={customer.itGlueOrganizationId ?? ""} />
+                  <Field label="Autotask Company ID" name="autotaskCompanyId" defaultValue={customer.autotaskCompanyId ?? ""} />
+                  <label className="grid gap-1 text-sm">
+                    <span className="font-medium">Notities</span>
+                    <textarea
+                      className="min-h-24 rounded-md border border-border bg-surface px-3 py-2 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15"
+                      name="notes"
+                      defaultValue={customer.notes ?? ""}
+                    />
+                  </label>
+                  <Button>Opslaan</Button>
+                </form>
+              </Modal>
+            ) : null}
             {canCreateFortiGate ? <ActionLink href={`/customers/${customer.id}/fortigates/new`} variant="primary">FortiGate toevoegen</ActionLink> : null}
             {canDeleteCustomer ? (
               <Modal
@@ -77,11 +104,12 @@ export default async function CustomerDetailPage({
         }
       />
 
-      <div className="mt-6 grid gap-4 md:grid-cols-5">
+      <div className="mt-6 grid gap-4 md:grid-cols-6">
         <Card title="FortiGates" value={customer.devices.length} detail="Bij deze klant" />
         <Card title="Backups" value={backups.length} detail="Laatste records" />
         <Card title="Downloadbaar" value={changedBackups.length} detail="Opgeslagen configbestanden" />
         <Card title="IT Glue" value={customer.itGlueOrganizationId ? "Gekoppeld" : "Niet gekoppeld"} detail={customer.itGlueOrganizationId ? `Org ${customer.itGlueOrganizationId}` : "Geen organization ID"} />
+        <Card title="Autotask" value={customer.autotaskCompanyId ? "Gekoppeld" : "Niet gekoppeld"} detail={customer.autotaskCompanyId ? `Company ${customer.autotaskCompanyId}` : "Geen company ID"} />
         <Card
           title="Laatste backup"
           value={latestBackup?.status ?? "-"}

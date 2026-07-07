@@ -157,6 +157,7 @@ function labelForAction(action: string) {
     "backup.failed": "Backup mislukt",
     "backup.unchanged": "Backup ongewijzigd",
     "backup.notification_failed": "Backup notificatie mislukt",
+    "backup.autotask_ticket_created": "Autotask ticket aangemaakt",
     "fortigate.created": "FortiGate aangemaakt",
     "fortigate.updated": "FortiGate gewijzigd",
     "fortigate.deleted": "FortiGate verwijderd",

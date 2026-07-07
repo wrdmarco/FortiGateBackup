@@ -40,6 +40,7 @@ export default async function CustomersPage() {
               <Field label="E-mail" name="email" type="email" />
               <Field label="Telefoon" name="phone" />
               <Field label="IT Glue organization ID" name="itGlueOrganizationId" />
+              <Field label="Autotask Company ID" name="autotaskCompanyId" />
               <label className="grid gap-1 text-sm">
                 <span className="font-medium">Notities</span>
                 <textarea className="min-h-24 rounded-md border border-border bg-surface px-3 py-2 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15" name="notes" />
@@ -63,7 +64,7 @@ export default async function CustomersPage() {
                 <th className="px-3 py-2">Tenant</th>
                 <th className="px-3 py-2">Contact</th>
                 <th className="px-3 py-2">FortiGates</th>
-                <th className="px-3 py-2">IT Glue</th>
+                <th className="px-3 py-2">Integraties</th>
                 <th className="px-3 py-2">Actie</th>
               </tr>
             </thead>
@@ -75,7 +76,11 @@ export default async function CustomersPage() {
                   <td className="px-3 py-2">{customer.email ?? customer.contact ?? "-"}</td>
                   <td className="px-3 py-2"><Badge>{customer.devices.length}</Badge></td>
                   <td className="px-3 py-2">
-                    {customer.itGlueOrganizationId ? <Badge tone="success">Org {customer.itGlueOrganizationId}</Badge> : <Badge>Niet gekoppeld</Badge>}
+                    <div className="flex flex-wrap gap-2">
+                      {customer.itGlueOrganizationId ? <Badge tone="success">IT Glue {customer.itGlueOrganizationId}</Badge> : null}
+                      {customer.autotaskCompanyId ? <Badge tone="success">Autotask {customer.autotaskCompanyId}</Badge> : null}
+                      {!customer.itGlueOrganizationId && !customer.autotaskCompanyId ? <Badge>Niet gekoppeld</Badge> : null}
+                    </div>
                   </td>
                   <td className="px-3 py-2">
                     <ActionLink href={`/customers/${customer.id}`}>Beheren</ActionLink>

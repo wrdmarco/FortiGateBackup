@@ -1,5 +1,6 @@
 import { BackupStatus } from "@prisma/client";
 import { auditLog } from "@/lib/audit";
+import { createAutotaskBackupTicket } from "@/lib/autotask";
 import { prisma } from "@/lib/db";
 import { sendMail } from "@/lib/mail";
 import { getSetting } from "@/lib/settings";
@@ -41,9 +42,10 @@ export async function notifyBackupResult(backupId: string) {
   const notifyFailures = (await getSetting("backup.notifyFailures", tenantId)) !== "false";
   if ((success && !notifySuccess) || (!success && !notifyFailures)) return;
 
-  const [notifyEmail, notifyWebhook, recipients, webhookUrl] = await Promise.all([
+  const [notifyEmail, notifyWebhook, notifyAutotask, recipients, webhookUrl] = await Promise.all([
     getSetting("backup.notifyEmail", tenantId),
     getSetting("backup.notifyWebhook", tenantId),
+    getSetting("backup.notifyAutotask", tenantId),
     getSetting("backup.notifyRecipients", tenantId),
     getSetting("backup.webhookUrl", tenantId)
   ]);
@@ -71,6 +73,9 @@ export async function notifyBackupResult(backupId: string) {
   }
   if (notifyWebhook === "true" && webhookUrl) {
     await notifyByWebhook(tenantId, webhookUrl, payload);
+  }
+  if (notifyAutotask === "true") {
+    await notifyByAutotask(tenantId, backup.id);
   }
 }
 
@@ -114,9 +119,59 @@ async function notifyByWebhook(tenantId: string, webhookUrl: string, payload: Ba
   }
 }
 
+async function notifyByAutotask(tenantId: string, backupId: string) {
+  const backup = await prisma.backup.findUnique({
+    where: { id: backupId },
+    include: {
+      fortigate: {
+        include: {
+          customer: true
+        }
+      }
+    }
+  });
+  if (!backup) return;
+
+  try {
+    const result = await createAutotaskBackupTicket({
+      tenantId,
+      device: backup.fortigate,
+      backup
+    });
+    if (result.skipped) return;
+    await prisma.backup.update({
+      where: { id: backup.id },
+      data: {
+        autotaskTicketId: result.ticketId ? String(result.ticketId) : null,
+        autotaskTicketCreatedAt: new Date(),
+        autotaskError: null
+      }
+    });
+    await auditLog({
+      action: "backup.autotask_ticket_created",
+      tenantId,
+      entity: "Backup",
+      entityId: backup.id,
+      metadata: {
+        ticketId: result.ticketId,
+        customerId: backup.fortigate.customerId,
+        fortigateId: backup.fortigate.id
+      }
+    });
+  } catch (error) {
+    await prisma.backup.update({
+      where: { id: backup.id },
+      data: {
+        autotaskError: error instanceof Error ? error.message : "Onbekende Autotask fout"
+      }
+    });
+    await auditNotificationFailure(tenantId, "autotask", backupNotificationPayload(tenantId, backup), error);
+  }
+}
+
 async function auditNotificationFailure(
   tenantId: string,
-  channel: "mail" | "webhook",
+  channel: "mail" | "webhook" | "autotask",
   payload: BackupNotificationPayload,
   error: unknown
 ) {
@@ -131,4 +186,35 @@ async function auditNotificationFailure(
       error: error instanceof Error ? error.message : "Onbekende notificatiefout"
     }
   });
+}
+
+function backupNotificationPayload(
+  tenantId: string,
+  backup: NonNullable<Awaited<ReturnType<typeof prisma.backup.findUnique>>> & {
+    fortigate: {
+      customer: { name: string };
+      id: string;
+      hostname: string | null;
+      managementUrl: string;
+      serialNumber: string | null;
+    };
+  }
+): BackupNotificationPayload {
+  return {
+    event: backup.status === BackupStatus.FAILED ? "backup.failed" : "backup.success",
+    tenantId,
+    backupId: backup.id,
+    status: backup.status,
+    customer: backup.fortigate.customer.name,
+    fortigate: {
+      id: backup.fortigate.id,
+      hostname: backup.fortigate.hostname,
+      managementUrl: backup.fortigate.managementUrl,
+      serialNumber: backup.fortigate.serialNumber
+    },
+    filesize: backup.filesize,
+    sha256: backup.sha256,
+    error: backup.error,
+    createdAt: backup.createdAt.toISOString()
+  };
 }

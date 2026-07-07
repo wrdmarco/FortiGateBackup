@@ -59,6 +59,8 @@ export default async function CustomerFortiGatePage({
     filename: backup.filename,
     itGlueUploaded: Boolean(backup.itGlueUploadedAt),
     itGlueError: backup.itGlueError,
+    autotaskTicketId: backup.autotaskTicketId,
+    autotaskError: backup.autotaskError,
     downloadHref: `/api/backups/${backup.id}/download`,
     diffHref: `${returnTo}/backups/${backup.id}/diff`
   }));

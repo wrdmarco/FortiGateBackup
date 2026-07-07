@@ -292,6 +292,7 @@ export async function restoreTenantArchive({
           phone: stringValue(customer.phone),
           notes: stringValue(customer.notes),
           itGlueOrganizationId: stringValue(customer.itGlueOrganizationId),
+          autotaskCompanyId: stringValue(customer.autotaskCompanyId),
           active: booleanValue(customer.active, true),
           createdAt: dateValue(customer.createdAt),
           updatedAt: dateValue(customer.updatedAt)
@@ -340,6 +341,9 @@ export async function restoreTenantArchive({
               itGlueAttachmentId: stringValue(backup.itGlueAttachmentId),
               itGlueUploadedAt: nullableDateValue(backup.itGlueUploadedAt),
               itGlueError: stringValue(backup.itGlueError),
+              autotaskTicketId: stringValue(backup.autotaskTicketId),
+              autotaskTicketCreatedAt: nullableDateValue(backup.autotaskTicketCreatedAt),
+              autotaskError: stringValue(backup.autotaskError),
               createdAt: dateValue(backup.createdAt)
             }
           });
