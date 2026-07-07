@@ -127,6 +127,10 @@ De logs bevatten stapnaam, niveau, melding en beperkte metadata zoals bytes, sco
 
 De updateflow maakt eerst een self-backup, voert daarna `git pull`, `pnpm install`, Prisma migrations, build en service restart uit. `setup.sh` plaatst een beperkte sudoers-regel zodat de portal alleen de FortiGate Backup services mag herstarten na een update.
 
+Tijdens een update krijgen ingelogde gebruikers direct een onderhoudsscherm. De gebruiker die de update start ziet de live log; andere gebruikers zien alleen dat de interface tijdelijk geblokkeerd is.
+
+Als Next.js kort niet bereikbaar is tijdens een restart, kan alleen de reverse proxy een nette pagina tonen. Gebruik bij Nginx de voorbeeldconfiguratie in `deployment/nginx-maintenance.conf.example`. Die toont `public/maintenance.html` bij 502, 503 en 504 in plaats van een kale proxyfout.
+
 Voor een bestaande installatie waar de updateknop meldt dat `systemctl` niet via sudo mag, draai eenmalig als root:
 
 ```bash

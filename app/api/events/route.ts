@@ -19,17 +19,26 @@ export async function GET(request: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       let lastVersion = await tenantDataVersion(tenantId);
+      let lastMaintenanceState = await updateMaintenanceState();
+      let lastMaintenanceVersion = JSON.stringify(lastMaintenanceState);
       controller.enqueue(sse("ready", lastVersion));
+      controller.enqueue(sse("maintenance", lastMaintenanceState));
 
       const timer = setInterval(async () => {
         try {
           const nextVersion = await tenantDataVersion(tenantId);
+          const nextMaintenanceState = await updateMaintenanceState();
+          const nextMaintenanceVersion = JSON.stringify(nextMaintenanceState);
           if (nextVersion !== lastVersion) {
             lastVersion = nextVersion;
             controller.enqueue(sse("refresh", nextVersion));
-          } else {
-            controller.enqueue(sse("heartbeat", new Date().toISOString()));
           }
+          if (nextMaintenanceVersion !== lastMaintenanceVersion) {
+            lastMaintenanceState = nextMaintenanceState;
+            lastMaintenanceVersion = nextMaintenanceVersion;
+            controller.enqueue(sse("maintenance", nextMaintenanceState));
+          }
+          controller.enqueue(sse("heartbeat", new Date().toISOString()));
         } catch (error) {
           controller.enqueue(sse("error", error instanceof Error ? error.message : "Realtime update check failed."));
         }
@@ -52,7 +61,7 @@ export async function GET(request: NextRequest) {
   });
 }
 
-function sse(event: string, data: string) {
+function sse(event: string, data: unknown) {
   return encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 }
 
@@ -66,8 +75,7 @@ async function tenantDataVersion(tenantId: string) {
     users,
     roles,
     settings,
-    audit,
-    updateStatus
+    audit
   ] = await Promise.all([
     prisma.tenant.aggregate({
       where: { id: tenantId },
@@ -104,13 +112,10 @@ async function tenantDataVersion(tenantId: string) {
     prisma.auditLog.aggregate({
       where: { tenantId },
       _max: { createdAt: true }
-    }),
-    getUpdateRuntimeStatus()
+    })
   ]);
 
   return [
-    updateStatus.running ? "update-running" : "update-idle",
-    updateStatus.startedAt ?? "",
     tenant._max.updatedAt,
     customers._max.updatedAt,
     fortigates._max.updatedAt,
@@ -125,8 +130,15 @@ async function tenantDataVersion(tenantId: string) {
   ].map(versionPart).join(":");
 }
 
-function versionPart(value: Date | string | null | undefined) {
+async function updateMaintenanceState() {
+  const status = await getUpdateRuntimeStatus();
+  return {
+    running: status.running,
+    startedAt: status.startedAt
+  };
+}
+
+function versionPart(value: Date | null | undefined) {
   if (!value) return "0";
-  if (value instanceof Date) return String(value.getTime());
-  return value;
+  return String(value.getTime());
 }

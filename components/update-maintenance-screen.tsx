@@ -101,7 +101,7 @@ export function UpdateMaintenanceScreen({
                 <div className="rounded-md border border-border bg-surface-soft p-4">
                   <h2 className="text-sm font-semibold">Update in uitvoering</h2>
                   <p className="mt-2 text-sm text-muted-foreground">
-                    De live log is alleen zichtbaar voor de gebruiker die de update heeft gestart. Deze pagina kan blijven staan; ververs na enkele minuten opnieuw.
+                    De live log is alleen zichtbaar voor de gebruiker die de update heeft gestart. Je wordt niet naar de updatepagina gestuurd; laat dit venster staan en probeer het over enkele minuten opnieuw.
                   </p>
                 </div>
               )}
@@ -110,10 +110,12 @@ export function UpdateMaintenanceScreen({
             <aside className="grid content-start gap-3 rounded-md border border-border bg-surface-soft p-4">
               <StatusStep label="Update gestart" active />
               <StatusStep label="Applicatie wordt bijgewerkt" active={!done} />
-              <StatusStep label="Terug naar laatste pagina" active={done} />
-              <div className="mt-2 rounded-md border border-border bg-surface p-3 text-sm text-muted-foreground">
-                Doel na afronden: <span className="font-medium text-foreground">{safeReturnTo}</span>
-              </div>
+              <StatusStep label={isStarter ? "Terug naar laatste pagina" : "Interface komt terug na afronding"} active={done} />
+              {isStarter ? (
+                <div className="mt-2 rounded-md border border-border bg-surface p-3 text-sm text-muted-foreground">
+                  Doel na afronden: <span className="font-medium text-foreground">{safeReturnTo}</span>
+                </div>
+              ) : null}
             </aside>
           </div>
         </section>

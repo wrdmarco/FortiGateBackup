@@ -147,6 +147,6 @@ run_as_service_user corepack enable
 run_as_service_user pnpm install --frozen-lockfile
 run_as_service_user pnpm prisma migrate deploy
 run_as_service_user pnpm run build
-clear_update_lock
 restart_services_or_explain
+clear_update_lock
 echo "Update complete."
