@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { getUpdateRuntimeStatus } from "@/lib/app-update";
 import { prisma } from "@/lib/db";
 import { currentUser } from "@/lib/session";
 
@@ -65,7 +66,8 @@ async function tenantDataVersion(tenantId: string) {
     users,
     roles,
     settings,
-    audit
+    audit,
+    updateStatus
   ] = await Promise.all([
     prisma.tenant.aggregate({
       where: { id: tenantId },
@@ -102,10 +104,13 @@ async function tenantDataVersion(tenantId: string) {
     prisma.auditLog.aggregate({
       where: { tenantId },
       _max: { createdAt: true }
-    })
+    }),
+    getUpdateRuntimeStatus()
   ]);
 
   return [
+    updateStatus.running ? "update-running" : "update-idle",
+    updateStatus.startedAt ?? "",
     tenant._max.updatedAt,
     customers._max.updatedAt,
     fortigates._max.updatedAt,
@@ -117,5 +122,11 @@ async function tenantDataVersion(tenantId: string) {
     roles._max.updatedAt,
     settings._max.updatedAt,
     audit._max.createdAt
-  ].map((value) => value?.getTime() ?? 0).join(":");
+  ].map(versionPart).join(":");
+}
+
+function versionPart(value: Date | string | null | undefined) {
+  if (!value) return "0";
+  if (value instanceof Date) return String(value.getTime());
+  return value;
 }

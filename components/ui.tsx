@@ -3,7 +3,7 @@ import { clsx } from "clsx";
 import { logoutAction, switchTenantContextAction } from "@/app/actions";
 import { RealtimeRefresh } from "@/components/realtime-refresh";
 import { TenantSwitcher } from "@/components/tenant-switcher";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { UserMenu } from "@/components/user-menu";
 import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { hasPermission } from "@/lib/rbac";
@@ -47,39 +47,12 @@ export async function Shell({ children }: { children: React.ReactNode }) {
                   tenantName={tenantName}
                   tenants={tenants}
                 />
-                <details className="group relative">
-                  <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-md border border-white/12 bg-white/[0.04] px-3 py-2 text-sm font-medium text-white/78 transition hover:bg-white/10 hover:text-white">
-                    <span className="grid h-6 w-6 place-items-center rounded bg-white/10 text-xs font-semibold text-white">
-                      {(user.name ?? user.email ?? "U").slice(0, 1).toUpperCase()}
-                    </span>
-                    <span className="max-w-40 truncate">{user.name ?? user.email}</span>
-                    <span className="text-white/45 transition group-open:rotate-180">v</span>
-                  </summary>
-                  <div className="absolute right-0 z-50 mt-2 w-64 overflow-hidden rounded-md border border-border bg-surface text-foreground shadow-xl shadow-slate-950/20">
-                    <div className="border-b border-border px-3 py-3">
-                      <p className="truncate text-sm font-semibold">{user.name ?? "Gebruiker"}</p>
-                      <p className="truncate text-xs text-muted-foreground">{user.email}</p>
-                    </div>
-                    {!isBreakGlassSettingsOnly ? (
-                      <>
-                        <Link className="block px-3 py-2 text-sm transition hover:bg-muted" href="/profile">
-                          Profiel
-                        </Link>
-                        <Link className="block px-3 py-2 text-sm transition hover:bg-muted" href="/help">
-                          Help
-                        </Link>
-                        <div className="border-t border-border">
-                          <ThemeToggle />
-                        </div>
-                      </>
-                    ) : null}
-                    <form action={logoutAction} className="border-t border-border">
-                      <button className="block w-full px-3 py-2 text-left text-sm text-red-700 transition hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-950">
-                        Uitloggen
-                      </button>
-                    </form>
-                  </div>
-                </details>
+                <UserMenu
+                  email={user.email}
+                  isBreakGlassSettingsOnly={isBreakGlassSettingsOnly}
+                  logoutAction={logoutAction}
+                  name={user.name}
+                />
               </div>
             ) : (
               <Link className="rounded-md border border-white/12 bg-white/[0.04] px-3 py-2 text-sm font-medium text-white/72 transition hover:bg-white/10 hover:text-white" href="/login">
