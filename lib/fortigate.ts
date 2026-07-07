@@ -466,7 +466,10 @@ export async function refreshFortiGateInventory(deviceId: string) {
 }
 
 export async function runBackup(deviceId: string) {
-  const device = await prisma.fortiGate.findUniqueOrThrow({ where: { id: deviceId } });
+  const device = await prisma.fortiGate.findUniqueOrThrow({
+    where: { id: deviceId },
+    include: { customer: true }
+  });
   try {
     await writeFortiGateLog(
       device.id,
@@ -498,6 +501,13 @@ export async function runBackup(deviceId: string) {
         "Backup voltooid; configuratie is ongewijzigd.",
         { sha256: digest, bytes: config.byteLength }
       );
+      await auditLog({
+        action: "backup.unchanged",
+        tenantId: device.customer.tenantId,
+        entity: "FortiGate",
+        entityId: device.id,
+        metadata: { sha256: digest, bytes: config.byteLength }
+      });
       const backup = await prisma.backup.create({
         data: {
           fortigateId: device.id,
@@ -518,6 +528,7 @@ export async function runBackup(deviceId: string) {
     await writeFile(fullPath, config);
     await auditLog({
       action: "backup.changed",
+      tenantId: device.customer.tenantId,
       entity: "FortiGate",
       entityId: device.id,
       metadata: { sha256: digest, filename }
@@ -590,6 +601,8 @@ export async function runBackup(deviceId: string) {
     const message = error instanceof Error ? error.message : "Unknown backup error.";
     await auditLog({
       action: "backup.failed",
+      tenantId: device.customer.tenantId,
+      outcome: "failure",
       entity: "FortiGate",
       entityId: device.id,
       metadata: { error: message }

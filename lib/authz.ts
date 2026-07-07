@@ -1,5 +1,6 @@
 import { User, UserRole } from "@prisma/client";
 import { notFound, redirect } from "next/navigation";
+import { auditLog } from "@/lib/audit";
 import { hasPermission, PermissionKey } from "@/lib/rbac";
 import { requireUser } from "@/lib/session";
 import { isGlobalTenantId } from "@/lib/tenant-main";
@@ -53,6 +54,16 @@ export async function requirePermission(permission: PermissionKey) {
 
 export async function assertPermission(user: UserWithContext, permission: PermissionKey) {
   if (!(await hasPermission(user, permission))) {
+    await auditLog({
+      action: "permission.denied",
+      tenantId: tenantFilter(user) ?? user.tenantId,
+      userId: user.id,
+      entity: "Permission",
+      entityId: permission,
+      outcome: "denied",
+      reason: "missing_permission",
+      metadata: { permission }
+    });
     throw new Error("Geen toestemming voor deze actie.");
   }
 }

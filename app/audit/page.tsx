@@ -11,8 +11,12 @@ import { formatDateTime } from "@/lib/time";
 export const dynamic = "force-dynamic";
 
 type AuditMetadata = {
+  auditSchemaVersion?: number;
   actorName?: string;
   actorEmail?: string;
+  actorType?: string;
+  outcome?: "success" | "failure" | "denied";
+  reason?: string;
   [key: string]: unknown;
 };
 
@@ -53,6 +57,7 @@ export default async function AuditPage() {
               <th className="px-3 py-2">Tijd</th>
               <th className="px-3 py-2">Wie</th>
               <th className="px-3 py-2">Actie</th>
+              <th className="px-3 py-2">Uitkomst</th>
               <th className="px-3 py-2">Object</th>
               <th className="px-3 py-2">Tenant</th>
               <th className="px-3 py-2">Details</th>
@@ -73,6 +78,12 @@ export default async function AuditPage() {
                   <td className="px-3 py-2">
                     <Badge tone={toneForAction(log.action)}>{labelForAction(log.action)}</Badge>
                     <div className="mt-1 text-xs text-muted-foreground">{log.action}</div>
+                  </td>
+                  <td className="px-3 py-2">
+                    <Badge tone={toneForOutcome(metadata.outcome ?? outcomeForAction(log.action))}>
+                      {labelForOutcome(metadata.outcome ?? outcomeForAction(log.action))}
+                    </Badge>
+                    {metadata.reason ? <div className="mt-1 text-xs text-muted-foreground">{metadata.reason}</div> : null}
                   </td>
                   <td className="px-3 py-2">
                     <div>{log.entity ?? "-"}</div>
@@ -103,7 +114,15 @@ function parseMetadata(value: string | null): AuditMetadata {
 }
 
 function AuditDetails({ metadata }: { metadata: AuditMetadata }) {
-  const entries = Object.entries(metadata).filter(([key]) => !["actorName", "actorEmail"].includes(key));
+  const entries = Object.entries(metadata).filter(([key]) => ![
+    "actorName",
+    "actorEmail",
+    "actorType",
+    "auditSchemaVersion",
+    "outcome",
+    "reason",
+    "target"
+  ].includes(key));
   if (!entries.length) return <span className="text-muted-foreground">Geen extra details</span>;
   return (
     <div className="grid gap-1">
@@ -136,16 +155,37 @@ function labelForAction(action: string) {
     "user.deleted": "Gebruiker verwijderd",
     "backup.changed": "Backup gewijzigd",
     "backup.failed": "Backup mislukt",
+    "backup.unchanged": "Backup ongewijzigd",
+    "backup.notification_failed": "Backup notificatie mislukt",
     "fortigate.created": "FortiGate aangemaakt",
     "fortigate.updated": "FortiGate gewijzigd",
-    "fortigate.deleted": "FortiGate verwijderd"
+    "fortigate.deleted": "FortiGate verwijderd",
+    "permission.denied": "Toegang geweigerd",
+    "settings.mail_test.sent": "Mailtest verzonden"
   };
   return labels[action] ?? action.split(".").join(" ");
 }
 
 function toneForAction(action: string): "neutral" | "success" | "warning" | "danger" {
-  if (action.includes("failed") || action.includes("deleted") || action.includes("deactivated")) return "danger";
+  if (action.includes("denied") || action.includes("failed") || action.includes("deleted") || action.includes("deactivated")) return "danger";
   if (action.includes("updated") || action.includes("restored") || action.includes("changed")) return "warning";
   if (action.includes("created") || action.includes("login") || action.includes("exported")) return "success";
   return "neutral";
+}
+
+function outcomeForAction(action: string): "success" | "failure" | "denied" {
+  if (action.includes("denied")) return "denied";
+  if (action.includes("failed") || action.includes("failure")) return "failure";
+  return "success";
+}
+
+function labelForOutcome(outcome: "success" | "failure" | "denied") {
+  if (outcome === "denied") return "Geweigerd";
+  if (outcome === "failure") return "Mislukt";
+  return "Gelukt";
+}
+
+function toneForOutcome(outcome: "success" | "failure" | "denied"): "neutral" | "success" | "warning" | "danger" {
+  if (outcome === "success") return "success";
+  return "danger";
 }
