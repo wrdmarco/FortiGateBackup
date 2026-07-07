@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
 import { deleteFortiGate, runBackupAction } from "@/app/actions";
+import { BackupHistoryModal } from "@/components/backup-history-modal";
 import { FirmwareStatus } from "@/components/firmware-status";
 import { FortiGateSummary } from "@/components/fortigate-summary";
 import { Modal } from "@/components/modal";
-import { ActionLink, Badge, Button, Card, PageHeader, Shell, TableShell } from "@/components/ui";
+import { ActionLink, Button, Card, PageHeader, Shell } from "@/components/ui";
 import { assertOperationalTenant, assertTenantAccess, requireTenantUser } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { hasPermission } from "@/lib/rbac";
@@ -38,9 +39,29 @@ export default async function CustomerFortiGatePage({
     hasPermission(user, "backups.download"),
     hasPermission(user, "backups.diff.read")
   ]);
-  const timeZone = await getTenantTimeZone(device.customer.tenantId);
-  const latestBackup = device.backups[0];
+  const [timeZone, backupHistory] = await Promise.all([
+    getTenantTimeZone(device.customer.tenantId),
+    prisma.backup.findMany({
+      where: { fortigateId: device.id },
+      orderBy: { createdAt: "desc" }
+    })
+  ]);
+  const latestBackup = backupHistory[0] ?? device.backups[0];
+  const latestStoredBackup = backupHistory.find((backup) => backup.filename);
   const returnTo = `/customers/${device.customerId}/fortigates/${device.id}`;
+  const backupRows = backupHistory.map((backup) => ({
+    id: backup.id,
+    createdAt: formatDateTime(backup.createdAt, timeZone),
+    status: backup.status,
+    sha256: backup.sha256,
+    error: backup.error,
+    filesize: backup.filesize,
+    filename: backup.filename,
+    itGlueUploaded: Boolean(backup.itGlueUploadedAt),
+    itGlueError: backup.itGlueError,
+    downloadHref: `/api/backups/${backup.id}/download`,
+    diffHref: `${returnTo}/backups/${backup.id}/diff`
+  }));
 
   return (
     <Shell>
@@ -50,9 +71,15 @@ export default async function CustomerFortiGatePage({
         actions={
           <>
             <ActionLink href={`/customers/${device.customerId}`}>Klant</ActionLink>
-            <ActionLink href={`${returnTo}/backups`}>Backups</ActionLink>
-            {canDownloadBackup && latestBackup?.filename ? (
-              <ActionLink href={`/api/backups/${latestBackup.id}/download`} variant="primary">Laatste backup downloaden</ActionLink>
+            <Modal
+              title="Backups"
+              description="Alle backup runs voor deze FortiGate, inclusief unchanged."
+              trigger={<Button variant="secondary">Backups</Button>}
+            >
+              <BackupHistoryModal backups={backupRows} canDownload={canDownloadBackup} canReadDiff={canReadDiff} />
+            </Modal>
+            {canDownloadBackup && latestStoredBackup?.filename ? (
+              <ActionLink href={`/api/backups/${latestStoredBackup.id}/download`} variant="primary">Laatste backup downloaden</ActionLink>
             ) : null}
             {canUpdate ? <ActionLink href={`${returnTo}/edit`}>Bewerken</ActionLink> : null}
           </>
@@ -124,40 +151,6 @@ export default async function CustomerFortiGatePage({
           </div>
         </section>
       </div>
-
-      <TableShell className="mt-6">
-        <table className="table-pro w-full min-w-[920px] text-left text-sm">
-          <thead className="bg-surface-soft">
-            <tr>
-              <th className="px-3 py-2">Datum</th>
-              <th className="px-3 py-2">Status</th>
-              <th className="px-3 py-2">SHA256 / fout</th>
-              <th className="px-3 py-2">Grootte</th>
-              <th className="px-3 py-2">Acties</th>
-            </tr>
-          </thead>
-          <tbody>
-            {device.backups.map((backup) => (
-              <tr key={backup.id} className="border-t border-border">
-                <td className="px-3 py-2">{formatDateTime(backup.createdAt, timeZone)}</td>
-                <td className="px-3 py-2">
-                  <Badge tone={backup.status === "FAILED" ? "danger" : backup.status === "CHANGED" ? "warning" : "success"}>{backup.status}</Badge>
-                </td>
-                <td className="max-w-[360px] truncate px-3 py-2 font-mono text-xs">{backup.sha256 ?? backup.error ?? "-"}</td>
-                <td className="px-3 py-2">{backup.filesize}</td>
-                <td className="flex flex-wrap gap-2 px-3 py-2">
-                  {backup.filename ? (
-                    <>
-                      {canDownloadBackup ? <ActionLink href={`/api/backups/${backup.id}/download`}>Download</ActionLink> : null}
-                      {canReadDiff ? <ActionLink href={`${returnTo}/backups/${backup.id}/diff`}>Diff</ActionLink> : null}
-                    </>
-                  ) : <span className="text-muted-foreground">Geen bestand</span>}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </TableShell>
     </Shell>
   );
 }
