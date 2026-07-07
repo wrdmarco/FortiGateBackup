@@ -1451,10 +1451,13 @@ export async function saveSettings(formData: FormData) {
 
 
 
-export async function startAppUpdateAction() {
+export async function startAppUpdateAction(formData: FormData) {
   const user = await requireSuperAdmin();
   await assertPermission(user, "platform.updates.run");
-  const result = await startAppUpdate();
+  const result = await startAppUpdate({
+    userId: user.id,
+    returnTo: safeReturnTo(formData.get("returnTo"), "/settings?tab=updates")
+  });
   const globalTenantId = await mainTenantId();
   await auditLog({
     action: "app.update.started",

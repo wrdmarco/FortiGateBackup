@@ -1,11 +1,12 @@
 import { spawn, execFile } from "node:child_process";
-import { mkdir, open, readFile, rm, stat } from "node:fs/promises";
+import { mkdir, open, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const UPDATE_LOG = path.join("data", "logs", "update.log");
 const UPDATE_LOCK = path.join("data", "logs", "update.lock");
+const UPDATE_STATUS = path.join("data", "logs", "update-status.json");
 const LOCK_TTL_MS = 1000 * 60 * 30;
 
 type AppUpdateStatus = {
@@ -17,6 +18,14 @@ type AppUpdateStatus = {
   updateRunning: boolean;
   lastLog: string | null;
   error: string | null;
+};
+
+export type UpdateRuntimeStatus = {
+  running: boolean;
+  startedAt: string | null;
+  startedByUserId: string | null;
+  returnTo: string;
+  lastLog: string | null;
 };
 
 export async function getAppUpdateStatus(): Promise<AppUpdateStatus> {
@@ -43,10 +52,31 @@ export async function getAppUpdateStatus(): Promise<AppUpdateStatus> {
   };
 }
 
-export async function startAppUpdate() {
+export async function getUpdateRuntimeStatus(): Promise<UpdateRuntimeStatus> {
+  const appDir = process.cwd();
+  const lockPath = path.join(appDir, UPDATE_LOCK);
+  const [running, status, lastLog] = await Promise.all([
+    isUpdateRunning(),
+    readUpdateStatus(),
+    readLastUpdateLog(120)
+  ]);
+  if (!running) {
+    await rm(lockPath, { force: true }).catch(() => undefined);
+  }
+  return {
+    running,
+    startedAt: status?.startedAt ?? null,
+    startedByUserId: status?.startedByUserId ?? null,
+    returnTo: safeReturnTo(status?.returnTo, "/"),
+    lastLog
+  };
+}
+
+export async function startAppUpdate({ userId, returnTo }: { userId: string; returnTo?: string }) {
   const appDir = process.cwd();
   const logPath = path.join(appDir, UPDATE_LOG);
   const lockPath = path.join(appDir, UPDATE_LOCK);
+  const statusPath = path.join(appDir, UPDATE_STATUS);
   await mkdir(path.dirname(logPath), { recursive: true });
   await clearStaleLock(lockPath);
 
@@ -59,10 +89,15 @@ export async function startAppUpdate() {
   } finally {
     await lockHandle?.close();
   }
+  const startedAt = new Date().toISOString();
+  await writeFile(
+    statusPath,
+    JSON.stringify({ startedAt, startedByUserId: userId, returnTo: safeReturnTo(returnTo, "/") }, null, 2)
+  );
 
   const command = [
     `cd ${shellQuote(appDir)}`,
-    `echo "--- update started $(date -Is) ---" >> ${shellQuote(logPath)}`,
+    `echo "--- update started $(date -Is) ---" > ${shellQuote(logPath)}`,
     `FORTIGATE_UPDATE_LOCK_PATH=${shellQuote(lockPath)} bash ./update.sh >> ${shellQuote(logPath)} 2>&1`,
     `status=$?`,
     `echo "--- update finished $(date -Is) exit=$status ---" >> ${shellQuote(logPath)}`,
@@ -128,13 +163,31 @@ async function lockHasFinishedLog(lockMtimeMs: number) {
   }
 }
 
-async function readLastUpdateLog() {
+export async function readUpdateLog(maxLines = 300) {
+  return readLastUpdateLog(maxLines);
+}
+
+async function readLastUpdateLog(maxLines = 8) {
   try {
     const log = await readFile(path.join(process.cwd(), UPDATE_LOG), "utf8");
-    return log.split(/\r?\n/).filter(Boolean).slice(-8).join("\n") || null;
+    return log.split(/\r?\n/).filter(Boolean).slice(-maxLines).join("\n") || null;
   } catch {
     return null;
   }
+}
+
+async function readUpdateStatus() {
+  try {
+    const raw = await readFile(path.join(process.cwd(), UPDATE_STATUS), "utf8");
+    return JSON.parse(raw) as { startedAt?: string; startedByUserId?: string; returnTo?: string };
+  } catch {
+    return null;
+  }
+}
+
+function safeReturnTo(value: unknown, fallback: string) {
+  const raw = typeof value === "string" ? value : "";
+  return raw.startsWith("/") && !raw.startsWith("//") ? raw : fallback;
 }
 
 function shellQuote(value: string) {

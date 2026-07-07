@@ -1,7 +1,8 @@
 import { saveSettings, startAppUpdateAction, testMailSettings } from "@/app/actions";
 import { SettingsForm } from "@/components/settings-form";
 import { SettingsTabs } from "@/components/settings-tabs";
-import { Badge, Button, PageHeader, Panel, Shell } from "@/components/ui";
+import { UpdateStartForm } from "@/components/update-start-form";
+import { Badge, PageHeader, Panel, Shell } from "@/components/ui";
 import { getAppUpdateStatus } from "@/lib/app-update";
 import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
@@ -292,11 +293,11 @@ export default async function SettingsPage({
                           </pre>
                         ) : null}
                         {canRunUpdates ? (
-                          <form action={startAppUpdateAction}>
-                            <Button disabled={updateStatus.updateRunning} variant={updateStatus.updateAvailable ? "primary" : "secondary"}>
-                              {updateStatus.updateAvailable ? "Check en update nu" : "Opnieuw checken / update starten"}
-                            </Button>
-                          </form>
+                          <UpdateStartForm
+                            action={startAppUpdateAction}
+                            disabled={updateStatus.updateRunning}
+                            updateAvailable={updateStatus.updateAvailable}
+                          />
                         ) : null}
                       </div>
                     </Panel>
