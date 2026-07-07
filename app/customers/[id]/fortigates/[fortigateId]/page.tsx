@@ -51,7 +51,10 @@ export default async function CustomerFortiGatePage({
           <>
             <ActionLink href={`/customers/${device.customerId}`}>Klant</ActionLink>
             <ActionLink href={`${returnTo}/backups`}>Backups</ActionLink>
-            {canUpdate ? <ActionLink href={`${returnTo}/edit`} variant="primary">Bewerken</ActionLink> : null}
+            {canDownloadBackup && latestBackup?.filename ? (
+              <ActionLink href={`/api/backups/${latestBackup.id}/download`} variant="primary">Laatste backup downloaden</ActionLink>
+            ) : null}
+            {canUpdate ? <ActionLink href={`${returnTo}/edit`}>Bewerken</ActionLink> : null}
           </>
         }
       />

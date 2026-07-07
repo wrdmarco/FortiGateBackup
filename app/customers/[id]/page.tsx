@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
-import { deleteCustomer, runBackupAction } from "@/app/actions";
+import { deleteCustomer } from "@/app/actions";
 import { FirmwareStatus } from "@/components/firmware-status";
-import { FortiGateSummary } from "@/components/fortigate-summary";
 import { Modal } from "@/components/modal";
 import { ActionLink, Badge, Button, Card, Field, PageHeader, Shell, TableShell } from "@/components/ui";
 import { assertTenantAccess, requireTenantUser } from "@/lib/authz";
@@ -34,11 +33,9 @@ export default async function CustomerDetailPage({
   });
   if (!customer) notFound();
   assertTenantAccess(user, customer.tenantId);
-  const [canCreateFortiGate, canDeleteCustomer, canRunBackup, canUpdateFortiGate] = await Promise.all([
+  const [canCreateFortiGate, canDeleteCustomer] = await Promise.all([
     hasPermission(user, "fortigates.create"),
-    hasPermission(user, "customers.delete"),
-    hasPermission(user, "fortigates.backup.run"),
-    hasPermission(user, "fortigates.update")
+    hasPermission(user, "customers.delete")
   ]);
   const backups = customer.devices.flatMap((device) =>
     device.backups.map((backup) => ({ ...backup, device }))
@@ -146,21 +143,6 @@ export default async function CustomerDetailPage({
                     </td>
                     <td className="flex flex-wrap gap-2 px-3 py-2">
                       <ActionLink href={`/customers/${customer.id}/fortigates/${device.id}`} variant="secondary">Open</ActionLink>
-                      <ActionLink href={`/customers/${customer.id}/fortigates/${device.id}/backups`} variant="secondary">Backups</ActionLink>
-                      <Modal
-                        title="FortiGate informatie"
-                        description="Technische summary, bereikbaarheid, licenties, backups en diagnose."
-                        trigger={<Button variant="secondary">Info</Button>}
-                      >
-                        <FortiGateSummary device={device} timeZone={timeZone} />
-                      </Modal>
-                      {canRunBackup ? (
-                        <form action={runBackupAction}>
-                          <input type="hidden" name="id" value={device.id} />
-                          <Button>Backup</Button>
-                        </form>
-                      ) : null}
-                      {canUpdateFortiGate ? <ActionLink href={`/customers/${customer.id}/fortigates/${device.id}/edit`}>Edit</ActionLink> : null}
                     </td>
                   </tr>
                 );
