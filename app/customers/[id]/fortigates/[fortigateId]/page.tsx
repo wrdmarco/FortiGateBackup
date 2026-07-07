@@ -62,6 +62,7 @@ export default async function CustomerFortiGatePage({
     downloadHref: `/api/backups/${backup.id}/download`,
     diffHref: `${returnTo}/backups/${backup.id}/diff`
   }));
+  const deviceWithBackupHistory = { ...device, backups: backupHistory };
 
   return (
     <Shell>
@@ -104,16 +105,10 @@ export default async function CustomerFortiGatePage({
             <FirmwareStatus version={device.firmwareVersion} />
           </div>
           <div className="mt-5 flex flex-wrap gap-2">
-            <Modal
-              title="FortiGate informatie"
-              description="Technische summary, bereikbaarheid, licenties, backups en diagnose."
-              trigger={<Button variant="secondary">Info</Button>}
-            >
-              <FortiGateSummary device={device} timeZone={timeZone} />
-            </Modal>
             {canRunBackup ? (
               <form action={runBackupAction}>
                 <input type="hidden" name="id" value={device.id} />
+                <input type="hidden" name="returnTo" value={returnTo} />
                 <Button>Backup draaien</Button>
               </form>
             ) : null}
@@ -151,6 +146,16 @@ export default async function CustomerFortiGatePage({
           </div>
         </section>
       </div>
+
+      <section className="mt-6 rounded-md border border-border bg-surface p-5 shadow-sm">
+        <div className="mb-5 border-b border-border pb-4">
+          <h2 className="font-semibold">FortiGate informatie</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Technische summary, bereikbaarheid, licenties, backups en diagnose.
+          </p>
+        </div>
+        <FortiGateSummary device={deviceWithBackupHistory} timeZone={timeZone} />
+      </section>
     </Shell>
   );
 }

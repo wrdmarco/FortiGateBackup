@@ -1261,6 +1261,7 @@ export async function runBackupAction(formData: FormData) {
   revalidatePath(`/customers/${device.customerId}`);
   revalidatePath(`/customers/${device.customerId}/fortigates/${device.id}`);
   revalidatePath(`/customers/${device.customerId}/fortigates/${device.id}/backups`);
+  redirect(safeReturnTo(formData.get("returnTo"), `/customers/${device.customerId}/fortigates/${device.id}`));
 }
 
 export async function saveSettings(formData: FormData) {

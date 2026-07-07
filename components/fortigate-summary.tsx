@@ -47,6 +47,7 @@ type LicenseInfo = {
 
 export function FortiGateSummary({ device, timeZone }: { device: FortiGateSummaryDevice; timeZone?: string }) {
   const latestBackup = device.backups[0];
+  const latestStoredBackup = device.backups.find((backup) => backup.filename);
   const latestLog = device.logs[0];
   const externalIps = parseJson<ExternalIp[]>(device.externalIpAddresses, []);
   const licenseInfo = parseJson<LicenseInfo | null>(device.licenseInfo, null);
@@ -133,6 +134,8 @@ export function FortiGateSummary({ device, timeZone }: { device: FortiGateSummar
             <InfoRow label="Volgende run" value={formatDate(device.nextRunAt, timeZone)} />
             <InfoRow label="Laatste status" value={latestBackup?.status ?? "Nog niet uitgevoerd"} />
             <InfoRow label="Laatste bestand" value={latestBackup?.filename ? `${latestBackup.filesize} bytes` : latestBackup?.error ?? "Geen bestand"} />
+            <InfoRow label="Laatste wijziging" value={latestStoredBackup ? formatDateTime(latestStoredBackup.createdAt, timeZone) : "Nog geen gewijzigde backup"} />
+            <InfoRow label="Laatste downloadbestand" value={latestStoredBackup ? `${latestStoredBackup.filesize} bytes - ${latestStoredBackup.sha256 ?? "geen hash"}` : "Geen downloadbaar bestand"} />
           </dl>
         </section>
 

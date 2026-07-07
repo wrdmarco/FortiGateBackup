@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { clsx } from "clsx";
 import { logoutAction, switchTenantContextAction } from "@/app/actions";
+import { RealtimeRefresh } from "@/components/realtime-refresh";
 import { TenantSwitcher } from "@/components/tenant-switcher";
 import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
@@ -98,6 +99,7 @@ export async function Shell({ children }: { children: React.ReactNode }) {
           ) : null}
         </div>
       </header>
+      {user ? <RealtimeRefresh /> : null}
       <main className="mx-auto max-w-[1440px] px-4 py-6 lg:px-6 lg:py-8">{children}</main>
     </div>
   );
