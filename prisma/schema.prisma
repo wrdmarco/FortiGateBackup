@@ -146,6 +146,7 @@ model Session {
   sessionToken String   @unique
   userId       String
   activeTenantId String?
+  breakGlassSettingsOnly Boolean @default(false)
   expires      DateTime
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

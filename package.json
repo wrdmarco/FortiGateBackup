@@ -14,7 +14,8 @@
     "prisma:studio": "prisma studio",
     "worker": "tsx scripts/worker.ts",
     "health": "tsx scripts/healthcheck.ts",
-    "migrate:global-data": "tsx scripts/migrate-global-operational-data.ts"
+    "migrate:global-data": "tsx scripts/migrate-global-operational-data.ts",
+    "break-glass:settings": "tsx scripts/create-break-glass-settings-link.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.7.4",

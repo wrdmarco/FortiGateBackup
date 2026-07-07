@@ -1319,7 +1319,13 @@ export async function runBackupAction(formData: FormData) {
 }
 
 export async function saveSettings(formData: FormData) {
-  const user = await requireTenantUser();
+  const user = await requireTenantUser({ allowBreakGlassSettingsOnly: true });
+  if (user.breakGlassSettingsOnly) {
+    const allowedFields = new Set(["entra.enabled", "entra.tenantId", "entra.clientId", "entra.clientSecret"]);
+    for (const key of formData.keys()) {
+      if (!allowedFields.has(key)) throw new Error("Break-glass toegang mag alleen SSO instellingen wijzigen.");
+    }
+  }
   const tenantId = isSuperAdmin(user) ? user.activeTenantId ?? (await mainTenantId()) : user.tenantId;
   const portalSiteUrl = normalizeOptionalSiteUrl(formData.get("portal.siteUrl"));
   if (formData.has("portal.siteUrl")) {

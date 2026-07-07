@@ -3,7 +3,15 @@ import { UserRole } from "@prisma/client";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { sessionCookieName, sessionCookieOptions, sessionExpiresAt, sessionRefreshThresholdMs } from "@/lib/session-cookie";
+import {
+  breakGlassCookieName,
+  breakGlassCookieOptions,
+  breakGlassMaxAgeSeconds,
+  sessionCookieName,
+  sessionCookieOptions,
+  sessionExpiresAt,
+  sessionRefreshThresholdMs
+} from "@/lib/session-cookie";
 import { mainTenantId } from "@/lib/tenant-main";
 
 async function defaultActiveTenantId(user: { role: UserRole; tenantId: string | null }) {
@@ -29,11 +37,30 @@ export async function createSession(userId: string) {
   cookieStore.set(sessionCookieName, token, sessionCookieOptions(expires));
 }
 
+export async function createBreakGlassSettingsSession(userId: string) {
+  const token = crypto.randomBytes(32).toString("hex");
+  const expires = new Date(Date.now() + breakGlassMaxAgeSeconds * 1000);
+  const activeTenantId = await mainTenantId();
+  await prisma.session.create({
+    data: {
+      userId,
+      sessionToken: token,
+      activeTenantId,
+      breakGlassSettingsOnly: true,
+      expires
+    }
+  });
+  const cookieStore = await cookies();
+  cookieStore.set(sessionCookieName, token, sessionCookieOptions(expires));
+  cookieStore.set(breakGlassCookieName, "1", breakGlassCookieOptions(expires));
+}
+
 export async function destroySession() {
   const cookieStore = await cookies();
   const token = cookieStore.get(sessionCookieName)?.value;
   if (token) await prisma.session.deleteMany({ where: { sessionToken: token } });
   cookieStore.delete(sessionCookieName);
+  cookieStore.delete(breakGlassCookieName);
 }
 
 export async function currentUser() {
@@ -67,13 +94,14 @@ export async function currentUser() {
       data: { expires: sessionExpiresAt() }
     });
   }
-  return { ...session.user, activeTenantId, activeTenant };
+  return { ...session.user, activeTenantId, activeTenant, breakGlassSettingsOnly: session.breakGlassSettingsOnly };
 }
 
-export async function requireUser(options: { allowPasswordChange?: boolean } = {}) {
+export async function requireUser(options: { allowPasswordChange?: boolean; allowBreakGlassSettingsOnly?: boolean } = {}) {
   const user = await currentUser();
   if (!user) redirect("/login");
   if (user.mustChangePassword && !options.allowPasswordChange) redirect("/change-password");
+  if (user.breakGlassSettingsOnly && !options.allowBreakGlassSettingsOnly) redirect("/settings?tab=sso");
   return user;
 }
 

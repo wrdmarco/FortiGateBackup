@@ -15,6 +15,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   return (
     <html lang="nl" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var t=localStorage.getItem("fgbp-theme");if(!t){t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"}document.documentElement.classList.toggle("dark",t==="dark")}catch(e){}`
+          }}
+        />
+      </head>
       <body className="min-h-screen antialiased">
         {showMaintenance ? (
           <UpdateMaintenanceScreen

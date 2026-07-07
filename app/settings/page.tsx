@@ -30,7 +30,7 @@ export default async function SettingsPage({
 }: {
   searchParams?: Promise<{ tab?: string }>;
 }) {
-  const user = await requireUser();
+  const user = await requireUser({ allowBreakGlassSettingsOnly: true });
   const canManagePlatform = isSuperAdmin(user);
   const params = await searchParams;
   const globalTenantId = await mainTenantId();
@@ -186,7 +186,9 @@ export default async function SettingsPage({
     backupWebhookUrl: backupWebhookUrl ?? ""
   };
   const formProps = { action: saveSettings, testMailAction: testMailSettings, tenants: [], selectedTenantId, selectedTenantName, values, allowSystemMail: !isGlobalScope };
-  const configTabs = isGlobalScope ? ["mail", "sso", "scheduler"] : ["portal", "itglue", "autotask", "mail", "sso", "scheduler"];
+  const configTabs = user.breakGlassSettingsOnly
+    ? ["sso"]
+    : isGlobalScope ? ["mail", "sso", "scheduler"] : ["portal", "itglue", "autotask", "mail", "sso", "scheduler"];
   const tabIds = [...configTabs, ...(updateStatus ? ["updates"] : [])];
   const activeTab = params?.tab && tabIds.includes(params.tab) ? params.tab : configTabs[0];
 

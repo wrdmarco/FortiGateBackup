@@ -13,14 +13,14 @@ export function isSuperAdmin(user: Pick<User, "role">) {
   return user.role === UserRole.SUPER_ADMIN;
 }
 
-export async function requireSuperAdmin() {
-  const user = await requireUser();
+export async function requireSuperAdmin(options: { allowBreakGlassSettingsOnly?: boolean } = {}) {
+  const user = await requireUser(options);
   if (!isSuperAdmin(user)) notFound();
   return user;
 }
 
-export async function requireTenantUser() {
-  const user = await requireUser();
+export async function requireTenantUser(options: { allowBreakGlassSettingsOnly?: boolean } = {}) {
+  const user = await requireUser(options);
   if (!isSuperAdmin(user) && !user.tenantId) redirect("/login");
   return user;
 }

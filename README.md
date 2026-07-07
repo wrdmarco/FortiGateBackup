@@ -142,6 +142,45 @@ systemctl daemon-reload
 systemctl restart fortigate-backup fortigate-backup-worker
 ```
 
+## Break-glass toegang voor SSO herstel
+
+Als Microsoft Entra ID SSO verkeerd staat ingesteld en normale login niet meer werkt, kan op de server een eenmalige link worden gemaakt voor Global instellingen. Deze toegang is alleen bedoeld om `Instellingen > SSO` te openen en bijvoorbeeld SSO uit te zetten.
+
+Maak de link vanaf de applicatiemap:
+
+```bash
+cd /opt/fortigate-backup
+pnpm break-glass:settings
+```
+
+Optioneel kan een specifieke Global super-admin worden gekozen:
+
+```bash
+pnpm break-glass:settings -- --email=admin@example.nl
+```
+
+Als `SERVER_URL` of de globale portal-URL niet goed staat, geef de publieke URL expliciet mee:
+
+```bash
+pnpm break-glass:settings -- --base-url=https://portal.example.nl
+```
+
+Eigenschappen van deze link:
+
+- geldig voor 15 minuten
+- eenmalig bruikbaar
+- token wordt alleen gehasht in de database opgeslagen
+- sessie is beperkt tot Global SSO-instellingen
+- alle andere pagina's worden teruggestuurd naar `/settings?tab=sso`
+
+Na gebruik zet je SSO uit via:
+
+```text
+Instellingen > SSO > Microsoft Entra ID SSO
+```
+
+Log daarna uit en test normale lokale login.
+
 ## Rollback
 
 ```bash

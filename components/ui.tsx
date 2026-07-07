@@ -3,6 +3,7 @@ import { clsx } from "clsx";
 import { logoutAction, switchTenantContextAction } from "@/app/actions";
 import { RealtimeRefresh } from "@/components/realtime-refresh";
 import { TenantSwitcher } from "@/components/tenant-switcher";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { hasPermission } from "@/lib/rbac";
@@ -17,6 +18,7 @@ export async function Shell({ children }: { children: React.ReactNode }) {
     : [];
   const currentTenantId = user?.activeTenantId ?? user?.tenantId ?? null;
   const isGlobalContext = await isGlobalTenantId(currentTenantId);
+  const isBreakGlassSettingsOnly = Boolean(user?.breakGlassSettingsOnly);
   const canReadUsers = user ? await hasPermission(user, isSuperAdmin(user) && isGlobalContext ? "platform.users.read" : "tenant.users.read") : false;
   const canReadAudit = user ? await hasPermission(user, isSuperAdmin(user) && isGlobalContext ? "platform.audit.read" : "audit.read") : false;
   const tenantName = user?.activeTenant?.name ?? user?.tenant?.name ?? "Geen tenant";
@@ -45,11 +47,39 @@ export async function Shell({ children }: { children: React.ReactNode }) {
                   tenantName={tenantName}
                   tenants={tenants}
                 />
-                <form action={logoutAction}>
-                  <button className="rounded-md border border-white/12 bg-white/[0.04] px-3 py-2 text-sm font-medium text-white/72 transition hover:bg-white/10 hover:text-white">
-                    Uitloggen
-                  </button>
-                </form>
+                <details className="group relative">
+                  <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-md border border-white/12 bg-white/[0.04] px-3 py-2 text-sm font-medium text-white/78 transition hover:bg-white/10 hover:text-white">
+                    <span className="grid h-6 w-6 place-items-center rounded bg-white/10 text-xs font-semibold text-white">
+                      {(user.name ?? user.email ?? "U").slice(0, 1).toUpperCase()}
+                    </span>
+                    <span className="max-w-40 truncate">{user.name ?? user.email}</span>
+                    <span className="text-white/45 transition group-open:rotate-180">v</span>
+                  </summary>
+                  <div className="absolute right-0 z-50 mt-2 w-64 overflow-hidden rounded-md border border-border bg-surface text-foreground shadow-xl shadow-slate-950/20">
+                    <div className="border-b border-border px-3 py-3">
+                      <p className="truncate text-sm font-semibold">{user.name ?? "Gebruiker"}</p>
+                      <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+                    </div>
+                    {!isBreakGlassSettingsOnly ? (
+                      <>
+                        <Link className="block px-3 py-2 text-sm transition hover:bg-muted" href="/profile">
+                          Profiel
+                        </Link>
+                        <Link className="block px-3 py-2 text-sm transition hover:bg-muted" href="/help">
+                          Help
+                        </Link>
+                        <div className="border-t border-border">
+                          <ThemeToggle />
+                        </div>
+                      </>
+                    ) : null}
+                    <form action={logoutAction} className="border-t border-border">
+                      <button className="block w-full px-3 py-2 text-left text-sm text-red-700 transition hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-950">
+                        Uitloggen
+                      </button>
+                    </form>
+                  </div>
+                </details>
               </div>
             ) : (
               <Link className="rounded-md border border-white/12 bg-white/[0.04] px-3 py-2 text-sm font-medium text-white/72 transition hover:bg-white/10 hover:text-white" href="/login">
@@ -60,40 +90,51 @@ export async function Shell({ children }: { children: React.ReactNode }) {
           {user ? (
             <div className="overflow-x-auto">
               <nav className="flex w-max min-w-full items-center gap-1 rounded-md border border-white/10 bg-white/[0.055] p-1 text-sm text-white/70">
-                <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/">
-                  Dashboard
-                </Link>
-                {!isGlobalContext ? (
+                {isBreakGlassSettingsOnly ? (
                   <>
-                    <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/customers">
-                      Klanten
-                    </Link>
-                    <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/alerts">
-                      Alerts
+                    <span className="rounded bg-amber-400/15 px-3 py-1.5 font-medium text-amber-100">Break-glass toegang</span>
+                    <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/settings?tab=sso">
+                      SSO instellingen
                     </Link>
                   </>
-                ) : null}
-                {canManageTenants && isGlobalContext ? (
-                  <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/tenants">
-                    Tenants
-                  </Link>
-                ) : null}
-                {canReadUsers ? (
-                  <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/users">
-                    Gebruikers
-                  </Link>
-                ) : null}
-                <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/roles">
-                  Rollen
-                </Link>
-                {canReadAudit ? (
-                  <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/audit">
-                    Audit
-                  </Link>
-                ) : null}
-                <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/settings">
-                  Instellingen
-                </Link>
+                ) : (
+                  <>
+                    <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/">
+                      Dashboard
+                    </Link>
+                    {!isGlobalContext ? (
+                      <>
+                        <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/customers">
+                          Klanten
+                        </Link>
+                        <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/alerts">
+                          Alerts
+                        </Link>
+                      </>
+                    ) : null}
+                    {canManageTenants && isGlobalContext ? (
+                      <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/tenants">
+                        Tenants
+                      </Link>
+                    ) : null}
+                    {canReadUsers ? (
+                      <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/users">
+                        Gebruikers
+                      </Link>
+                    ) : null}
+                    <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/roles">
+                      Rollen
+                    </Link>
+                    {canReadAudit ? (
+                      <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/audit">
+                        Audit
+                      </Link>
+                    ) : null}
+                    <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/settings">
+                      Instellingen
+                    </Link>
+                  </>
+                )}
               </nav>
             </div>
           ) : null}
