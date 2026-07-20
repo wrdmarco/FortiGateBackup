@@ -9,6 +9,8 @@ export const permissions = [
   { key: "platform.tenants.update", category: "Platform", description: "Tenantstatus en tenantgegevens wijzigen" },
   { key: "platform.tenants.delete", category: "Platform", description: "Tenants verwijderen" },
   { key: "platform.tenants.export", category: "Platform", description: "Tenantdata exporteren" },
+  { key: "platform.tenants.restore", category: "Platform", description: "Tenantdata herstellen of als nieuwe tenant importeren" },
+  { key: "platform.tenants.switch", category: "Platform", description: "Een tenantcontext openen via de tenantwisselaar" },
   { key: "platform.users.read", category: "Platform", description: "Platformbreed gebruikers bekijken" },
   { key: "platform.users.create", category: "Platform", description: "Gebruikers voor tenants aanmaken" },
   { key: "platform.users.update", category: "Platform", description: "Platformbreed gebruikers wijzigen" },
@@ -17,6 +19,7 @@ export const permissions = [
   { key: "platform.roles.create", category: "Platform", description: "Platformrollen aanmaken" },
   { key: "platform.roles.update", category: "Platform", description: "Platformrollen wijzigen" },
   { key: "platform.roles.delete", category: "Platform", description: "Platformrollen verwijderen" },
+  { key: "platform.super_admin.assign", category: "Platform", description: "De Super Admin-rol toekennen of intrekken" },
   { key: "platform.settings.read", category: "Platform", description: "Globale applicatie-instellingen bekijken" },
   { key: "platform.settings.update", category: "Platform", description: "Globale applicatie-instellingen wijzigen" },
   { key: "platform.updates.read", category: "Platform", description: "Applicatie-update status bekijken" },
@@ -201,20 +204,33 @@ export async function assignDefaultTenantRole(userId: string, tenantId: string, 
   });
 }
 
-export async function userPermissionKeys(user: Pick<User, "id" | "role" | "tenantId"> & { activeTenantId?: string | null }) {
+export async function userPermissionKeys(
+  user: Pick<User, "id" | "role" | "tenantId"> & { activeTenantId?: string | null }
+): Promise<Set<string>> {
+  const globalTenantId = await mainTenantId();
+  const contextTenantId = user.activeTenantId ?? user.tenantId;
   if (user.role === UserRole.SUPER_ADMIN) {
-    const globalTenantId = await mainTenantId();
-    return new Set(user.activeTenantId === globalTenantId ? allPermissionKeys : tenantPermissionKeys);
+    return new Set(
+      contextTenantId === globalTenantId
+        ? allPermissionKeys
+        : [...tenantPermissionKeys, "platform.tenants.switch"]
+    );
   }
   if (!user.tenantId) return new Set<string>();
   const assignments = await prisma.userAccessRole.findMany({
     where: { userId: user.id, role: { tenantId: user.tenantId } },
     include: { role: { include: { permissions: { include: { permission: true } } } } }
   });
-  if (!assignments.length) {
-    return new Set(user.role === UserRole.ADMIN ? tenantPermissionKeys : readPermissionKeys);
-  }
-  return new Set(assignments.flatMap((assignment) => assignment.role.permissions.map((item) => item.permission.key)));
+  const assignedKeys = assignments.length
+    ? assignments.flatMap((assignment) => assignment.role.permissions.map((item) => item.permission.key))
+    : user.role === UserRole.ADMIN
+      ? tenantPermissionKeys
+      : readPermissionKeys;
+  if (user.tenantId !== globalTenantId || contextTenantId === globalTenantId) return new Set(assignedKeys);
+
+  const contextualKeys = assignedKeys.filter((key) => !key.startsWith("platform."));
+  if (assignedKeys.includes("platform.tenants.switch")) contextualKeys.push("platform.tenants.switch");
+  return new Set(contextualKeys);
 }
 
 export async function hasPermission(user: Pick<User, "id" | "role" | "tenantId"> & { activeTenantId?: string | null }, permission: PermissionKey) {

@@ -18,10 +18,27 @@ enum AuthProvider {
   ENTRA
 }
 
+enum TenantKind {
+  GLOBAL
+  CUSTOMER
+}
+
 enum BackupStatus {
   CHANGED
   UNCHANGED
   FAILED
+}
+
+enum BackupJobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum BackupJobTrigger {
+  MANUAL
+  SCHEDULED
 }
 
 enum ScheduleType {
@@ -47,6 +64,7 @@ model Tenant {
   id        String          @id @default(cuid())
   name      String
   slug      String          @unique
+  kind      TenantKind      @default(CUSTOMER)
   active    Boolean         @default(true)
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt
@@ -54,7 +72,8 @@ model Tenant {
   users     User[]
   accessRoles AccessRole[]
   settings  SystemSetting[]
-  auditLogs AuditLog[]
+
+  @@index([kind, active])
 }
 
 model User {
@@ -159,6 +178,26 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
+model SetupToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  expires   DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([expires, usedAt])
+}
+
+model LoginThrottle {
+  key         String    @id
+  failures    Int       @default(0)
+  lockedUntil DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  @@index([lockedUntil])
+  @@index([updatedAt])
+}
+
 model Customer {
   id        String      @id @default(cuid())
   tenantId  String
@@ -206,9 +245,31 @@ model FortiGate {
   backups           Backup[]
   logs              FortiGateLog[]
   versionHistory    VersionHistory[]
+  jobs              BackupJob[]
 
   @@index([customerId, active])
   @@index([nextRunAt])
+}
+
+model BackupJob {
+  id                String           @id @default(cuid())
+  fortigateId       String
+  tenantId          String
+  requestedByUserId String?
+  trigger           BackupJobTrigger
+  status            BackupJobStatus  @default(PENDING)
+  attempts          Int              @default(0)
+  availableAt       DateTime         @default(now())
+  startedAt         DateTime?
+  finishedAt        DateTime?
+  error             String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  fortigate         FortiGate        @relation(fields: [fortigateId], references: [id], onDelete: Cascade)
+
+  @@index([status, availableAt, createdAt])
+  @@index([fortigateId, status])
+  @@index([tenantId, createdAt])
 }
 
 model Backup {
@@ -258,17 +319,25 @@ model VersionHistory {
 model AuditLog {
   id        String   @id @default(cuid())
   tenantId  String?
+  tenantName String?
   userId    String?
+  actorId   String?
+  actorName String?
+  actorEmail String?
   action    String
+  outcome   String   @default("success")
   entity    String?
   entityId  String?
   metadata  String?
   ipAddress String?
+  requestId String?
+  previousHash String?
+  integrityHash String?
   createdAt DateTime @default(now())
-  tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, createdAt])
+  @@index([requestId])
 }
 
 model SystemSetting {

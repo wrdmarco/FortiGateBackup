@@ -26,16 +26,13 @@ export async function requireTenantUser(options: { allowBreakGlassSettingsOnly?:
 }
 
 export function tenantFilter(user: UserWithContext) {
-  return isSuperAdmin(user) ? user.activeTenantId ?? undefined : user.tenantId;
+  return user.activeTenantId ?? user.tenantId ?? undefined;
 }
 
 export function assertTenantAccess(user: UserWithContext, tenantId: string | null) {
-  if (isSuperAdmin(user)) {
-    if (!user.activeTenantId || tenantId === user.activeTenantId) return;
+  const contextTenantId = tenantFilter(user);
+  if (!tenantId || !contextTenantId || tenantId !== contextTenantId) {
     throw new Error("Geen toegang tot deze tenant binnen de actieve tenantcontext.");
-  }
-  if (!tenantId || tenantId !== user.tenantId) {
-    throw new Error("Geen toegang tot deze tenant.");
   }
 }
 
@@ -48,6 +45,14 @@ export async function assertOperationalTenant(user: UserWithContext, tenantId: s
 
 export async function requirePermission(permission: PermissionKey) {
   const user = await requireTenantUser();
+  if (!(await hasPermission(user, permission))) notFound();
+  return user;
+}
+
+export async function requireContextPermission(input: { global: PermissionKey; tenant: PermissionKey }) {
+  const user = await requireTenantUser();
+  const contextTenantId = tenantFilter(user) ?? user.tenantId;
+  const permission = (await isGlobalTenantId(contextTenantId)) ? input.global : input.tenant;
   if (!(await hasPermission(user, permission))) notFound();
   return user;
 }

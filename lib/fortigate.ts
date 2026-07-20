@@ -1,18 +1,30 @@
-import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, open, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { BackupStatus, FortiGate, FortiGateLogLevel } from "@prisma/client";
+import { Backup, BackupStatus, FortiGate, FortiGateLogLevel } from "@prisma/client";
 import { auditLog } from "@/lib/audit";
 import { notifyBackupResult } from "@/lib/backup-notifications";
+import { applyBackupRetention } from "@/lib/backup-retention";
 import { decryptSecret, sha256 } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 import { uploadBackupToItGlue } from "@/lib/itglue";
+import {
+  normalizeFortiGateBaseUrl,
+  pinnedLookup,
+  resolveAllowedFortiGateAddress,
+  safeFilenameSegment
+} from "@/lib/network-safety";
+
+const FORTIGATE_REQUEST_TIMEOUT_MS = 30_000;
+const FORTIGATE_JSON_LIMIT_BYTES = 4 * 1024 * 1024;
+const FORTIGATE_CONFIG_LIMIT_BYTES = 64 * 1024 * 1024;
+const BACKUP_LOCK_STALE_MS = 30 * 60 * 1000;
+const inFlightBackups = new Map<string, Promise<Backup>>();
 
 type RequestOptions = {
   headers: Record<string, string>;
   method?: "GET" | "POST";
-  rejectUnauthorized?: boolean;
+  maximumBytes: number;
 };
 
 type BackupAttempt = {
@@ -23,9 +35,10 @@ type BackupAttempt = {
   vdom?: string | null;
 };
 
-function baseUrl(device: FortiGate) {
-  const url = new URL(device.managementUrl);
-  url.port = String(device.httpsPort);
+type FortiGateConnection = Pick<FortiGate, "managementUrl" | "httpsPort" | "tlsVerify" | "apiTokenEncrypted">;
+
+function baseUrl(device: FortiGateConnection) {
+  const url = normalizeFortiGateBaseUrl(device.managementUrl, device.httpsPort, device.tlsVerify);
   return url.toString().replace(/\/$/, "");
 }
 
@@ -51,21 +64,46 @@ async function writeFortiGateLog(
   }
 }
 
-function requestBuffer(url: URL, options: RequestOptions) {
+async function requestBuffer(url: URL, options: RequestOptions) {
+  const resolvedAddress = await resolveAllowedFortiGateAddress(url.hostname);
   return new Promise<Response>((resolve, reject) => {
-    const request = url.protocol === "http:" ? httpRequest : httpsRequest;
-    const req = request(
+    let settled = false;
+    const finishWithError = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(overallTimeout);
+      reject(error);
+    };
+    const req = httpsRequest(
       url,
       {
         method: options.method ?? "GET",
         headers: options.headers,
-        rejectUnauthorized: options.rejectUnauthorized,
-        timeout: 30000
+        rejectUnauthorized: true,
+        lookup: pinnedLookup(resolvedAddress.address, resolvedAddress.family),
+        timeout: FORTIGATE_REQUEST_TIMEOUT_MS
       },
       (res) => {
         const chunks: Buffer[] = [];
-        res.on("data", (chunk: Buffer) => chunks.push(chunk));
+        let total = 0;
+        const declaredLength = Number(res.headers["content-length"]);
+        if (Number.isFinite(declaredLength) && declaredLength > options.maximumBytes) {
+          res.destroy(new Error(`FortiGate respons overschrijdt de limiet van ${options.maximumBytes} bytes.`));
+          return;
+        }
+        res.on("data", (chunk: Buffer | string) => {
+          const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+          total += buffer.byteLength;
+          if (total > options.maximumBytes) {
+            res.destroy(new Error(`FortiGate respons overschrijdt de limiet van ${options.maximumBytes} bytes.`));
+            return;
+          }
+          chunks.push(buffer);
+        });
         res.on("end", () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(overallTimeout);
           resolve(
             new Response(Buffer.concat(chunks), {
               status: res.statusCode ?? 500,
@@ -74,12 +112,18 @@ function requestBuffer(url: URL, options: RequestOptions) {
             })
           );
         });
+        res.on("error", finishWithError);
+        res.on("aborted", () => finishWithError(new Error("FortiGate heeft de respons voortijdig afgebroken.")));
       }
     );
     req.on("timeout", () => {
-      req.destroy(new Error(`FortiGate API timeout after 30000ms for ${url.pathname}.`));
+      req.destroy(new Error(`FortiGate API timeout na ${FORTIGATE_REQUEST_TIMEOUT_MS} ms voor ${url.pathname}.`));
     });
-    req.on("error", reject);
+    req.on("error", finishWithError);
+    const overallTimeout = setTimeout(() => {
+      req.destroy(new Error(`FortiGate API timeout na ${FORTIGATE_REQUEST_TIMEOUT_MS} ms voor ${url.pathname}.`));
+    }, FORTIGATE_REQUEST_TIMEOUT_MS);
+    overallTimeout.unref();
     req.end();
   });
 }
@@ -316,15 +360,25 @@ async function updateFirmwareFromConfig(device: FortiGate, config: Buffer) {
   return updated;
 }
 
-async function fortigateFetch(device: FortiGate, endpoint: string, method: "GET" | "POST" = "GET") {
+async function fortigateFetch(
+  device: FortiGateConnection,
+  endpoint: string,
+  method: "GET" | "POST" = "GET",
+  maximumBytes = FORTIGATE_JSON_LIMIT_BYTES
+) {
+  if (!endpoint.startsWith("/") || endpoint.startsWith("//")) {
+    throw new Error("FortiGate API-endpoint moet een lokaal absoluut pad zijn.");
+  }
   const token = decryptSecret(device.apiTokenEncrypted);
-  const url = new URL(`${baseUrl(device)}${endpoint}`);
+  const safeBaseUrl = baseUrl(device);
+  const url = new URL(endpoint, `${safeBaseUrl}/`);
+  if (url.origin !== new URL(safeBaseUrl).origin) throw new Error("FortiGate API-endpoint wijst buiten de managementhost.");
   let response: Response;
   try {
     response = await requestBuffer(url, {
       headers: { Authorization: `Bearer ${token}` },
       method,
-      rejectUnauthorized: device.tlsVerify
+      maximumBytes
     });
   } catch (error) {
     throw new Error(networkErrorMessage(error, endpoint));
@@ -338,6 +392,11 @@ async function fortigateFetch(device: FortiGate, endpoint: string, method: "GET"
   return response;
 }
 
+export async function probeFortiGateConnection(device: FortiGateConnection) {
+  const response = await fortigateFetch(device, "/api/v2/monitor/system/status");
+  return normalizeSystemStatus(await response.json());
+}
+
 async function fetchBackupConfig(device: FortiGate) {
   const failures: string[] = [];
   for (const attempt of backupAttempts(device)) {
@@ -349,7 +408,7 @@ async function fetchBackupConfig(device: FortiGate) {
       attempt
     );
     try {
-      const response = await fortigateFetch(device, attempt.endpoint, attempt.method);
+      const response = await fortigateFetch(device, attempt.endpoint, attempt.method, FORTIGATE_CONFIG_LIMIT_BYTES);
       return {
         attempt,
         config: Buffer.from(await response.arrayBuffer())
@@ -370,7 +429,10 @@ async function fetchBackupConfig(device: FortiGate) {
 }
 
 export async function refreshFortiGateInventory(deviceId: string) {
-  const device = await prisma.fortiGate.findUniqueOrThrow({ where: { id: deviceId } });
+  const device = await prisma.fortiGate.findUniqueOrThrow({
+    where: { id: deviceId },
+    include: { customer: { select: { tenantId: true } } }
+  });
   await writeFortiGateLog(
     device.id,
     FortiGateLogLevel.INFO,
@@ -416,6 +478,7 @@ export async function refreshFortiGateInventory(deviceId: string) {
       });
       await auditLog({
         action: "firmware.changed",
+        tenantId: device.customer.tenantId,
         entity: "FortiGate",
         entityId: updated.id,
         metadata: {
@@ -465,7 +528,25 @@ export async function refreshFortiGateInventory(deviceId: string) {
   }
 }
 
-export async function runBackup(deviceId: string) {
+export class BackupAlreadyRunningError extends Error {
+  constructor(deviceId: string) {
+    super(`Er draait al een backup voor FortiGate ${deviceId}.`);
+    this.name = "BackupAlreadyRunningError";
+  }
+}
+
+export function runBackup(deviceId: string, options: { notifyResult?: boolean } = {}): Promise<Backup> {
+  const existing = inFlightBackups.get(deviceId);
+  if (existing) return existing;
+
+  const run = withBackupLock(deviceId, () => runBackupInternal(deviceId, options)).finally(() => {
+    if (inFlightBackups.get(deviceId) === run) inFlightBackups.delete(deviceId);
+  });
+  inFlightBackups.set(deviceId, run);
+  return run;
+}
+
+async function runBackupInternal(deviceId: string, options: { notifyResult?: boolean }): Promise<Backup> {
   const device = await prisma.fortiGate.findUniqueOrThrow({
     where: { id: deviceId },
     include: { customer: true }
@@ -477,9 +558,29 @@ export async function runBackup(deviceId: string) {
       "backup.start",
       "Backup gestart."
     );
-    const refreshed = await refreshFortiGateInventory(device.id);
-    const { attempt, config } = await fetchBackupConfig(refreshed);
-    await updateFirmwareFromConfig(refreshed, config);
+    let backupSource: FortiGate = device;
+    try {
+      backupSource = await refreshFortiGateInventory(device.id);
+    } catch (error) {
+      await writeFortiGateLog(
+        device.id,
+        FortiGateLogLevel.WARN,
+        "backup.inventory_unavailable",
+        error instanceof Error ? error.message : "Inventory kon niet worden bijgewerkt; backup gaat door."
+      );
+    }
+
+    const { attempt, config } = await fetchBackupConfig(backupSource);
+    try {
+      await updateFirmwareFromConfig(backupSource, config);
+    } catch (error) {
+      await writeFortiGateLog(
+        device.id,
+        FortiGateLogLevel.WARN,
+        "backup.firmware_metadata_failed",
+        error instanceof Error ? error.message : "Firmwaremetadata uit backup kon niet worden opgeslagen."
+      );
+    }
     await writeFortiGateLog(
       device.id,
       FortiGateLogLevel.INFO,
@@ -501,13 +602,6 @@ export async function runBackup(deviceId: string) {
         "Backup voltooid; configuratie is ongewijzigd.",
         { sha256: digest, bytes: config.byteLength }
       );
-      await auditLog({
-        action: "backup.unchanged",
-        tenantId: device.customer.tenantId,
-        entity: "FortiGate",
-        entityId: device.id,
-        metadata: { sha256: digest, bytes: config.byteLength }
-      });
       const backup = await prisma.backup.create({
         data: {
           fortigateId: device.id,
@@ -516,97 +610,68 @@ export async function runBackup(deviceId: string) {
           status: BackupStatus.UNCHANGED
         }
       });
-      await notifyBackupResult(backup.id);
+      await auditSafely(device.id, {
+        action: "backup.unchanged",
+        tenantId: device.customer.tenantId,
+        entity: "Backup",
+        entityId: backup.id,
+        metadata: { fortigateId: device.id, sha256: digest, bytes: config.byteLength }
+      });
+      if (options.notifyResult !== false) await notifyBackupResultSafely(device.id, backup.id);
+      await applyBackupRetentionSafely(device.id, device.customer.tenantId);
       return backup;
     }
 
-    const directory = path.join(process.cwd(), "data", "backups", device.id);
+    const directory = path.resolve(
+      process.cwd(),
+      "data",
+      "backups",
+      safeFilenameSegment(device.id, "fortigate")
+    );
     await mkdir(directory, { recursive: true });
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const filename = `${stamp}-${device.hostname ?? device.serialNumber ?? device.id}.conf`;
-    const fullPath = path.join(directory, filename);
-    await writeFile(fullPath, config);
-    await auditLog({
-      action: "backup.changed",
-      tenantId: device.customer.tenantId,
-      entity: "FortiGate",
-      entityId: device.id,
-      metadata: { sha256: digest, filename }
-    });
+    const identity = safeFilenameSegment(backupSource.hostname ?? device.serialNumber, device.id);
+    const filename = `${stamp}-${identity}-${digest.slice(0, 12)}.conf`;
+    const fullPath = path.resolve(directory, filename);
+    if (path.dirname(fullPath) !== directory) throw new Error("Backupbestandsnaam valt buiten de toegestane opslagmap.");
+    await writeFile(fullPath, config, { flag: "wx", mode: 0o600 });
+    let backup: Backup;
+    try {
+      backup = await prisma.backup.create({
+        data: {
+          fortigateId: device.id,
+          filename: path.relative(process.cwd(), fullPath),
+          sha256: digest,
+          filesize: config.byteLength,
+          status: BackupStatus.CHANGED
+        }
+      });
+    } catch (error) {
+      await unlink(fullPath).catch(() => undefined);
+      throw error;
+    }
+
     await writeFortiGateLog(
       device.id,
       FortiGateLogLevel.INFO,
       "backup.saved",
       "Backup opgeslagen.",
-      { sha256: digest, filename, bytes: config.byteLength }
+      { backupId: backup.id, sha256: digest, filename, bytes: config.byteLength }
     );
-    const backup = await prisma.backup.create({
-      data: {
-        fortigateId: device.id,
-        filename: path.relative(process.cwd(), fullPath),
-        sha256: digest,
-        filesize: config.byteLength,
-        status: BackupStatus.CHANGED
-      }
+
+    await auditSafely(device.id, {
+      action: "backup.changed",
+      tenantId: device.customer.tenantId,
+      entity: "Backup",
+      entityId: backup.id,
+      metadata: { fortigateId: device.id, sha256: digest, filename }
     });
-    const uploadTarget = await prisma.fortiGate.findUniqueOrThrow({
-      where: { id: device.id },
-      include: { customer: true }
-    });
-    try {
-      const upload = await uploadBackupToItGlue({
-        tenantId: uploadTarget.customer.tenantId,
-        device: uploadTarget,
-        backup,
-        config,
-        filename
-      });
-      if (!upload.skipped) {
-        await writeFortiGateLog(
-          device.id,
-          FortiGateLogLevel.INFO,
-          "itglue.uploaded",
-          "Backupconfiguratie als IT Glue bijlage verwerkt.",
-          { attachmentId: upload.attachmentId, configurationId: uploadTarget.itGlueConfigurationId }
-        );
-        const updatedBackup = await prisma.backup.update({
-          where: { id: backup.id },
-          data: {
-            itGlueAttachmentId: upload.attachmentId,
-            itGlueUploadedAt: new Date(),
-            itGlueError: null
-          }
-        });
-        await notifyBackupResult(updatedBackup.id);
-        return updatedBackup;
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Onbekende IT Glue upload fout.";
-      await writeFortiGateLog(
-        device.id,
-        FortiGateLogLevel.WARN,
-        "itglue.upload_failed",
-        message
-      );
-      const updatedBackup = await prisma.backup.update({
-        where: { id: backup.id },
-        data: { itGlueError: message }
-      });
-      await notifyBackupResult(updatedBackup.id);
-      return updatedBackup;
-    }
-    await notifyBackupResult(backup.id);
-    return backup;
+    const completedBackup = await uploadToItGlueSafely(device.id, backup, config, filename);
+    if (options.notifyResult !== false) await notifyBackupResultSafely(device.id, completedBackup.id);
+    await applyBackupRetentionSafely(device.id, device.customer.tenantId);
+    return completedBackup;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown backup error.";
-    await auditLog({
-      action: "backup.failed",
-      tenantId: device.customer.tenantId,
-      outcome: "failure",
-      entity: "FortiGate",
-      entityId: device.id,
-      metadata: { error: message }
-    });
     await writeFortiGateLog(
       device.id,
       FortiGateLogLevel.ERROR,
@@ -620,7 +685,145 @@ export async function runBackup(deviceId: string) {
         error: message
       }
     });
-    await notifyBackupResult(backup.id);
+    await auditSafely(device.id, {
+      action: "backup.failed",
+      tenantId: device.customer.tenantId,
+      outcome: "failure",
+      entity: "Backup",
+      entityId: backup.id,
+      metadata: { fortigateId: device.id, error: message }
+    });
+    if (options.notifyResult !== false) await notifyBackupResultSafely(device.id, backup.id);
+    await applyBackupRetentionSafely(device.id, device.customer.tenantId);
     return backup;
   }
+}
+
+async function uploadToItGlueSafely(deviceId: string, backup: Backup, config: Buffer, filename: string) {
+  try {
+    const uploadTarget = await prisma.fortiGate.findUniqueOrThrow({
+      where: { id: deviceId },
+      include: { customer: true }
+    });
+    const upload = await uploadBackupToItGlue({
+      tenantId: uploadTarget.customer.tenantId,
+      device: uploadTarget,
+      backup,
+      config,
+      filename
+    });
+    if (upload.skipped) return backup;
+
+    await writeFortiGateLog(
+      deviceId,
+      FortiGateLogLevel.INFO,
+      "itglue.uploaded",
+      "Backupconfiguratie als IT Glue bijlage verwerkt.",
+      { attachmentId: upload.attachmentId, configurationId: uploadTarget.itGlueConfigurationId }
+    );
+    return await prisma.backup.update({
+      where: { id: backup.id },
+      data: {
+        itGlueAttachmentId: upload.attachmentId,
+        itGlueUploadedAt: new Date(),
+        itGlueError: null
+      }
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Onbekende IT Glue upload fout.";
+    await writeFortiGateLog(deviceId, FortiGateLogLevel.WARN, "itglue.upload_failed", message);
+    try {
+      return await prisma.backup.update({ where: { id: backup.id }, data: { itGlueError: message } });
+    } catch (updateError) {
+      await writeFortiGateLog(
+        deviceId,
+        FortiGateLogLevel.WARN,
+        "itglue.error_state_failed",
+        updateError instanceof Error ? updateError.message : "IT Glue foutstatus kon niet worden opgeslagen."
+      );
+      return backup;
+    }
+  }
+}
+
+async function auditSafely(deviceId: string, input: Parameters<typeof auditLog>[0]) {
+  try {
+    await auditLog(input);
+  } catch (error) {
+    await writeFortiGateLog(
+      deviceId,
+      FortiGateLogLevel.WARN,
+      "audit.write_failed",
+      error instanceof Error ? error.message : "Auditregel kon niet worden opgeslagen."
+    );
+  }
+}
+
+async function notifyBackupResultSafely(deviceId: string, backupId: string) {
+  try {
+    await notifyBackupResult(backupId);
+  } catch (error) {
+    await writeFortiGateLog(
+      deviceId,
+      FortiGateLogLevel.WARN,
+      "backup.notification_pipeline_failed",
+      error instanceof Error ? error.message : "Backupnotificaties konden niet volledig worden verwerkt.",
+      { backupId }
+    );
+  }
+}
+
+async function applyBackupRetentionSafely(deviceId: string, tenantId: string) {
+  try {
+    await applyBackupRetention(deviceId, tenantId);
+  } catch (error) {
+    await writeFortiGateLog(
+      deviceId,
+      FortiGateLogLevel.WARN,
+      "backup.retention_failed",
+      error instanceof Error ? error.message : "Backupretentie kon niet worden toegepast."
+    );
+  }
+}
+
+async function withBackupLock<T>(deviceId: string, task: () => Promise<T>) {
+  const lockDirectory = path.resolve(process.cwd(), "data", "temp", "backup-locks");
+  await mkdir(lockDirectory, { recursive: true });
+  const lockPath = path.join(lockDirectory, `${safeFilenameSegment(deviceId, "fortigate")}.lock`);
+  let handle: Awaited<ReturnType<typeof open>> | null = null;
+
+  for (let attempt = 0; attempt < 2 && !handle; attempt += 1) {
+    try {
+      handle = await open(lockPath, "wx", 0o600);
+    } catch (error) {
+      if (!isErrno(error, "EEXIST")) throw error;
+      const details = await stat(lockPath).catch(() => null);
+      if (attempt === 0 && !details) continue;
+      if (attempt === 0 && details && Date.now() - details.mtimeMs > BACKUP_LOCK_STALE_MS) {
+        await unlink(lockPath).catch(() => undefined);
+        continue;
+      }
+      throw new BackupAlreadyRunningError(deviceId);
+    }
+  }
+  if (!handle) throw new BackupAlreadyRunningError(deviceId);
+
+  let heartbeat: NodeJS.Timeout | null = null;
+  try {
+    await handle.writeFile(JSON.stringify({ deviceId, pid: process.pid, startedAt: new Date().toISOString() }));
+    heartbeat = setInterval(() => {
+      const now = new Date();
+      void handle?.utimes(now, now).catch(() => undefined);
+    }, 60_000);
+    heartbeat.unref();
+    return await task();
+  } finally {
+    if (heartbeat) clearInterval(heartbeat);
+    await handle.close().catch(() => undefined);
+    await unlink(lockPath).catch(() => undefined);
+  }
+}
+
+function isErrno(error: unknown, code: string): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error && error.code === code;
 }

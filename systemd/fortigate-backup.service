@@ -1,16 +1,23 @@
 [Unit]
 Description=FortiGate Backup Portal
-After=network.target
+Wants=network-online.target
+After=network-online.target
+Conflicts=fortigate-backup-update-maintenance.service
 
 [Service]
 Type=simple
-User=fortigate-backup
-WorkingDirectory=/opt/fortigate-backup
+User=@SERVICE_USER@
+Group=@SERVICE_GROUP@
+WorkingDirectory="@APP_DIR@"
 Environment=NODE_ENV=production
-EnvironmentFile=/opt/fortigate-backup/.env
-ExecStart=/usr/bin/pnpm start
+Environment=PORT=3000
+EnvironmentFile="@APP_DIR@/.env"
+ExecStart=/usr/bin/env pnpm start
 Restart=always
 RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target

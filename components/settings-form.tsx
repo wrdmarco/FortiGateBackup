@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useActionState, useMemo, useState } from "react";
 import { clsx } from "clsx";
 import type { MailTestState } from "@/app/actions";
 import { commonTimeZones, defaultTimeZone } from "@/lib/time";
@@ -79,7 +79,9 @@ export function SettingsForm({
   values,
   visibleTabs,
   initialTab = "portal",
-  allowSystemMail = false
+  allowSystemMail = false,
+  canUpdate = false,
+  canTestMail = false
 }: {
   action: (formData: FormData) => void | Promise<void>;
   testMailAction: (state: MailTestState, formData: FormData) => Promise<MailTestState>;
@@ -90,6 +92,8 @@ export function SettingsForm({
   visibleTabs?: SettingsTabId[];
   initialTab?: SettingsTabId;
   allowSystemMail?: boolean;
+  canUpdate?: boolean;
+  canTestMail?: boolean;
 }) {
   const availableTabs = visibleTabs?.length ? tabs.filter((tab) => visibleTabs.includes(tab.id)) : tabs;
   const firstTab = availableTabs.some((tab) => tab.id === initialTab) ? initialTab : availableTabs[0]?.id ?? "portal";
@@ -100,16 +104,8 @@ export function SettingsForm({
   const scopeLabel = useMemo(() => tenants.find((tenant) => tenant.id === selectedTenantId)?.name ?? selectedTenantName, [selectedTenantId, selectedTenantName, tenants]);
   const showTab = (id: SettingsTabId) => availableTabs.some((tab) => tab.id === id);
 
-  useEffect(() => {
-    setMailProvider(values.mailProvider);
-  }, [values.mailProvider]);
-
-  useEffect(() => {
-    setEntraEnabled(values.entraEnabled);
-  }, [values.entraEnabled]);
-
   return (
-    <form action={action} className="grid gap-6">
+    <div className="grid gap-6">
       <section className="grid gap-3 rounded-md border border-border bg-surface-soft p-4">
         <div>
           <h2 className="font-semibold">Configuratiescope</h2>
@@ -117,7 +113,6 @@ export function SettingsForm({
             Je bewerkt nu instellingen voor <strong>{scopeLabel}</strong>.
           </p>
         </div>
-        <input type="hidden" name="tenantId" value={selectedTenantId} />
       </section>
 
       {availableTabs.length > 1 ? (
@@ -144,6 +139,10 @@ export function SettingsForm({
         </div>
       ) : null}
 
+      <form action={action} className="grid gap-6">
+        <input type="hidden" name="tenantId" value={selectedTenantId} />
+        <fieldset disabled={!canUpdate} className="grid gap-6">
+
       {showTab("portal") ? (
         <section hidden={activeTab !== "portal"} className="grid gap-4 rounded-md border border-border bg-surface-soft p-4">
           <div>
@@ -157,7 +156,7 @@ export function SettingsForm({
             name="portal.siteUrl"
             type="text"
             defaultValue={values.portalSiteUrl}
-            help={values.effectiveSiteUrl ? `Actieve URL: ${values.effectiveSiteUrl}` : "Laat leeg om de globale SERVER_URL of globale portal URL te gebruiken."}
+            help={values.effectiveSiteUrl ? `Actieve URL: ${values.effectiveSiteUrl}` : "Laat leeg om de globale portal-URL te gebruiken."}
           />
           <label className="grid gap-1 text-sm">
             <span className="font-medium">Tijdzone</span>
@@ -317,24 +316,6 @@ export function SettingsForm({
             </div>
           ) : null}
 
-          <div className="grid gap-3 rounded-md border border-border bg-surface p-3">
-            <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
-              <TextField label="Testmail naar" name="mail.testTo" type="email" defaultValue={values.testMailTo} />
-              <button
-                className="rounded-md border border-border bg-surface-soft px-4 py-2 text-sm font-medium text-foreground transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
-                type="submit"
-                formAction={runMailTest}
-                disabled={mailTestPending}
-              >
-                {mailTestPending ? "Testmail versturen..." : "Testmail versturen"}
-              </button>
-            </div>
-            {mailTestState.message ? (
-              <p className={clsx("text-sm", mailTestState.ok ? "text-emerald-600 dark:text-emerald-300" : "text-red-600 dark:text-red-300")}>
-                {mailTestState.message}
-              </p>
-            ) : null}
-          </div>
         </section>
       ) : null}
 
@@ -484,13 +465,39 @@ export function SettingsForm({
           )}
         </section>
       ) : null}
+        </fieldset>
 
-      <div>
-        <button className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90">
-          Instellingen opslaan
-        </button>
-      </div>
-    </form>
+        {canUpdate ? (
+          <div>
+            <button className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90">
+              Instellingen opslaan
+            </button>
+          </div>
+        ) : null}
+      </form>
+
+      {showTab("mail") && canTestMail ? (
+        <form action={runMailTest} className="grid gap-3 rounded-md border border-border bg-surface p-3">
+          <input type="hidden" name="tenantId" value={selectedTenantId} />
+          <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
+            <TextField label="Testmail naar" name="mail.testTo" type="email" defaultValue={values.testMailTo} required />
+            <button
+              className="rounded-md border border-border bg-surface-soft px-4 py-2 text-sm font-medium text-foreground transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
+              type="submit"
+              disabled={mailTestPending}
+            >
+              {mailTestPending ? "Testmail versturen..." : "Testmail versturen"}
+            </button>
+          </div>
+          <p className="text-xs text-muted-foreground">De test gebruikt de laatst opgeslagen mailconfiguratie voor deze tenant.</p>
+          {mailTestState.message ? (
+            <p className={clsx("text-sm", mailTestState.ok ? "text-emerald-600 dark:text-emerald-300" : "text-red-600 dark:text-red-300")}>
+              {mailTestState.message}
+            </p>
+          ) : null}
+        </form>
+      ) : null}
+    </div>
   );
 }
 

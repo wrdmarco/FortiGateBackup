@@ -1,4 +1,5 @@
 import { getSetting } from "@/lib/settings";
+import { mainTenantId } from "@/lib/tenant-main";
 
 export function normalizeSiteUrl(value?: string | null) {
   const trimmed = value?.trim().replace(/\/+$/, "") ?? "";
@@ -11,7 +12,8 @@ export function normalizeSiteUrl(value?: string | null) {
 export async function getTenantSiteUrl(tenantId?: string | null) {
   const tenantUrl = tenantId ? await getSetting("portal.siteUrl", tenantId) : null;
   if (tenantUrl) return normalizeSiteUrl(tenantUrl);
-  const globalUrl = await getSetting("portal.siteUrl", null);
+  const globalTenantId = await mainTenantId();
+  const globalUrl = globalTenantId ? await getSetting("portal.siteUrl", globalTenantId) : await getSetting("portal.siteUrl", null);
   if (globalUrl) return normalizeSiteUrl(globalUrl);
-  return normalizeSiteUrl(process.env.SERVER_URL);
+  return "";
 }

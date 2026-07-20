@@ -1,10 +1,9 @@
 import Link from "next/link";
 import { clsx } from "clsx";
 import { logoutAction, switchTenantContextAction } from "@/app/actions";
+import { AppNavLink, HeaderUserMenu } from "@/components/modal";
 import { RealtimeRefresh } from "@/components/realtime-refresh";
 import { TenantSwitcher } from "@/components/tenant-switcher";
-import { UserMenu } from "@/components/user-menu";
-import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { hasPermission } from "@/lib/rbac";
 import { currentUser } from "@/lib/session";
@@ -12,42 +11,52 @@ import { isGlobalTenantId } from "@/lib/tenant-main";
 
 export async function Shell({ children }: { children: React.ReactNode }) {
   const user = await currentUser();
-  const canManageTenants = user ? isSuperAdmin(user) : false;
-  const tenants = canManageTenants
-    ? await prisma.tenant.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } })
-    : [];
   const currentTenantId = user?.activeTenantId ?? user?.tenantId ?? null;
   const isGlobalContext = await isGlobalTenantId(currentTenantId);
+  const [canSwitchTenants, canReadTenants] = user
+    ? await Promise.all([
+        hasPermission(user, "platform.tenants.switch"),
+        isGlobalContext ? hasPermission(user, "platform.tenants.read") : Promise.resolve(false)
+      ])
+    : [false, false];
+  const tenants = canSwitchTenants
+    ? await prisma.tenant.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } })
+    : [];
   const isBreakGlassSettingsOnly = Boolean(user?.breakGlassSettingsOnly);
-  const canReadUsers = user ? await hasPermission(user, isSuperAdmin(user) && isGlobalContext ? "platform.users.read" : "tenant.users.read") : false;
-  const canReadAudit = user ? await hasPermission(user, isSuperAdmin(user) && isGlobalContext ? "platform.audit.read" : "audit.read") : false;
+  const canReadUsers = user ? await hasPermission(user, isGlobalContext ? "platform.users.read" : "tenant.users.read") : false;
+  const canReadAudit = user ? await hasPermission(user, isGlobalContext ? "platform.audit.read" : "audit.read") : false;
   const tenantName = user?.activeTenant?.name ?? user?.tenant?.name ?? "Geen tenant";
 
   return (
     <div className="min-h-screen bg-background/80">
-      <header className="sticky top-0 z-30 border-b border-black/25 bg-[hsl(var(--header))] text-[hsl(var(--header-foreground))] shadow-lg shadow-slate-950/10">
-        <div className="h-0.5 bg-gradient-to-r from-primary to-[hsl(var(--accent))]" />
+      <a className="skip-link" href="#main-content">
+        Naar hoofdinhoud
+      </a>
+      <header className="app-header sticky top-0 z-30 border-b border-black/30 bg-[hsl(var(--header))] text-[hsl(var(--header-foreground))] shadow-md shadow-slate-950/10">
         <div className="mx-auto grid max-w-[1440px] gap-3 px-4 py-3 lg:px-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <Link href={user ? "/" : "/login"} className="flex items-center gap-3">
-              <span className="grid h-10 w-10 place-items-center rounded-md border border-white/10 bg-primary text-sm font-black text-primary-foreground shadow-sm shadow-primary/30">
+            <Link href={user ? "/" : "/login"} className="flex min-h-11 shrink-0 items-center gap-3 rounded-sm">
+              <span className="grid h-11 w-11 place-items-center rounded-md border border-white/10 bg-primary text-sm font-black text-primary-foreground shadow-sm shadow-primary/25">
                 FB
               </span>
-              <span>
+              <span className="hidden sm:block">
                 <span className="block text-sm font-semibold leading-4">FortiGate Backup</span>
                 <span className="block text-xs text-white/60">Security operations portal</span>
               </span>
             </Link>
             {user ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <TenantSwitcher
-                  action={switchTenantContextAction}
-                  activeTenantId={user.activeTenantId}
-                  canSwitch={canManageTenants}
-                  tenantName={tenantName}
-                  tenants={tenants}
-                />
-                <UserMenu
+              <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+                <div className="min-w-0 max-w-[min(15rem,45vw)] [&>span]:block [&>span]:truncate [&_select]:max-w-full">
+                  <TenantSwitcher
+                    key={user.activeTenantId ?? "no-tenant"}
+                    action={switchTenantContextAction}
+                    activeTenantId={user.activeTenantId}
+                    canSwitch={canSwitchTenants}
+                    tenantName={tenantName}
+                    tenants={tenants}
+                  />
+                </div>
+                <HeaderUserMenu
                   email={user.email}
                   isBreakGlassSettingsOnly={isBreakGlassSettingsOnly}
                   logoutAction={logoutAction}
@@ -55,67 +64,90 @@ export async function Shell({ children }: { children: React.ReactNode }) {
                 />
               </div>
             ) : (
-              <Link className="rounded-md border border-white/12 bg-white/[0.04] px-3 py-2 text-sm font-medium text-white/72 transition hover:bg-white/10 hover:text-white" href="/login">
+              <Link className="inline-flex min-h-11 items-center rounded-md border border-white/15 bg-white/[0.04] px-4 py-2 text-sm font-medium text-white/80 transition hover:bg-white/10 hover:text-white" href="/login">
                 Inloggen
               </Link>
             )}
           </div>
           {user ? (
-            <div className="overflow-x-auto">
-              <nav className="flex w-max min-w-full items-center gap-1 rounded-md border border-white/10 bg-white/[0.055] p-1 text-sm text-white/70">
-                {isBreakGlassSettingsOnly ? (
-                  <>
-                    <span className="rounded bg-amber-400/15 px-3 py-1.5 font-medium text-amber-100">Break-glass toegang</span>
-                    <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/settings?tab=sso">
-                      SSO instellingen
-                    </Link>
-                  </>
-                ) : (
-                  <>
-                    <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/">
-                      Dashboard
-                    </Link>
-                    {!isGlobalContext ? (
-                      <>
-                        <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/customers">
-                          Klanten
-                        </Link>
-                        <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/alerts">
-                          Alerts
-                        </Link>
-                      </>
-                    ) : null}
-                    {canManageTenants && isGlobalContext ? (
-                      <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/tenants">
-                        Tenants
-                      </Link>
-                    ) : null}
-                    {canReadUsers ? (
-                      <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/users">
-                        Gebruikers
-                      </Link>
-                    ) : null}
-                    <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/roles">
-                      Rollen
-                    </Link>
-                    {canReadAudit ? (
-                      <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/audit">
-                        Audit
-                      </Link>
-                    ) : null}
-                    <Link className="rounded px-3 py-1.5 transition hover:bg-white/10 hover:text-white" href="/settings">
-                      Instellingen
-                    </Link>
-                  </>
-                )}
+            <>
+              <nav aria-label="Hoofdnavigatie" className="hidden flex-wrap items-center gap-1 rounded-md border border-white/10 bg-white/[0.055] p-1 md:flex">
+                <NavigationLinks
+                  canManageTenants={canReadTenants}
+                  canReadAudit={canReadAudit}
+                  canReadUsers={canReadUsers}
+                  isBreakGlassSettingsOnly={isBreakGlassSettingsOnly}
+                  isGlobalContext={isGlobalContext}
+                />
               </nav>
-            </div>
+              <details className="group md:hidden">
+                <summary className="app-nav-summary flex min-h-11 cursor-pointer items-center gap-3 rounded-md border border-white/10 bg-white/[0.055] px-3 py-2 text-sm font-medium text-white/80 transition hover:bg-white/10 hover:text-white">
+                  <span aria-hidden="true" className="relative block h-4 w-5 shrink-0">
+                    <span className="absolute left-0 top-0 h-0.5 w-5 rounded bg-current transition-transform group-open:translate-y-[7px] group-open:rotate-45" />
+                    <span className="absolute left-0 top-[7px] h-0.5 w-5 rounded bg-current transition-opacity group-open:opacity-0" />
+                    <span className="absolute bottom-0 left-0 h-0.5 w-5 rounded bg-current transition-transform group-open:-translate-y-[7px] group-open:-rotate-45" />
+                  </span>
+                  Menu
+                </summary>
+                <nav aria-label="Mobiele hoofdnavigatie" className="mt-2 grid gap-1 rounded-md border border-white/10 bg-white/[0.055] p-1">
+                  <NavigationLinks
+                    canManageTenants={canReadTenants}
+                    canReadAudit={canReadAudit}
+                    canReadUsers={canReadUsers}
+                    isBreakGlassSettingsOnly={isBreakGlassSettingsOnly}
+                    isGlobalContext={isGlobalContext}
+                  />
+                </nav>
+              </details>
+            </>
           ) : null}
         </div>
       </header>
       {user ? <RealtimeRefresh /> : null}
-      <main className="mx-auto max-w-[1440px] px-4 py-6 lg:px-6 lg:py-8">{children}</main>
+      <main className="mx-auto max-w-[1440px] px-4 py-6 outline-none lg:px-6 lg:py-8" id="main-content" tabIndex={-1}>
+        {children}
+      </main>
     </div>
+  );
+}
+
+function NavigationLinks({
+  isBreakGlassSettingsOnly,
+  isGlobalContext,
+  canManageTenants,
+  canReadUsers,
+  canReadAudit
+}: {
+  isBreakGlassSettingsOnly: boolean;
+  isGlobalContext: boolean;
+  canManageTenants: boolean;
+  canReadUsers: boolean;
+  canReadAudit: boolean;
+}) {
+  if (isBreakGlassSettingsOnly) {
+    return (
+      <>
+        <span className="flex min-h-11 items-center rounded bg-amber-400/15 px-3 py-2 text-sm font-medium text-amber-100">Break-glass toegang</span>
+        <AppNavLink href="/settings?tab=sso">SSO instellingen</AppNavLink>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <AppNavLink href="/">Dashboard</AppNavLink>
+      {!isGlobalContext ? (
+        <>
+          <AppNavLink href="/customers">Klanten</AppNavLink>
+          <AppNavLink href="/alerts">Alerts</AppNavLink>
+        </>
+      ) : null}
+      {canManageTenants && isGlobalContext ? <AppNavLink href="/tenants">Tenants</AppNavLink> : null}
+      {canReadUsers ? <AppNavLink href="/users">Gebruikers</AppNavLink> : null}
+      <AppNavLink href="/roles">Rollen</AppNavLink>
+      {canReadAudit ? <AppNavLink href="/audit">Audit</AppNavLink> : null}
+      <AppNavLink href="/settings">Instellingen</AppNavLink>
+    </>
   );
 }
 
@@ -129,10 +161,10 @@ export function PageHeader({
   actions?: React.ReactNode;
 }) {
   return (
-    <div className="professional-surface mb-6 flex flex-wrap items-start justify-between gap-4 rounded-md border border-border px-5 py-4 shadow-sm shadow-slate-900/5">
+    <div className="mb-6 flex flex-wrap items-start justify-between gap-4 border-b border-border pb-5">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-        {description ? <p className="mt-2 max-w-3xl text-sm text-muted-foreground">{description}</p> : null}
+        {description ? <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p> : null}
       </div>
       {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
     </div>
@@ -229,7 +261,7 @@ export function Button({
   return (
     <button
       className={clsx(
-        "inline-flex min-h-10 items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-45",
+        "inline-flex min-h-11 items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-45",
         variants[variant],
         className
       )}
@@ -257,7 +289,7 @@ export function ActionLink({
     danger: "border border-red-300 bg-surface text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950"
   };
   return (
-    <Link className={clsx("inline-flex min-h-10 items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition", variants[variant])} href={href} target={target}>
+    <Link className={clsx("inline-flex min-h-11 items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition", variants[variant])} href={href} target={target}>
       {children}
     </Link>
   );
@@ -265,26 +297,20 @@ export function ActionLink({
 
 export function Field({
   label,
-  name,
-  type = "text",
-  required,
-  defaultValue
+  className,
+  ...inputProps
 }: {
   label: string;
-  name: string;
-  type?: string;
-  required?: boolean;
-  defaultValue?: string | number;
-}) {
+} & React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <label className="grid gap-1.5 text-sm">
       <span className="font-medium text-foreground">{label}</span>
       <input
-        className="rounded-md border border-border bg-surface px-3 py-2 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15"
-        name={name}
-        type={type}
-        required={required}
-        defaultValue={defaultValue}
+        className={clsx(
+          "min-h-11 rounded-md border border-border bg-surface px-3 py-2 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15",
+          className
+        )}
+        {...inputProps}
       />
     </label>
   );

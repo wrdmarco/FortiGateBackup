@@ -1,0 +1,21 @@
+[Unit]
+Description=FortiGate Backup Portal Update Runner
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=@SERVICE_USER@
+Group=@SERVICE_GROUP@
+WorkingDirectory="@APP_DIR@"
+Environment=NODE_ENV=production
+EnvironmentFile="@APP_DIR@/.env"
+ExecStart=/bin/bash "@APP_DIR@/update.sh" --runner
+TimeoutStartSec=infinity
+TimeoutStopSec=30
+KillMode=control-group
+UMask=0077
+PrivateTmp=true
+NoNewPrivileges=true
+StandardOutput="append:@APP_DIR@/data/logs/update.log"
+StandardError="append:@APP_DIR@/data/logs/update.log"

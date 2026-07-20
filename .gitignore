@@ -9,11 +9,16 @@ data/backups/*
 data/self-backups/*
 data/logs/*
 data/temp/*
+data/quarantine/*
+data/uploads/*
 !data/.gitkeep
 !data/backups/.gitkeep
 !data/self-backups/.gitkeep
 !data/logs/.gitkeep
 !data/temp/.gitkeep
+/data/quarantine/
+/data/uploads/
+/.evlog/
 /logs/
 uploads/
 secrets/

@@ -219,8 +219,8 @@ function TenantArchiveManual() {
       description="Alleen Global kan tenantdata exporteren of herstellen."
       steps={[
         { title: "Open Tenants", body: "Ga vanuit Global naar Tenants.", result: "Je ziet per tenant export- en restoreacties." },
-        { title: "Download Backup zip", body: "Klik Backup zip bij de tenant.", result: "De zip bevat tenantinstellingen, klanten, FortiGates, backupmetadata en configbestanden in klantmappen." },
-        { title: "Restore uitvoeren", body: "Upload de tenant backup zip bij een bestaande tenant of via tenant restore.", result: "De tenantdata wordt vervangen of een ontbrekende tenant wordt aangemaakt." }
+        { title: "Download Backup zip", body: "Klik Backup zip bij de tenant.", result: "De installatiegebonden zip bevat instellingen, gebruikers, rollen, audit, klanten, FortiGates en configs in klantmappen." },
+        { title: "Restore uitvoeren", body: "Upload de tenant backup zip bij een bestaande tenant of via tenant restore. Gebruik dezelfde ENCRYPTION_KEY als bij export.", result: "De HMAC wordt gecontroleerd voordat data wijzigt; daarna wordt de tenant atomair vervangen of aangemaakt." }
       ]}
       screenshot={
         <Screenshot title="Tenant backup">
@@ -271,7 +271,7 @@ function BreakGlassManual() {
       steps={[
         { title: "Log in op de server", body: "Open een shell op de server waar de portal draait.", result: "Je werkt lokaal in de applicatiemap." },
         { title: "Maak de eenmalige link", body: "Draai: pnpm break-glass:settings -- --email=admin@example.nl", result: "De CLI print een 15 minuten geldige link." },
-        { title: "Open de link", body: "Open de link vanaf een vertrouwd apparaat.", result: "Je komt alleen in Global SSO-instellingen." },
+        { title: "Open de link", body: "Open de link vanaf een vertrouwd apparaat. Het token blijft in het browserfragment en komt niet in normale proxylogs.", result: "Je komt alleen in Global SSO-instellingen." },
         { title: "Zet SSO uit", body: "Schakel Microsoft Entra ID SSO uit en sla op.", result: "Lokale login kan weer worden gebruikt." }
       ]}
       screenshot={

@@ -1,28 +1,31 @@
 "use server";
 
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
+import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
 import { auditLog } from "@/lib/audit";
-import { removeBackupFiles } from "@/lib/backup-cleanup";
-import { assertOperationalTenant, assertPermission, assertTenantAccess, isSuperAdmin, requireSuperAdmin, requireTenantUser } from "@/lib/authz";
+import { stageBackupFiles } from "@/lib/backup-cleanup";
+import { enqueueManualBackup } from "@/lib/backup-jobs";
+import { probeFortiGateConnection } from "@/lib/fortigate";
+import { assertOperationalTenant, assertPermission, assertTenantAccess, isSuperAdmin, requirePermission, requireTenantUser } from "@/lib/authz";
 import { encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
-import { runBackup } from "@/lib/fortigate";
 import { assertMailReady, sendMail } from "@/lib/mail";
-import { assignDefaultTenantRole, ensureTenantRbac, permissions, type PermissionKey } from "@/lib/rbac";
-import { createSession, destroySession, requireUser, setActiveTenantContext } from "@/lib/session";
-import { deleteSetting, setSetting } from "@/lib/settings";
+import { assignDefaultTenantRole, ensureTenantRbac, permissions, type PermissionKey, userPermissionKeys } from "@/lib/rbac";
+import { createSession, currentUser, destroySession, requireUser, setActiveTenantContext } from "@/lib/session";
+import { applySettingMutations, type SettingMutation } from "@/lib/settings";
 import { isItGlueEnabled } from "@/lib/itglue";
+import { normalizeFortiGateBaseUrl } from "@/lib/network-safety";
 import { isAutotaskEnabled } from "@/lib/autotask";
 import { getTenantSiteUrl, normalizeSiteUrl } from "@/lib/site-url";
-import { mainTenantId } from "@/lib/tenant-main";
+import { hashOneTimeToken, setupTokenCookieName } from "@/lib/setup-token";
+import { isGlobalTenantId, mainTenantId } from "@/lib/tenant-main";
 import { defaultTimeZone, isValidTimeZone } from "@/lib/time";
 import { startAppUpdate } from "@/lib/app-update";
 import { customerSchema, fortigateSchema, fortigateUpdateSchema, tenantSchema } from "@/lib/validators";
-
-const loginAttempts = new Map<string, { count: number; lockedUntil: number }>();
 
 export type ActionState = {
   ok: boolean;
@@ -46,17 +49,56 @@ function boolField(formData: FormData, name: string) {
   return formData.getAll(name).some((value) => value === "on" || value === "true");
 }
 
+async function withStagedBackupFiles(
+  input: { deviceIds: string[]; filenames: Array<string | null> },
+  mutation: () => Promise<void>
+) {
+  const staged = await stageBackupFiles(input);
+  try {
+    await mutation();
+  } catch (error) {
+    await staged.rollback();
+    throw error;
+  }
+  await staged.commit().catch(() => undefined);
+}
+
 function safeReturnTo(value: FormDataEntryValue | null, fallback: string) {
   const raw = String(value ?? "");
   return raw.startsWith("/") && !raw.startsWith("//") ? raw : fallback;
 }
 
-function checkLoginThrottle(email: string) {
-  const now = Date.now();
-  const attempt = loginAttempts.get(email);
-  if (attempt?.lockedUntil && attempt.lockedUntil > now) {
-    throw new Error("Te veel mislukte pogingen. Probeer het later opnieuw.");
-  }
+function managementEndpoint(managementUrl: string, httpsPort: number) {
+  const url = new URL(managementUrl);
+  return `${url.hostname.toLowerCase()}:${httpsPort}`;
+}
+
+async function loginThrottleKeys(email: string) {
+  const requestHeaders = await headers();
+  const ipAddress =
+    requestHeaders
+      .get("x-forwarded-for")
+      ?.split(",")[0]
+      ?.trim() ?? requestHeaders.get("x-real-ip") ?? "unknown";
+  const normalizedEmail = email.trim().toLowerCase();
+  const digest = (value: string) => createHash("sha256").update(value, "utf8").digest("hex");
+  return {
+    emailIp: `email-ip:${digest(`${normalizedEmail}\u0000${ipAddress}`)}`,
+    email: `email:${digest(normalizedEmail)}`
+  };
+}
+
+async function checkLoginThrottle(email: string) {
+  const keys = await loginThrottleKeys(email);
+  await prisma.loginThrottle.deleteMany({
+    where: { updatedAt: { lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } }
+  });
+  const attempts = await prisma.loginThrottle.findMany({
+    where: { key: { in: [keys.emailIp, keys.email] }, lockedUntil: { gt: new Date() } },
+    select: { key: true }
+  });
+  if (attempts.length) throw new Error("Te veel mislukte pogingen. Probeer het later opnieuw.");
+  return keys;
 }
 
 
@@ -120,11 +162,18 @@ function isUniqueConstraintError(error: unknown) {
   return typeof error === "object" && error !== null && "code" in error && error.code === "P2002";
 }
 
+const reservedRoleNames = new Set(["super admin", "tenant admin", "operator", "backup operator", "auditor", "viewer"]);
+
+function assertCustomRoleNameAvailable(name: string) {
+  if (reservedRoleNames.has(name.trim().toLowerCase())) {
+    throw new Error("Deze rolnaam is gereserveerd voor een systeemrol.");
+  }
+}
+
 async function assertRoleManagementAccess(tenantId: string, action: "create" | "update" | "delete") {
   const user = await requireTenantUser();
   assertTenantAccess(user, tenantId);
-  const globalTenantId = await mainTenantId();
-  const permissionPrefix = isSuperAdmin(user) && tenantId === globalTenantId ? "platform" : "tenant";
+  const permissionPrefix = (await isGlobalTenantId(tenantId)) ? "platform" : "tenant";
   await assertPermission(user, `${permissionPrefix}.roles.${action}` as PermissionKey);
   return user;
 }
@@ -134,19 +183,108 @@ async function userManagementPermission(
   tenantId: string,
   action: "create" | "update" | "delete"
 ) {
-  const globalTenantId = await mainTenantId();
-  const permissionPrefix = isSuperAdmin(user) && tenantId === globalTenantId ? "platform" : "tenant";
+  const permissionPrefix = (await isGlobalTenantId(tenantId)) ? "platform" : "tenant";
   return `${permissionPrefix}.users.${action}` as PermissionKey;
+}
+
+async function assertRoleCanBeAssigned(
+  actor: Awaited<ReturnType<typeof requireTenantUser>>,
+  role: { id: string; name: string; tenantId: string; system: boolean },
+  target?: { id: string; role: "SUPER_ADMIN" | "ADMIN" | "VIEWER" }
+) {
+  const assignsSuperAdmin = role.system && role.name === "Super Admin";
+  if (assignsSuperAdmin && !(await isGlobalTenantId(role.tenantId))) {
+    throw new Error("De Super Admin-rol mag alleen binnen Global worden gebruikt.");
+  }
+  if (assignsSuperAdmin || target?.role === "SUPER_ADMIN") {
+    if (!isSuperAdmin(actor)) throw new Error("Alleen een Super Admin kan de Super Admin-rol toekennen of intrekken.");
+    await assertPermission(actor, "platform.super_admin.assign");
+    if (target?.id === actor.id && !assignsSuperAdmin) {
+      throw new Error("Je kunt je eigen Super Admin-rol niet via gebruikersbeheer intrekken.");
+    }
+  }
+
+  const [actorKeys, assignedPermissions] = await Promise.all([
+    userPermissionKeys(actor),
+    prisma.accessRolePermission.findMany({
+      where: { roleId: role.id },
+      select: { permission: { select: { key: true } } }
+    })
+  ]);
+  const unauthorized = assignedPermissions.find(({ permission }) => !actorKeys.has(permission.key));
+  if (unauthorized) throw new Error("Je kunt geen rol toekennen met rechten die je zelf niet hebt.");
+}
+
+async function assertCanManageSuperAdminTarget(
+  actor: Awaited<ReturnType<typeof requireTenantUser>>,
+  target: { role: "SUPER_ADMIN" | "ADMIN" | "VIEWER" }
+) {
+  if (target.role !== "SUPER_ADMIN") return;
+  if (!isSuperAdmin(actor)) {
+    throw new Error("Alleen een Super Admin kan een Super Admin beheren.");
+  }
+  await assertPermission(actor, "platform.super_admin.assign");
+}
+
+async function cleanupProvisionedTenant(input: { tenantId: string; setupTokenId?: string }) {
+  await prisma.$transaction(async (tx) => {
+    await tx.auditLog.deleteMany({ where: { tenantId: input.tenantId } });
+    const users = await tx.user.findMany({
+      where: { tenantId: input.tenantId },
+      select: { id: true }
+    });
+    const userIds = users.map(({ id }) => id);
+    if (userIds.length) {
+      await tx.session.deleteMany({ where: { userId: { in: userIds } } });
+      await tx.account.deleteMany({ where: { userId: { in: userIds } } });
+      await tx.user.deleteMany({ where: { id: { in: userIds } } });
+    }
+    await tx.tenant.deleteMany({ where: { id: input.tenantId } });
+    if (input.setupTokenId) {
+      await tx.setupToken.updateMany({
+        where: { id: input.setupTokenId, usedAt: { not: null } },
+        data: { usedAt: null }
+      });
+    }
+  });
+}
+
+async function filterGrantablePermissionKeys(
+  actor: Awaited<ReturnType<typeof requireTenantUser>>,
+  selectedKeys: string[],
+  tenantId: string
+) {
+  const globalTenant = await isGlobalTenantId(tenantId);
+  const catalogKeys = new Set<string>(
+    permissions
+      .filter((permission) => globalTenant || !permission.key.startsWith("platform."))
+      .map((permission) => permission.key)
+  );
+  const actorKeys = await userPermissionKeys(actor);
+  const requested = [...new Set(selectedKeys)];
+  const invalid = requested.find((key) => !catalogKeys.has(key) || !actorKeys.has(key));
+  if (invalid) throw new Error("Je kunt geen rechten toekennen die je zelf niet hebt.");
+  if (requested.includes("platform.super_admin.assign") && !isSuperAdmin(actor)) {
+    throw new Error("Alleen een Super Admin kan het recht om Super Admins te beheren delegeren.");
+  }
+  return requested as PermissionKey[];
+}
+
+function legacyRoleForAccessRole(role: { name: string; system: boolean }, globalTenant: boolean) {
+  if (role.system && role.name === "Super Admin" && globalTenant) return "SUPER_ADMIN" as const;
+  if (role.system && role.name === "Tenant Admin") return "ADMIN" as const;
+  return "VIEWER" as const;
 }
 
 async function sendTemporaryPasswordMail(input: {
   tenantId?: string | null;
+  siteTenantId?: string | null;
   tenantName: string;
   to: string;
   name: string;
   password: string;
 }) {
-  const siteUrl = await getTenantSiteUrl(input.tenantId);
+  const siteUrl = await getTenantSiteUrl(input.siteTenantId ?? input.tenantId);
   const loginUrl = siteUrl ? `${siteUrl}/login` : null;
   await sendMail({
     tenantId: input.tenantId,
@@ -171,7 +309,11 @@ async function onboardingMailTenantId() {
 }
 
 export async function switchTenantContextAction(formData: FormData) {
-  const user = await requireSuperAdmin();
+  const user = await requireTenantUser();
+  if (!user.tenantId || !(await isGlobalTenantId(user.tenantId))) {
+    throw new Error("Alleen een gebruiker uit Global kan van tenantcontext wisselen.");
+  }
+  await assertPermission({ ...user, activeTenantId: user.tenantId }, "platform.tenants.switch");
   const tenantId = String(formData.get("tenantId") ?? "");
   if (!tenantId) throw new Error("Tenant is verplicht.");
   const tenant = await prisma.tenant.findFirstOrThrow({
@@ -191,14 +333,29 @@ export async function switchTenantContextAction(formData: FormData) {
   redirect("/");
 }
 
-function recordLoginFailure(email: string) {
-  const now = Date.now();
-  const attempt = loginAttempts.get(email);
-  const lockExpired = attempt?.lockedUntil ? attempt.lockedUntil < now : false;
-  const count = attempt && !lockExpired ? attempt.count + 1 : 1;
-  loginAttempts.set(email, {
-    count,
-    lockedUntil: count >= 5 ? now + 1000 * 60 * 15 : 0
+async function recordLoginFailure(keys: Awaited<ReturnType<typeof loginThrottleKeys>>) {
+  const now = new Date();
+  const windowStart = new Date(now.getTime() - 15 * 60 * 1000);
+  await prisma.$transaction(async (tx) => {
+    for (const { key, limit } of [
+      { key: keys.emailIp, limit: 8 },
+      { key: keys.email, limit: 25 }
+    ]) {
+      const current = await tx.loginThrottle.findUnique({ where: { key } });
+      const failures = current && current.updatedAt >= windowStart ? current.failures + 1 : 1;
+      await tx.loginThrottle.upsert({
+        where: { key },
+        update: {
+          failures,
+          lockedUntil: failures >= limit ? new Date(now.getTime() + 10 * 60 * 1000) : null
+        },
+        create: {
+          key,
+          failures,
+          lockedUntil: failures >= limit ? new Date(now.getTime() + 10 * 60 * 1000) : null
+        }
+      });
+    }
   });
 }
 
@@ -211,105 +368,63 @@ export async function createTenant(formData: FormData) {
   const data = tenantSchema.parse({
     name,
     slug: await createUniqueTenantSlug(name),
-    active: bool(formData.get("active"))
+    active: true
   });
-  const email = String(formData.get("adminEmail") ?? "");
+  const setupCookieStore = await cookies();
+  const setupToken = setupCookieStore.get(setupTokenCookieName)?.value ?? "";
+  const email = String(formData.get("adminEmail") ?? "").trim().toLowerCase();
   const password = String(formData.get("adminPassword") ?? "");
-  if (!email || password.length < 12) {
+  const adminName = String(formData.get("adminName") ?? "").trim();
+  if (!email.includes("@") || password.length < 12) {
     throw new Error("Admin e-mail en een wachtwoord van minimaal 12 tekens zijn verplicht.");
   }
-  const tenant = await prisma.tenant.create({ data });
-  const admin = await prisma.user.create({
-    data: {
-      tenantId: tenant.id,
-      email,
-      name: String(formData.get("adminName") ?? "Super Admin"),
-      passwordHash: await bcrypt.hash(password, 12),
-      role: "SUPER_ADMIN",
-      provider: "LOCAL"
+  if (!setupToken) throw new Error("Deze setup-link is ongeldig of verlopen.");
+  const passwordHash = await bcrypt.hash(password, 12);
+  const { tenant, admin, setupTokenId } = await prisma.$transaction(async (tx) => {
+    if ((await tx.tenant.count()) > 0) {
+      throw new Error("Setup is al uitgevoerd. Maak extra tenants aan via het Tenants menu.");
     }
+    const token = await tx.setupToken.findUnique({
+      where: { tokenHash: hashOneTimeToken(setupToken) }
+    });
+    if (!token || token.usedAt || token.expires <= new Date()) {
+      throw new Error("Deze setup-link is ongeldig of verlopen.");
+    }
+    const claimed = await tx.setupToken.updateMany({
+      where: { id: token.id, usedAt: null, expires: { gt: new Date() } },
+      data: { usedAt: new Date() }
+    });
+    if (claimed.count !== 1) throw new Error("Deze setup-link is al gebruikt.");
+    const tenant = await tx.tenant.create({ data: { ...data, kind: "GLOBAL" } });
+    const admin = await tx.user.create({
+      data: {
+        tenantId: tenant.id,
+        email,
+        name: adminName || "Super Admin",
+        passwordHash,
+        role: "SUPER_ADMIN",
+        provider: "LOCAL"
+      }
+    });
+    return { tenant, admin, setupTokenId: token.id };
   });
-  await auditLog({ action: "tenant.created", tenantId: tenant.id, entity: "Tenant", entityId: tenant.id });
-  await auditLog({ action: "user.created", tenantId: tenant.id, entity: "User", entityId: admin.id });
-  await assignDefaultTenantRole(admin.id, tenant.id, admin.role);
-  await createSession(admin.id);
+  try {
+    await assignDefaultTenantRole(admin.id, tenant.id, admin.role);
+    await auditLog({ action: "tenant.created", tenantId: tenant.id, userId: admin.id, entity: "Tenant", entityId: tenant.id });
+    await auditLog({ action: "user.created", tenantId: tenant.id, userId: admin.id, entity: "User", entityId: admin.id });
+    await createSession(admin.id);
+  } catch (error) {
+    await cleanupProvisionedTenant({ tenantId: tenant.id, setupTokenId });
+    throw new Error("De eerste inrichting is teruggedraaid en kan opnieuw worden uitgevoerd.", { cause: error });
+  }
+  setupCookieStore.delete(setupTokenCookieName);
   revalidatePath("/");
   redirect("/");
 }
 
-export async function createManagedTenant(formData: FormData) {
-  const user = await requireSuperAdmin();
-  const name = String(formData.get("name") ?? "");
-  const data = tenantSchema.parse({
-    name,
-    slug: await createUniqueTenantSlug(name),
-    active: true
-  });
-  const adminEmail = String(formData.get("adminEmail") ?? "").toLowerCase();
-  const adminPassword = generateTemporaryPassword();
-  const adminName = String(formData.get("adminName") ?? "");
-  const portalSiteUrl = normalizeOptionalSiteUrl(formData.get("portal.siteUrl"));
-  if (!adminEmail) {
-    throw new Error("Admin e-mail is verplicht.");
-  }
-  const mailTenantId = await onboardingMailTenantId();
-  await assertMailReady(mailTenantId);
-
-  const tenant = await prisma.tenant.create({ data });
-  if (portalSiteUrl) {
-    await setSetting("portal.siteUrl", portalSiteUrl, { tenantId: tenant.id });
-  }
-  const admin = await prisma.user.create({
-    data: {
-      tenantId: tenant.id,
-      name: adminName || "Tenant Admin",
-      email: adminEmail,
-      passwordHash: await bcrypt.hash(adminPassword, 12),
-      mustChangePassword: true,
-      role: "ADMIN",
-      provider: "LOCAL"
-    }
-  });
-  await auditLog({
-    action: "tenant.created",
-    tenantId: tenant.id,
-    userId: user.id,
-    entity: "Tenant",
-    entityId: tenant.id
-  });
-  await auditLog({
-    action: "user.created",
-    tenantId: tenant.id,
-    userId: user.id,
-    entity: "User",
-    entityId: admin.id
-  });
-  await assignDefaultTenantRole(admin.id, tenant.id, admin.role);
-  try {
-    await sendTemporaryPasswordMail({
-      tenantId: mailTenantId,
-      tenantName: tenant.name,
-      to: admin.email,
-      name: admin.name ?? "",
-      password: adminPassword
-    });
-  } catch (mailError) {
-    await prisma.$transaction(async (tx) => {
-      await tx.user.deleteMany({ where: { id: admin.id } });
-      await tx.tenant.delete({ where: { id: tenant.id } });
-    });
-    throw new Error(
-      `Tenant is niet aangemaakt, omdat de mail met het tijdelijke wachtwoord niet kon worden verzonden: ${
-        mailError instanceof Error ? mailError.message : "onbekende mailfout"
-      }`
-    );
-  }
-  revalidatePath("/tenants");
-}
-
 export async function createManagedTenantWithState(_state: ActionState, formData: FormData): Promise<ActionState> {
   try {
-    const user = await requireSuperAdmin();
+    const user = await requirePermission("platform.tenants.create");
     const name = String(formData.get("name") ?? "");
     const adminEmail = String(formData.get("adminEmail") ?? "").trim().toLowerCase();
     const adminPassword = generateTemporaryPassword();
@@ -328,7 +443,7 @@ export async function createManagedTenantWithState(_state: ActionState, formData
     await assertMailReady(mailTenantId);
 
     const { tenant, admin } = await prisma.$transaction(async (tx) => {
-      const tenant = await tx.tenant.create({ data });
+      const tenant = await tx.tenant.create({ data: { ...data, kind: "CUSTOMER" } });
       if (portalSiteUrl) {
         await tx.systemSetting.create({
           data: {
@@ -352,55 +467,45 @@ export async function createManagedTenantWithState(_state: ActionState, formData
       return { tenant, admin };
     });
 
-    await auditLog({
-      action: "tenant.created",
-      tenantId: tenant.id,
-      userId: user.id,
-      entity: "Tenant",
-      entityId: tenant.id
-    });
-    await auditLog({
-      action: "user.created",
-      tenantId: tenant.id,
-      userId: user.id,
-      entity: "User",
-      entityId: admin.id,
-      metadata: { email: admin.email, role: admin.role, mustChangePassword: true }
-    });
-    await ensureTenantRbac(tenant.id);
-    await assignDefaultTenantRole(admin.id, tenant.id, admin.role);
-
     try {
-      await sendTemporaryPasswordMail({
-        tenantId: mailTenantId,
-        tenantName: tenant.name,
-        to: admin.email,
-        name: admin.name ?? "",
-        password: adminPassword
+      await ensureTenantRbac(tenant.id);
+      await assignDefaultTenantRole(admin.id, tenant.id, admin.role);
+      await auditLog({ action: "tenant.created", tenantId: tenant.id, userId: user.id, entity: "Tenant", entityId: tenant.id });
+      await auditLog({
+        action: "user.created",
+        tenantId: tenant.id,
+        userId: user.id,
+        entity: "User",
+        entityId: admin.id,
+        metadata: { email: admin.email, role: admin.role, mustChangePassword: true }
       });
       await auditLog({
-        action: "user.temporary_password.sent",
+        action: "user.temporary_password.dispatch_requested",
         tenantId: tenant.id,
         userId: user.id,
         entity: "User",
         entityId: admin.id,
         metadata: { email: admin.email }
       });
-    } catch (mailError) {
-      await prisma.$transaction(async (tx) => {
-        await tx.user.deleteMany({ where: { id: admin.id } });
-        await tx.tenant.delete({ where: { id: tenant.id } });
+      revalidatePath("/tenants");
+      await sendTemporaryPasswordMail({
+        tenantId: mailTenantId,
+        siteTenantId: tenant.id,
+        tenantName: tenant.name,
+        to: admin.email,
+        name: admin.name ?? "",
+        password: adminPassword
       });
+    } catch (provisioningError) {
+      await cleanupProvisionedTenant({ tenantId: tenant.id });
       revalidatePath("/tenants");
       return {
         ok: false,
-        message: `Tenant is niet aangemaakt, omdat de mail met het tijdelijke wachtwoord niet kon worden verzonden: ${
-          mailError instanceof Error ? mailError.message : "onbekende mailfout"
+        message: `Tenant is niet aangemaakt; alle provisioningwijzigingen zijn teruggedraaid: ${
+          provisioningError instanceof Error ? provisioningError.message : "onbekende provisioningfout"
         }`
       };
     }
-
-    revalidatePath("/tenants");
     return { ok: true, message: `Tenant ${tenant.name} is aangemaakt. Het tijdelijke wachtwoord is naar ${admin.email} verstuurd.` };
   } catch (error) {
     if (isUniqueConstraintError(error)) {
@@ -431,15 +536,11 @@ export async function createTenantUser(formData: FormData) {
   await ensureTenantRbac(tenant.id);
   const accessRole = await prisma.accessRole.findFirst({
     where: { id: roleId, tenantId: tenant.id },
-    select: { id: true, name: true }
+    select: { id: true, name: true, tenantId: true, system: true }
   });
   if (!accessRole) throw new Error("De gekozen rol bestaat niet binnen deze tenant.");
-  const legacyRole =
-    accessRole.name === "Super Admin" && tenant.id === (await mainTenantId())
-      ? "SUPER_ADMIN"
-      : accessRole.name === "Tenant Admin"
-        ? "ADMIN"
-        : "VIEWER";
+  await assertRoleCanBeAssigned(user, accessRole);
+  const legacyRole = legacyRoleForAccessRole(accessRole, await isGlobalTenantId(tenant.id));
   await assertMailReady(tenant.id);
   const created = await prisma.$transaction(async (tx) => {
     const createdUser = await tx.user.create({
@@ -533,19 +634,15 @@ export async function updateTenantUserWithState(_state: TenantUserUpdateState, f
 
     const accessRole = await prisma.accessRole.findFirst({
       where: { id: roleId, tenantId: target.tenantId },
-      select: { id: true, name: true }
+      select: { id: true, name: true, tenantId: true, system: true }
     });
     if (!accessRole) return { ok: false, message: "De gekozen rol bestaat niet binnen deze tenant." };
-    const legacyRole =
-      accessRole.name === "Super Admin" && target.tenantId === (await mainTenantId())
-        ? "SUPER_ADMIN"
-        : accessRole.name === "Tenant Admin"
-          ? "ADMIN"
-          : "VIEWER";
-    await assertUserRoleChangeSafe(target.id, target.tenantId, legacyRole);
+    await assertRoleCanBeAssigned(user, accessRole, target);
+    const legacyRole = legacyRoleForAccessRole(accessRole, await isGlobalTenantId(target.tenantId));
     const beforeRoles = target.accessRoles.map((assignment) => assignment.role.name);
 
     await prisma.$transaction(async (tx) => {
+      await assertUserRoleChangeSafe(tx, target.id, target.tenantId!, legacyRole);
       await tx.user.update({
         where: { id: target.id },
         data: { name: name || null, email, role: legacyRole }
@@ -579,9 +676,12 @@ export async function setTenantUserActive(formData: FormData) {
   if (target.id === user.id && !active) throw new Error("Je kunt je eigen account niet deactiveren.");
   assertTenantAccess(user, target.tenantId);
   await assertPermission(user, await userManagementPermission(user, target.tenantId, "update"));
-  if (!active) await assertUserCanBeRemovedOrDisabled(target);
-  await prisma.user.update({ where: { id: target.id }, data: { active } });
-  if (!active) await prisma.session.deleteMany({ where: { userId: target.id } });
+  await assertCanManageSuperAdminTarget(user, target);
+  await prisma.$transaction(async (tx) => {
+    if (!active) await assertUserCanBeRemovedOrDisabled(tx, target);
+    await tx.user.update({ where: { id: target.id }, data: { active } });
+    if (!active) await tx.session.deleteMany({ where: { userId: target.id } });
+  });
   await auditLog({
     action: active ? "user.activated" : "user.deactivated",
     tenantId: target.tenantId,
@@ -603,8 +703,10 @@ export async function resetTenantUserPassword(formData: FormData) {
   });
   if (!target.tenantId || !target.tenant) throw new Error("Deze gebruiker is niet aan een tenant gekoppeld.");
   if (!target.active) throw new Error("Wachtwoord resetten kan alleen voor actieve gebruikers.");
+  if (target.provider === "ENTRA") throw new Error("Dit account gebruikt Microsoft Entra ID en heeft geen lokaal wachtwoord om te resetten.");
   assertTenantAccess(user, target.tenantId);
   await assertPermission(user, await userManagementPermission(user, target.tenantId, "update"));
+  await assertCanManageSuperAdminTarget(user, target);
   await assertMailReady(target.tenantId);
 
   const temporaryPassword = generateTemporaryPassword();
@@ -617,8 +719,7 @@ export async function resetTenantUserPassword(formData: FormData) {
     where: { id: target.id },
     data: {
       passwordHash: await bcrypt.hash(temporaryPassword, 12),
-      mustChangePassword: true,
-      provider: "LOCAL"
+      mustChangePassword: true
     }
   });
   await prisma.session.deleteMany({ where: { userId: target.id } });
@@ -651,30 +752,38 @@ export async function resetTenantUserPassword(formData: FormData) {
   revalidatePath("/users");
 }
 
-async function assertUserRoleChangeSafe(userId: string, tenantId: string, nextRole: "SUPER_ADMIN" | "ADMIN" | "VIEWER") {
-  const current = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+async function assertUserRoleChangeSafe(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  tenantId: string,
+  nextRole: "SUPER_ADMIN" | "ADMIN" | "VIEWER"
+) {
+  const current = await tx.user.findUniqueOrThrow({ where: { id: userId } });
   if ((current.role === "ADMIN" || current.role === "SUPER_ADMIN") && nextRole === "VIEWER") {
-    const tenantAdmins = await prisma.user.count({
+    const tenantAdmins = await tx.user.count({
       where: { tenantId, active: true, role: { in: ["ADMIN", "SUPER_ADMIN"] }, id: { not: userId } }
     });
     if (tenantAdmins < 1) throw new Error("De laatste beheerder van deze tenant kan niet worden aangepast naar een niet-beheerrol.");
   }
   if (current.role === "SUPER_ADMIN" && nextRole !== "SUPER_ADMIN") {
-    const superAdmins = await prisma.user.count({ where: { role: "SUPER_ADMIN", active: true, id: { not: userId } } });
+    const superAdmins = await tx.user.count({ where: { role: "SUPER_ADMIN", active: true, id: { not: userId } } });
     if (superAdmins < 1) throw new Error("De laatste superadmin kan niet worden aangepast.");
   }
 }
 
-async function assertUserCanBeRemovedOrDisabled(target: { id: string; tenantId: string | null; role: "SUPER_ADMIN" | "ADMIN" | "VIEWER"; active: boolean }) {
+async function assertUserCanBeRemovedOrDisabled(
+  tx: Prisma.TransactionClient,
+  target: { id: string; tenantId: string | null; role: "SUPER_ADMIN" | "ADMIN" | "VIEWER"; active: boolean }
+) {
   if (!target.tenantId) throw new Error("Deze gebruiker is niet aan een tenant gekoppeld.");
-  const tenantUsers = await prisma.user.count({ where: { tenantId: target.tenantId, active: true, id: { not: target.id } } });
+  const tenantUsers = await tx.user.count({ where: { tenantId: target.tenantId, active: true, id: { not: target.id } } });
   if (tenantUsers < 1) throw new Error("De laatste gebruiker van een tenant kan niet los verwijderd of gedeactiveerd worden.");
   if (target.role === "SUPER_ADMIN") {
-    const superAdmins = await prisma.user.count({ where: { role: "SUPER_ADMIN", active: true, id: { not: target.id } } });
+    const superAdmins = await tx.user.count({ where: { role: "SUPER_ADMIN", active: true, id: { not: target.id } } });
     if (superAdmins < 1) throw new Error("De laatste superadmin kan niet verwijderd of gedeactiveerd worden.");
   }
   if (target.role === "ADMIN" || target.role === "SUPER_ADMIN") {
-    const tenantAdmins = await prisma.user.count({
+    const tenantAdmins = await tx.user.count({
       where: { tenantId: target.tenantId, active: true, role: { in: ["ADMIN", "SUPER_ADMIN"] }, id: { not: target.id } }
     });
     if (tenantAdmins < 1) throw new Error("De laatste beheerder van deze tenant kan niet verwijderd of gedeactiveerd worden.");
@@ -690,14 +799,9 @@ export async function createAccessRoleWithState(_state: AccessRoleCreateState, f
 
     if (!tenantId) return { ok: false, message: "Tenant is verplicht." };
     if (name.length < 2) return { ok: false, message: "Rolnaam moet minimaal 2 tekens bevatten." };
+    assertCustomRoleNameAvailable(name);
     const user = await assertRoleManagementAccess(tenantId, "create");
-    const globalTenantId = await mainTenantId();
-    const allowedKeys = new Set<string>(
-      permissions
-        .filter((permission) => tenantId === globalTenantId || !permission.key.startsWith("platform."))
-        .map((permission) => permission.key)
-    );
-    const permissionKeys = [...new Set(selectedKeys)].filter((key) => allowedKeys.has(key));
+    const permissionKeys = await filterGrantablePermissionKeys(user, selectedKeys, tenantId);
     await ensureTenantRbac(tenantId);
 
     const permissionRecords = permissionKeys.length
@@ -745,6 +849,7 @@ export async function updateAccessRoleWithState(_state: AccessRoleEditState, for
     const selectedKeys = formData.getAll("permissionKeys").map(String);
     if (!roleId) return { ok: false, message: "Rol is verplicht." };
     if (name.length < 2) return { ok: false, message: "Rolnaam moet minimaal 2 tekens bevatten." };
+    assertCustomRoleNameAvailable(name);
 
     const role = await prisma.accessRole.findUniqueOrThrow({
       where: { id: roleId },
@@ -752,16 +857,11 @@ export async function updateAccessRoleWithState(_state: AccessRoleEditState, for
     });
     if (role.system) return { ok: false, message: "Systeemrollen kunnen niet worden aangepast." };
     const user = await assertRoleManagementAccess(role.tenantId, "update");
-    const globalTenantId = await mainTenantId();
-    const allowedKeys = new Set<string>(
-      permissions
-        .filter((permission) => role.tenantId === globalTenantId || !permission.key.startsWith("platform."))
-        .map((permission) => permission.key)
-    );
-    const permissionKeys = [...new Set(selectedKeys)].filter((key) => allowedKeys.has(key));
+    const permissionKeys = await filterGrantablePermissionKeys(user, selectedKeys, role.tenantId);
     const beforeKeys = role.permissions.map(({ permission }) => permission.key);
     const addedPermissions = permissionKeys.filter((key) => !beforeKeys.includes(key));
-    const removedPermissions = beforeKeys.filter((key) => !permissionKeys.includes(key));
+    const permissionKeySet = new Set<string>(permissionKeys);
+    const removedPermissions = beforeKeys.filter((key) => !permissionKeySet.has(key));
     const permissionRecords = permissionKeys.length
       ? await prisma.accessPermission.findMany({ where: { key: { in: permissionKeys } } })
       : [];
@@ -813,9 +913,11 @@ export async function deleteAccessRole(formData: FormData) {
   });
   const user = await assertRoleManagementAccess(role.tenantId, "delete");
   if (role.system) throw new Error("Systeemrollen kunnen niet worden verwijderd.");
-  if (role._count.users > 0) throw new Error("Deze rol kan pas worden verwijderd wanneer er geen leden meer aan gekoppeld zijn.");
-
-  await prisma.accessRole.delete({ where: { id: role.id } });
+  await prisma.$transaction(async (tx) => {
+    const members = await tx.userAccessRole.count({ where: { roleId: role.id } });
+    if (members > 0) throw new Error("Deze rol kan pas worden verwijderd wanneer er geen leden meer aan gekoppeld zijn.");
+    await tx.accessRole.delete({ where: { id: role.id } });
+  });
   await auditLog({
     action: "role.deleted",
     tenantId: role.tenantId,
@@ -843,8 +945,13 @@ export async function deleteTenantUser(formData: FormData) {
   }
   assertTenantAccess(user, target.tenantId);
   await assertPermission(user, await userManagementPermission(user, target.tenantId, "delete"));
-  await assertUserCanBeRemovedOrDisabled(target);
-
+  await assertCanManageSuperAdminTarget(user, target);
+  await prisma.$transaction(async (tx) => {
+    await assertUserCanBeRemovedOrDisabled(tx, target);
+    await tx.session.deleteMany({ where: { userId: target.id } });
+    await tx.account.deleteMany({ where: { userId: target.id } });
+    await tx.user.delete({ where: { id: target.id } });
+  });
   await auditLog({
     action: "user.deleted",
     tenantId: target.tenantId,
@@ -854,18 +961,12 @@ export async function deleteTenantUser(formData: FormData) {
     metadata: { email: target.email, role: target.role }
   });
 
-  await prisma.$transaction(async (tx) => {
-    await tx.session.deleteMany({ where: { userId: target.id } });
-    await tx.account.deleteMany({ where: { userId: target.id } });
-    await tx.user.delete({ where: { id: target.id } });
-  });
-
   revalidatePath("/tenants");
   revalidatePath("/users");
 }
 
 export async function setTenantActive(formData: FormData) {
-  const user = await requireSuperAdmin();
+  const user = await requirePermission("platform.tenants.update");
   const id = String(formData.get("id"));
   const active = bool(formData.get("active"));
   const mainTenant = await mainTenantId();
@@ -883,7 +984,7 @@ export async function setTenantActive(formData: FormData) {
   revalidatePath("/tenants");
 }
 export async function deleteTenant(formData: FormData) {
-  const user = await requireSuperAdmin();
+  const user = await requirePermission("platform.tenants.delete");
   const id = String(formData.get("id"));
   const confirmName = String(formData.get("confirmName") ?? "").trim();
   const confirmDelete = String(formData.get("confirmDelete") ?? "").trim();
@@ -916,9 +1017,29 @@ export async function deleteTenant(formData: FormData) {
     throw new Error('Bevestiging mislukt. Typ exact "Delete" om de tenant definitief te verwijderen.');
   }
 
+  const devices = tenant.customers.flatMap((customer) => customer.devices);
+  await withStagedBackupFiles(
+    {
+      deviceIds: devices.map((device) => device.id),
+      filenames: devices.flatMap((device) => device.backups.map((backup) => backup.filename))
+    },
+    async () => {
+      await prisma.$transaction(async (tx) => {
+        const users = await tx.user.findMany({ where: { tenantId: tenant.id }, select: { id: true } });
+        const userIds = users.map((item) => item.id);
+        if (userIds.length) {
+          await tx.session.deleteMany({ where: { userId: { in: userIds } } });
+          await tx.account.deleteMany({ where: { userId: { in: userIds } } });
+          await tx.user.deleteMany({ where: { id: { in: userIds } } });
+        }
+        await tx.tenant.delete({ where: { id: tenant.id } });
+      });
+    }
+  );
   await auditLog({
     action: "tenant.deleted",
     tenantId: tenant.id,
+    tenantName: tenant.name,
     userId: user.id,
     entity: "Tenant",
     entityId: tenant.id,
@@ -928,23 +1049,6 @@ export async function deleteTenant(formData: FormData) {
       customers: tenant._count.customers,
       users: tenant._count.users
     }
-  });
-
-  const devices = tenant.customers.flatMap((customer) => customer.devices);
-  await removeBackupFiles({
-    deviceIds: devices.map((device) => device.id),
-    filenames: devices.flatMap((device) => device.backups.map((backup) => backup.filename))
-  });
-
-  await prisma.$transaction(async (tx) => {
-    const users = await tx.user.findMany({ where: { tenantId: tenant.id }, select: { id: true } });
-    const userIds = users.map((item) => item.id);
-    if (userIds.length) {
-      await tx.session.deleteMany({ where: { userId: { in: userIds } } });
-      await tx.account.deleteMany({ where: { userId: { in: userIds } } });
-      await tx.user.deleteMany({ where: { id: { in: userIds } } });
-    }
-    await tx.tenant.delete({ where: { id: tenant.id } });
   });
 
   revalidatePath("/tenants");
@@ -957,8 +1061,9 @@ export async function loginAction(_state: LoginState, formData: FormData): Promi
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
   const genericError = "De opgegeven gegevens zijn niet juist.";
+  let throttleKeys: Awaited<ReturnType<typeof loginThrottleKeys>>;
   try {
-    checkLoginThrottle(email);
+    throttleKeys = await checkLoginThrottle(email);
   } catch (error) {
     return {
       error: error instanceof Error ? error.message : "Te veel mislukte pogingen. Probeer het later opnieuw."
@@ -966,18 +1071,45 @@ export async function loginAction(_state: LoginState, formData: FormData): Promi
   }
   const user = await prisma.user.findUnique({ where: { email }, include: { tenant: true } });
   if (!user?.passwordHash || !user.active) {
-    if (email) recordLoginFailure(email);
+    await recordLoginFailure(throttleKeys);
+    await auditLog({
+      action: "auth.login.failed",
+      tenantId: user?.tenantId,
+      userId: user?.id,
+      entity: "User",
+      entityId: user?.id,
+      outcome: "failure",
+      reason: "invalid_credentials"
+    });
     return { error: genericError };
   }
   const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) {
-    recordLoginFailure(email);
+    await recordLoginFailure(throttleKeys);
+    await auditLog({
+      action: "auth.login.failed",
+      tenantId: user.tenantId,
+      userId: user.id,
+      entity: "User",
+      entityId: user.id,
+      outcome: "failure",
+      reason: "invalid_credentials"
+    });
     return { error: genericError };
   }
   if (!isSuperAdmin(user) && !user.tenant?.active) {
+    await auditLog({
+      action: "auth.login.denied",
+      tenantId: user.tenantId,
+      userId: user.id,
+      entity: "User",
+      entityId: user.id,
+      outcome: "denied",
+      reason: "tenant_inactive"
+    });
     return { error: genericError };
   }
-  loginAttempts.delete(email);
+  await prisma.loginThrottle.deleteMany({ where: { key: { in: [throttleKeys.emailIp, throttleKeys.email] } } });
   await createSession(user.id);
   await auditLog({ action: "auth.login", tenantId: user.tenantId, userId: user.id, entity: "User", entityId: user.id });
   if (user.mustChangePassword) redirect("/change-password");
@@ -1010,19 +1142,25 @@ export async function changeOwnPasswordAction(_state: ChangePasswordState, formD
     return { ok: false, message: "Kies een ander wachtwoord dan het tijdelijke wachtwoord." };
   }
 
-  await prisma.user.update({
-    where: { id: user.id },
-    data: {
-      passwordHash: await bcrypt.hash(password, 12),
-      mustChangePassword: false
-    }
+  const passwordHash = await bcrypt.hash(password, 12);
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: user.id },
+      data: { passwordHash, mustChangePassword: false }
+    });
+    await tx.session.deleteMany({ where: { userId: user.id } });
   });
+  await createSession(user.id);
   await auditLog({ action: "user.password_changed", tenantId: user.tenantId, userId: user.id, entity: "User", entityId: user.id });
   revalidatePath("/");
   redirect("/");
 }
 
 export async function logoutAction() {
+  const user = await currentUser();
+  if (user) {
+    await auditLog({ action: "auth.logout", tenantId: user.activeTenantId ?? user.tenantId, userId: user.id, entity: "User", entityId: user.id });
+  }
   await destroySession();
   redirect("/login");
 }
@@ -1053,6 +1191,7 @@ export async function createCustomer(formData: FormData) {
   await auditLog({
     action: "customer.created",
     tenantId: customer.tenantId,
+    userId: user.id,
     entity: "Customer",
     entityId: customer.id
   });
@@ -1128,6 +1267,15 @@ export async function deleteCustomer(formData: FormData) {
     throw new Error("Bevestiging mislukt. Typ de klantnaam exact over.");
   }
 
+  await withStagedBackupFiles(
+    {
+      deviceIds: customer.devices.map((device) => device.id),
+      filenames: customer.devices.flatMap((device) => device.backups.map((backup) => backup.filename))
+    },
+    async () => {
+      await prisma.customer.delete({ where: { id: customer.id } });
+    }
+  );
   await auditLog({
     action: "customer.deleted",
     tenantId: customer.tenantId,
@@ -1140,13 +1288,6 @@ export async function deleteCustomer(formData: FormData) {
       backupFiles: customer.devices.reduce((count, device) => count + device.backups.filter((backup) => backup.filename).length, 0)
     }
   });
-
-  await removeBackupFiles({
-    deviceIds: customer.devices.map((device) => device.id),
-    filenames: customer.devices.flatMap((device) => device.backups.map((backup) => backup.filename))
-  });
-
-  await prisma.customer.delete({ where: { id: customer.id } });
   revalidatePath("/customers");
   redirect("/customers");
 }
@@ -1171,17 +1312,32 @@ export async function createFortiGate(formData: FormData) {
   if ((await isItGlueEnabled(customer.tenantId)) && !parsed.itGlueConfigurationId) {
     throw new Error("IT Glue configuration ID is verplicht wanneer IT Glue actief is voor deze tenant.");
   }
+  normalizeFortiGateBaseUrl(parsed.managementUrl, parsed.httpsPort, parsed.tlsVerify);
+  const apiTokenEncrypted = encryptSecret(parsed.apiToken);
+  const inventory = await probeFortiGateConnection({
+    managementUrl: parsed.managementUrl,
+    httpsPort: parsed.httpsPort,
+    tlsVerify: parsed.tlsVerify,
+    apiTokenEncrypted
+  });
   const device = await prisma.fortiGate.create({
     data: {
       customerId: parsed.customerId,
       managementUrl: parsed.managementUrl,
       httpsPort: parsed.httpsPort,
-      apiTokenEncrypted: encryptSecret(parsed.apiToken),
+      apiTokenEncrypted,
       tlsVerify: parsed.tlsVerify,
       vdom: parsed.vdom,
       scheduleType: parsed.scheduleType,
       cronExpression: parsed.cronExpression,
-      itGlueConfigurationId: parsed.itGlueConfigurationId
+      itGlueConfigurationId: parsed.itGlueConfigurationId,
+      hostname: inventory.hostname,
+      serialNumber: inventory.serialNumber,
+      model: inventory.model,
+      firmwareVersion: inventory.firmwareVersion,
+      firmwareBuild: inventory.firmwareBuild,
+      uptime: inventory.uptime,
+      lastCheckedAt: new Date()
     },
     include: { customer: true }
   });
@@ -1230,6 +1386,14 @@ export async function updateFortiGate(formData: FormData) {
     cronExpression: formData.get("cronExpression") || undefined,
     itGlueConfigurationId: formData.get("itGlueConfigurationId") || undefined
   });
+  normalizeFortiGateBaseUrl(parsed.managementUrl, parsed.httpsPort, parsed.tlsVerify);
+  if (
+    managementEndpoint(existing.managementUrl, existing.httpsPort) !== managementEndpoint(parsed.managementUrl, parsed.httpsPort) &&
+    !parsed.apiToken
+  ) {
+    throw new Error("Vul het API-token opnieuw in wanneer de FortiGate host of HTTPS-poort wijzigt.");
+  }
+  const apiTokenEncrypted = parsed.apiToken ? encryptSecret(parsed.apiToken) : null;
   const customer = await prisma.customer.findUniqueOrThrow({ where: { id: parsed.customerId } });
   assertTenantAccess(user, customer.tenantId);
   await assertOperationalTenant(user, customer.tenantId);
@@ -1243,7 +1407,7 @@ export async function updateFortiGate(formData: FormData) {
       customerId: parsed.customerId,
       managementUrl: parsed.managementUrl,
       httpsPort: parsed.httpsPort,
-      ...(parsed.apiToken ? { apiTokenEncrypted: encryptSecret(parsed.apiToken) } : {}),
+      ...(apiTokenEncrypted ? { apiTokenEncrypted } : {}),
       tlsVerify: parsed.tlsVerify,
       vdom: parsed.vdom,
       scheduleType: parsed.scheduleType,
@@ -1278,6 +1442,15 @@ export async function deleteFortiGate(formData: FormData) {
   assertTenantAccess(user, device.customer.tenantId);
   await assertOperationalTenant(user, device.customer.tenantId);
   await assertPermission(user, "fortigates.delete");
+  await withStagedBackupFiles(
+    {
+      deviceIds: [device.id],
+      filenames: device.backups.map((backup) => backup.filename)
+    },
+    async () => {
+      await prisma.fortiGate.delete({ where: { id } });
+    }
+  );
   await auditLog({
     action: "fortigate.deleted",
     tenantId: device.customer.tenantId,
@@ -1291,11 +1464,6 @@ export async function deleteFortiGate(formData: FormData) {
       serialNumber: device.serialNumber
     }
   });
-  await removeBackupFiles({
-    deviceIds: [device.id],
-    filenames: device.backups.map((backup) => backup.filename)
-  });
-  await prisma.fortiGate.delete({ where: { id } });
   revalidatePath("/customers");
   revalidatePath(`/customers/${device.customerId}`);
   redirect(safeReturnTo(formData.get("returnTo"), `/customers/${device.customerId}`));
@@ -1311,31 +1479,118 @@ export async function runBackupAction(formData: FormData) {
   assertTenantAccess(user, device.customer.tenantId);
   await assertOperationalTenant(user, device.customer.tenantId);
   await assertPermission(user, "fortigates.backup.run");
-  await runBackup(id);
+  const queued = await enqueueManualBackup({ fortigateId: device.id, tenantId: device.customer.tenantId, userId: user.id });
+  await auditLog({
+    action: queued.created ? "backup.job.queued" : "backup.job.already_queued",
+    tenantId: device.customer.tenantId,
+    userId: user.id,
+    entity: "BackupJob",
+    entityId: queued.job.id,
+    metadata: { fortigateId: device.id, status: queued.job.status }
+  });
   revalidatePath(`/customers/${device.customerId}`);
   revalidatePath(`/customers/${device.customerId}/fortigates/${device.id}`);
   revalidatePath(`/customers/${device.customerId}/fortigates/${device.id}/backups`);
   redirect(safeReturnTo(formData.get("returnTo"), `/customers/${device.customerId}/fortigates/${device.id}`));
 }
 
+async function settingsTenantFromForm(
+  user: Awaited<ReturnType<typeof requireTenantUser>>,
+  formData: FormData
+) {
+  const tenantId = String(formData.get("tenantId") ?? "").trim();
+  if (!tenantId) throw new Error("De configuratiescope ontbreekt. Vernieuw de pagina en probeer opnieuw.");
+
+  const tenant = await prisma.tenant.findFirst({
+    where: { id: tenantId, active: true },
+    select: { id: true, kind: true }
+  });
+  if (!tenant) throw new Error("De gekozen configuratiescope bestaat niet of is niet actief.");
+
+  const actorBelongsToGlobal = Boolean(user.tenantId && (await isGlobalTenantId(user.tenantId)));
+  if (user.breakGlassSettingsOnly) {
+    if (!actorBelongsToGlobal || tenant.kind !== "GLOBAL") {
+      throw new Error("Break-glass toegang mag alleen Global-instellingen wijzigen.");
+    }
+  } else if ((user.activeTenantId ?? user.tenantId) !== tenant.id) {
+    throw new Error("Geen toegang tot deze configuratiescope.");
+  }
+
+  return tenant.id;
+}
+
+async function assertSettingsMutationAccess(
+  user: Awaited<ReturnType<typeof requireTenantUser>>,
+  tenantId: string | null,
+  formData: FormData
+) {
+  if (user.breakGlassSettingsOnly) return;
+  const keys = [...formData.keys()].filter((key) => key !== "tenantId" && key !== "mail.testTo");
+  const required = new Set<PermissionKey>();
+  const includesPrefix = (...prefixes: string[]) => keys.some((key) => prefixes.some((prefix) => key.startsWith(prefix)));
+
+  if (includesPrefix("portal.", "ui.", "scheduler.", "backup.")) {
+    required.add((await isGlobalTenantId(tenantId)) ? "platform.settings.update" : "tenant.settings.update");
+  }
+  if (includesPrefix("mail.", "smtp.", "graph.")) required.add("integrations.mail.update");
+  if (includesPrefix("itglue.")) required.add("integrations.itglue.update");
+  if (includesPrefix("autotask.")) required.add("integrations.autotask.update");
+  if (includesPrefix("entra.")) required.add("integrations.sso.update");
+  if (!required.size) throw new Error("Er zijn geen geldige instellingen aangeleverd.");
+  for (const permission of required) await assertPermission(user, permission);
+}
+
+function validateIntegerSetting(formData: FormData, key: string, minimum: number, maximum: number) {
+  if (!formData.has(key) || !formData.get(key)) return;
+  const value = Number(formData.get(key));
+  if (!Number.isInteger(value) || value < minimum || value > maximum) {
+    throw new Error(`${key} moet een geheel getal tussen ${minimum} en ${maximum} zijn.`);
+  }
+}
+
+async function validateSettingsForm(formData: FormData, tenantId: string | null) {
+  const provider = formData.get("mail.provider");
+  if (provider && !new Set(["SMTP", "MICROSOFT_GRAPH", "SYSTEM"]).has(String(provider))) {
+    throw new Error("Onbekende mailprovider.");
+  }
+  if (provider === "SYSTEM" && (await isGlobalTenantId(tenantId))) {
+    throw new Error("Global kan niet naar zijn eigen systeemmailinstellingen verwijzen.");
+  }
+  validateIntegerSetting(formData, "smtp.port", 1, 65535);
+  validateIntegerSetting(formData, "scheduler.maxParallelJobs", 1, 100);
+  validateIntegerSetting(formData, "backup.retention.count", 1, 10000);
+  validateIntegerSetting(formData, "backup.retry.count", 0, 10);
+  const schedule = formData.get("backup.defaultSchedule");
+  if (schedule && !new Set(["HOURLY", "DAILY", "WEEKLY", "MONTHLY"]).has(String(schedule))) {
+    throw new Error("Ongeldig standaard backupschema.");
+  }
+}
+
 export async function saveSettings(formData: FormData) {
   const user = await requireTenantUser({ allowBreakGlassSettingsOnly: true });
   if (user.breakGlassSettingsOnly) {
-    const allowedFields = new Set(["entra.enabled", "entra.tenantId", "entra.clientId", "entra.clientSecret"]);
+    const allowedFields = new Set(["tenantId", "entra.enabled", "entra.tenantId", "entra.clientId", "entra.clientSecret"]);
     for (const key of formData.keys()) {
       if (!allowedFields.has(key)) throw new Error("Break-glass toegang mag alleen SSO instellingen wijzigen.");
     }
   }
-  const tenantId = isSuperAdmin(user) ? user.activeTenantId ?? (await mainTenantId()) : user.tenantId;
+  const tenantId = await settingsTenantFromForm(user, formData);
+  const scopedUser = { ...user, activeTenantId: tenantId };
+  await assertSettingsMutationAccess(scopedUser, tenantId, formData);
+  await validateSettingsForm(formData, tenantId);
+  const mutations: SettingMutation[] = [];
+  const setValue = (key: string, value: string, encrypted = false) =>
+    mutations.push({ operation: "set", key, value, tenantId, encrypted });
+  const removeValue = (key: string) => mutations.push({ operation: "delete", key, tenantId });
   const portalSiteUrl = normalizeOptionalSiteUrl(formData.get("portal.siteUrl"));
   if (formData.has("portal.siteUrl")) {
-    if (portalSiteUrl) await setSetting("portal.siteUrl", portalSiteUrl, { tenantId });
-    else await deleteSetting("portal.siteUrl", tenantId);
+    if (portalSiteUrl) setValue("portal.siteUrl", portalSiteUrl);
+    else removeValue("portal.siteUrl");
   }
   if (formData.has("ui.timeZone")) {
     const timeZone = String(formData.get("ui.timeZone") || defaultTimeZone);
     if (!isValidTimeZone(timeZone)) throw new Error("Ongeldige tijdzone.");
-    await setSetting("ui.timeZone", timeZone, { tenantId });
+    setValue("ui.timeZone", timeZone);
   }
   const backupNotifyRecipients = normalizeEmailList(formData.get("backup.notifyRecipients"));
   const backupWebhookUrl = normalizeOptionalWebhookUrl(formData.get("backup.webhookUrl"));
@@ -1383,58 +1638,39 @@ export async function saveSettings(formData: FormData) {
     }
   }
   if (formData.has("itglue.enabled")) {
-    await setSetting("itglue.enabled", boolField(formData, "itglue.enabled") ? "true" : "false", { tenantId });
+    setValue("itglue.enabled", boolField(formData, "itglue.enabled") ? "true" : "false");
   }
   if (formData.has("autotask.enabled")) {
-    await setSetting("autotask.enabled", boolField(formData, "autotask.enabled") ? "true" : "false", { tenantId });
+    setValue("autotask.enabled", boolField(formData, "autotask.enabled") ? "true" : "false");
   }
   if (formData.has("entra.enabled")) {
-    await setSetting("entra.enabled", boolField(formData, "entra.enabled") ? "true" : "false", { tenantId });
+    setValue("entra.enabled", boolField(formData, "entra.enabled") ? "true" : "false");
   }
   if (formData.has("scheduler.enabled")) {
-    await setSetting("scheduler.enabled", boolField(formData, "scheduler.enabled") ? "true" : "false", { tenantId });
+    setValue("scheduler.enabled", boolField(formData, "scheduler.enabled") ? "true" : "false");
   }
   if (formData.has("backup.schedule.enabled")) {
-    await setSetting("backup.schedule.enabled", boolField(formData, "backup.schedule.enabled") ? "true" : "false", { tenantId });
+    setValue("backup.schedule.enabled", boolField(formData, "backup.schedule.enabled") ? "true" : "false");
   }
   if (formData.has("backup.notifyFailures")) {
-    await setSetting("backup.notifyFailures", boolField(formData, "backup.notifyFailures") ? "true" : "false", { tenantId });
+    setValue("backup.notifyFailures", boolField(formData, "backup.notifyFailures") ? "true" : "false");
   }
   if (formData.has("backup.notifySuccess")) {
-    await setSetting("backup.notifySuccess", boolField(formData, "backup.notifySuccess") ? "true" : "false", { tenantId });
+    setValue("backup.notifySuccess", boolField(formData, "backup.notifySuccess") ? "true" : "false");
   }
   if (formData.has("backup.notifyEmail")) {
-    await setSetting("backup.notifyEmail", boolField(formData, "backup.notifyEmail") ? "true" : "false", { tenantId });
+    setValue("backup.notifyEmail", boolField(formData, "backup.notifyEmail") ? "true" : "false");
   }
   if (formData.has("backup.notifyWebhook")) {
-    await setSetting("backup.notifyWebhook", boolField(formData, "backup.notifyWebhook") ? "true" : "false", { tenantId });
+    setValue("backup.notifyWebhook", boolField(formData, "backup.notifyWebhook") ? "true" : "false");
   }
   if (formData.has("backup.notifyAutotask")) {
-    await setSetting("backup.notifyAutotask", boolField(formData, "backup.notifyAutotask") ? "true" : "false", { tenantId });
+    setValue("backup.notifyAutotask", boolField(formData, "backup.notifyAutotask") ? "true" : "false");
   }
   for (const [key, value] of entries) {
-    if (value) await setSetting(key, String(value), { tenantId });
-  }
-  if (formData.has("backup.notifyRecipients") && !backupNotifyRecipients) {
-    await deleteSetting("backup.notifyRecipients", tenantId);
-  }
-  if (formData.has("backup.webhookUrl") && !backupWebhookUrl) {
-    await deleteSetting("backup.webhookUrl", tenantId);
-  }
-  for (const key of [
-    "autotask.baseUrl",
-    "autotask.username",
-    "autotask.queueId",
-    "autotask.priorityId",
-    "autotask.workTypeId",
-    "autotask.statusId",
-    "autotask.sourceId",
-    "autotask.issueTypeId",
-    "autotask.subIssueTypeId"
-  ]) {
-    if (formData.has(key) && !formData.get(key)) {
-      await deleteSetting(key, tenantId);
-    }
+    if (!formData.has(key)) continue;
+    if (value) setValue(key, String(value));
+    else removeValue(key);
   }
   const smtpPassword = formData.get("smtp.password");
   const itGlueApiKey = formData.get("itglue.apiKey");
@@ -1443,13 +1679,17 @@ export async function saveSettings(formData: FormData) {
   const graphToken = formData.get("graph.accessToken");
   const graphClientSecret = formData.get("graph.clientSecret");
   const entraSecret = formData.get("entra.clientSecret");
-  if (smtpPassword) await setSetting("smtp.password", String(smtpPassword), { tenantId, encrypted: true });
-  if (itGlueApiKey) await setSetting("itglue.apiKey", String(itGlueApiKey), { tenantId, encrypted: true });
-  if (autotaskIntegrationCode) await setSetting("autotask.integrationCode", String(autotaskIntegrationCode), { tenantId, encrypted: true });
-  if (autotaskSecret) await setSetting("autotask.secret", String(autotaskSecret), { tenantId, encrypted: true });
-  if (graphToken) await setSetting("graph.accessToken", String(graphToken), { tenantId, encrypted: true });
-  if (graphClientSecret) await setSetting("graph.clientSecret", String(graphClientSecret), { tenantId, encrypted: true });
-  if (entraSecret) await setSetting("entra.clientSecret", String(entraSecret), { tenantId, encrypted: true });
+  if (smtpPassword) setValue("smtp.password", String(smtpPassword), true);
+  if (itGlueApiKey) setValue("itglue.apiKey", String(itGlueApiKey), true);
+  if (autotaskIntegrationCode) setValue("autotask.integrationCode", String(autotaskIntegrationCode), true);
+  if (autotaskSecret) setValue("autotask.secret", String(autotaskSecret), true);
+  if (graphToken) setValue("graph.accessToken", String(graphToken), true);
+  if (graphClientSecret) setValue("graph.clientSecret", String(graphClientSecret), true);
+  if (entraSecret) setValue("entra.clientSecret", String(entraSecret), true);
+  for (const key of ["smtp.password", "itglue.apiKey", "autotask.integrationCode", "autotask.secret", "graph.accessToken", "graph.clientSecret", "entra.clientSecret"]) {
+    if (boolField(formData, `${key}.clear`)) removeValue(key);
+  }
+  await applySettingMutations(mutations);
   await auditLog({ action: "settings.updated", tenantId, userId: user.id });
   revalidatePath("/settings");
 }
@@ -1458,8 +1698,7 @@ export async function saveSettings(formData: FormData) {
 
 
 export async function startAppUpdateAction(formData: FormData) {
-  const user = await requireSuperAdmin();
-  await assertPermission(user, "platform.updates.run");
+  const user = await requirePermission("platform.updates.run");
   const result = await startAppUpdate({
     userId: user.id,
     returnTo: safeReturnTo(formData.get("returnTo"), "/settings?tab=updates")
@@ -1489,9 +1728,10 @@ export async function testMailSettings(_state: MailTestState, formData: FormData
 
   try {
     const user = await requireTenantUser();
-    await saveSettings(formData);
-
-    const tenantId = isSuperAdmin(user) ? user.activeTenantId ?? (await mainTenantId()) : user.tenantId;
+    const tenantId = await settingsTenantFromForm(user, formData);
+    const scopedUser = { ...user, activeTenantId: tenantId };
+    await assertPermission(scopedUser, "integrations.mail.test");
+    await assertMailReady(tenantId);
 
     await sendMail({
       tenantId,
@@ -1500,7 +1740,7 @@ export async function testMailSettings(_state: MailTestState, formData: FormData
       text: "Deze testmail bevestigt dat de mailconfiguratie correct werkt."
     });
 
-    await auditLog({ action: "settings.mail_test.sent", tenantId, userId: user.id, metadata: { provider: formData.get("mail.provider"), to } });
+    await auditLog({ action: "settings.mail_test.sent", tenantId, userId: user.id, metadata: { to } });
     revalidatePath("/settings");
     return { ok: true, message: `Testmail verzonden naar ${to}.` };
   } catch (error) {

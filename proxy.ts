@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { breakGlassCookieName, breakGlassCookieOptions, sessionCookieName, sessionCookieOptions } from "@/lib/session-cookie";
 
-const publicPaths = ["/login", "/setup", "/api/health", "/api/break-glass/settings"];
+const publicPaths = ["/login", "/setup", "/break-glass", "/api/auth", "/api/health", "/api/break-glass/settings"];
 const unsafeMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const breakGlassAllowedPaths = ["/settings", "/api/events", "/api/update/events"];
 
@@ -16,14 +16,12 @@ function requestHosts(request: NextRequest) {
       ?.split(",")
       .map((host) => host.trim().toLowerCase())
       .filter(Boolean) ?? [];
-  return new Set([
-    request.nextUrl.host.toLowerCase(),
-    request.headers.get("host")?.toLowerCase(),
-    ...forwardedHosts
-  ].filter(Boolean));
+  return new Set(
+    [request.nextUrl.host.toLowerCase(), request.headers.get("host")?.toLowerCase(), ...forwardedHosts].filter(Boolean)
+  );
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   if (unsafeMethods.has(request.method)) {
     const origin = request.headers.get("origin");
@@ -37,11 +35,7 @@ export function middleware(request: NextRequest) {
       }
     }
   }
-  if (
-    isPublicPath(pathname) ||
-    pathname.startsWith("/_next") ||
-    pathname === "/favicon.ico"
-  ) {
+  if (isPublicPath(pathname) || pathname.startsWith("/_next") || pathname === "/favicon.ico") {
     return NextResponse.next();
   }
   const sessionToken = request.cookies.get(sessionCookieName)?.value;

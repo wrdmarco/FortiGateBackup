@@ -1,43 +1,52 @@
 import { deleteTenant, setTenantActive } from "@/app/actions";
 import { DeleteConfirmInput } from "@/components/delete-confirm-input";
 import { Modal } from "@/components/modal";
+import { firstQueryValue, normalizePage, parsePageParam, ServerPagination } from "@/components/server-pagination";
 import { TenantCreateForm } from "@/components/tenant-create-form";
 import { ActionLink, Badge, Button, Field, PageHeader, Shell, TableShell } from "@/components/ui";
-import { requireSuperAdmin } from "@/lib/authz";
+import { requirePermission } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { hasPermission } from "@/lib/rbac";
 import { mainTenantId } from "@/lib/tenant-main";
 
 export const dynamic = "force-dynamic";
+const PAGE_SIZE = 25;
 
-export default async function TenantsPage() {
-  const currentUser = await requireSuperAdmin();
-  const [tenants, mainTenant] = await Promise.all([
-    prisma.tenant.findMany({
-      include: {
-        users: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true,
-            active: true,
-            createdAt: true
-          },
-          orderBy: { email: "asc" }
-        },
-        customers: {
-          select: {
-            id: true,
-            devices: { select: { id: true } }
-          }
-        }
-      },
-      orderBy: { name: "asc" }
-    }),
-    mainTenantId()
+export default async function TenantsPage({
+  searchParams
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const currentUser = await requirePermission("platform.tenants.read");
+  const queryParams = await searchParams;
+  const query = firstQueryValue(queryParams.q);
+  const requestedPage = parsePageParam(queryParams.page);
+  const tenantWhere = query ? { name: { contains: query } } : {};
+  const [totalTenants, mainTenant, canCreate, canUpdate, canDelete, canExport, canRestore, canReadUsers] = await Promise.all([
+    prisma.tenant.count({ where: tenantWhere }),
+    mainTenantId(),
+    hasPermission(currentUser, "platform.tenants.create"),
+    hasPermission(currentUser, "platform.tenants.update"),
+    hasPermission(currentUser, "platform.tenants.delete"),
+    hasPermission(currentUser, "platform.tenants.export"),
+    hasPermission(currentUser, "platform.tenants.restore"),
+    hasPermission(currentUser, "platform.users.read")
   ]);
-  const canArchiveTenants = currentUser.activeTenantId === mainTenant && (await hasPermission(currentUser, "platform.tenants.export"));
+  const page = normalizePage(requestedPage, totalTenants, PAGE_SIZE);
+  const tenants = await prisma.tenant.findMany({
+    where: tenantWhere,
+    select: {
+      id: true,
+      name: true,
+      active: true,
+      _count: {
+        select: { users: { where: { active: true } } }
+      }
+    },
+    orderBy: { name: "asc" },
+    skip: (page - 1) * PAGE_SIZE,
+    take: PAGE_SIZE
+  });
 
   return (
     <Shell>
@@ -46,14 +55,14 @@ export default async function TenantsPage() {
         description="Alleen platformbeheerders kunnen tenants aanmaken. Tenantadmins beheren daarna uitsluitend hun eigen klanten, FortiGates, backups en instellingen."
         actions={
           <div className="flex flex-wrap gap-2">
-            <Modal
+            {canCreate ? <Modal
               title="Tenant aanmaken"
               description="Maak een tenant inclusief eerste tenantadmin."
               trigger={<Button>Tenant aanmaken</Button>}
             >
               <TenantCreateForm />
-            </Modal>
-            {canArchiveTenants ? (
+            </Modal> : null}
+            {canRestore ? (
               <Modal
                 title="Tenant herstellen uit zip"
                 description="Upload een tenant backup zip om een ontbrekende tenant opnieuw aan te maken."
@@ -76,6 +85,20 @@ export default async function TenantsPage() {
         }
       />
 
+      <form className="mb-4 flex flex-wrap items-end gap-3" method="get">
+        <label className="grid min-w-64 flex-1 gap-1 text-sm">
+          <span className="font-medium">Tenants zoeken</span>
+          <input
+            className="min-h-11 rounded-md border border-border bg-surface px-3 py-2 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+            defaultValue={query}
+            name="q"
+            placeholder="Tenantnaam"
+          />
+        </label>
+        <Button variant="secondary">Zoeken</Button>
+        {query ? <ActionLink href="/tenants">Filter wissen</ActionLink> : null}
+      </form>
+
       <div className="grid gap-6">
         <TableShell>
           <table className="table-pro w-full min-w-[860px] text-left text-sm">
@@ -83,7 +106,6 @@ export default async function TenantsPage() {
               <tr>
                 <th className="px-3 py-2">Tenant</th>
                 <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Klanten</th>
                 <th className="px-3 py-2">Actieve gebruikers</th>
                 <th className="px-3 py-2">Actie</th>
               </tr>
@@ -91,7 +113,6 @@ export default async function TenantsPage() {
             <tbody>
               {tenants.map((tenant) => {
                 const isMainTenant = tenant.id === mainTenant;
-                const deviceCount = tenant.customers.reduce((count, customer) => count + customer.devices.length, 0);
 
                 return (
                   <tr key={tenant.id} className="border-t border-border">
@@ -104,39 +125,23 @@ export default async function TenantsPage() {
                     <td className="px-3 py-2">
                       <Badge tone={tenant.active ? "success" : "danger"}>{tenant.active ? "Actief" : "Inactief"}</Badge>
                     </td>
-                    <td className="px-3 py-2">
-                      <div>{tenant.customers.length}</div>
-                      <div className="text-xs text-muted-foreground">{deviceCount} FortiGates</div>
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="grid gap-1">
-                        <div>{tenant.users.filter((item) => item.active).length} actief</div>
-                        <div className="max-w-[280px] truncate text-xs text-muted-foreground">
-                          {tenant.users.length
-                            ? tenant.users.map((item) => item.email).join(", ")
-                            : "Geen gebruikers"}
-                        </div>
-                      </div>
-                    </td>
+                    <td className="px-3 py-2">{tenant._count.users}</td>
                     <td className="px-3 py-2">
                       <div className="flex flex-wrap gap-2">
-                        {tenant.id === currentUser.activeTenantId ? (
+                        {canReadUsers && tenant.id === currentUser.activeTenantId ? (
                           <ActionLink href="/users" variant="secondary">Gebruikers</ActionLink>
-                        ) : (
-                          <Button variant="secondary" disabled>Wissel tenant</Button>
-                        )}
-                        {isMainTenant ? (
-                          <Button variant="secondary" disabled>Global actief</Button>
-                        ) : (
+                        ) : null}
+                        {!isMainTenant && canUpdate ? (
                           <form action={setTenantActive}>
                             <input type="hidden" name="id" value={tenant.id} />
                             <input type="hidden" name="active" value={tenant.active ? "false" : "true"} />
                             <Button>{tenant.active ? "Deactiveren" : "Activeren"}</Button>
                           </form>
-                        )}
-                        {!isMainTenant && canArchiveTenants ? (
-                          <>
-                            <ActionLink href={`/api/tenants/${tenant.id}/archive`} variant="secondary">Backup zip</ActionLink>
+                        ) : null}
+                        {!isMainTenant && canExport ? (
+                          <ActionLink href={`/api/tenants/${tenant.id}/archive`} variant="secondary">Backup zip</ActionLink>
+                        ) : null}
+                        {!isMainTenant && canRestore ? (
                             <Modal
                               title={`Tenant restore - ${tenant.name}`}
                               description="Upload een tenant backup zip. Dit vervangt klant-, FortiGate-, backup- en tenantinstellingen voor deze tenant."
@@ -155,11 +160,8 @@ export default async function TenantsPage() {
                                 <Button variant="danger">Zip uploaden en restore starten</Button>
                               </form>
                             </Modal>
-                          </>
                         ) : null}
-                        {isMainTenant ? (
-                          <Button variant="secondary" disabled>Global beschermd</Button>
-                        ) : (
+                        {!isMainTenant && canDelete ? (
                           <Modal
                             title="Tenant verwijderen"
                             description="Deze actie verwijdert de tenant, gebruikers, klanten, FortiGates en opgeslagen configbestanden."
@@ -170,8 +172,7 @@ export default async function TenantsPage() {
                               <div className="grid gap-3 rounded-md border border-red-300 bg-red-50 p-4 text-sm text-red-950 dark:border-red-800 dark:bg-red-950 dark:text-red-100">
                                 <p className="text-base font-semibold">Let op: dit verwijdert de volledige tenant definitief</p>
                                 <p>
-                                  Hiermee verdwijnen {tenant.customers.length} klanten, {deviceCount} FortiGates,
-                                  alle gebruikers, alle backuprecords en alle opgeslagen configuratiebestanden voor deze tenant.
+                                  Hiermee verdwijnen alle gebruikers, klanten, FortiGates, backuprecords en opgeslagen configuratiebestanden voor deze tenant.
                                 </p>
                                 <p>
                                   Dit is de enige manier om ook de laatste gebruiker van een tenant te verwijderen. Losse user-delete
@@ -184,15 +185,28 @@ export default async function TenantsPage() {
                               <Button variant="danger">Tenant definitief verwijderen</Button>
                             </form>
                           </Modal>
-                        )}
+                        ) : null}
                       </div>
                     </td>
                   </tr>
                 );
               })}
+              {!tenants.length ? (
+                <tr className="border-t border-border">
+                  <td className="px-3 py-8 text-center text-muted-foreground" colSpan={4}>Geen tenants gevonden.</td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </TableShell>
+        <ServerPagination
+          itemLabel="tenants"
+          page={page}
+          pageSize={PAGE_SIZE}
+          path="/tenants"
+          query={{ q: query }}
+          totalItems={totalTenants}
+        />
       </div>
     </Shell>
   );

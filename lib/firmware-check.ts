@@ -1,3 +1,5 @@
+import { fetchWithTimeout, readResponseText } from "@/lib/network-safety";
+
 type FirmwareStatus = "up-to-date" | "update-available" | "unknown";
 
 export type FirmwareCheckResult = {
@@ -78,14 +80,15 @@ export async function checkFortiOsFirmware(installedVersion?: string | null): Pr
 }
 
 async function latestFortiOsVersion(sourceUrl: string, branch: string) {
-  const response = await fetch(sourceUrl, {
-    headers: { "User-Agent": "FortiGateBackup firmware checker" },
-    next: { revalidate: 3600 }
-  });
+  const response = await fetchWithTimeout(
+    sourceUrl,
+    { headers: { "User-Agent": "FortiGateBackup firmware checker" } },
+    15_000
+  );
   if (!response.ok) {
     throw new Error(`Fortinet docs gaf HTTP ${response.status} terug.`);
   }
-  const html = await response.text();
+  const html = await readResponseText(response, 3 * 1024 * 1024);
   const releaseSection = html.match(/Release Information[\s\S]*?Release Notes([\s\S]*?)(?:Last updated|<\/body>)/i)?.[1] ?? html;
   const versions = Array.from(releaseSection.matchAll(new RegExp(`\\b${escapeRegExp(branch)}(?:\\.\\d+)?\\b`, "g")))
     .map((match) => normalizeVersion(match[0]))

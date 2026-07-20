@@ -2,16 +2,16 @@ import { readFile } from "node:fs/promises";
 import { NextRequest, NextResponse } from "next/server";
 import path from "node:path";
 import { backupFilePath, getBackupForUser } from "@/lib/backups";
-import { assertPermission, requireTenantUser } from "@/lib/authz";
+import { assertOperationalTenant, requirePermission } from "@/lib/authz";
 
 export async function GET(
   _request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   const { id } = await context.params;
-  const user = await requireTenantUser();
-  await assertPermission(user, "backups.download");
+  const user = await requirePermission("backups.download");
   const backup = await getBackupForUser(id, user);
+  await assertOperationalTenant(user, backup.fortigate.customer.tenantId);
   if (!backup.filename) {
     return NextResponse.json({ error: "No backup file stored for this record." }, { status: 404 });
   }

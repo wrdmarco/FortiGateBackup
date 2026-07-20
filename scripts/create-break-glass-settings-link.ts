@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { getSetting } from "@/lib/settings";
 import { mainTenantId } from "@/lib/tenant-main";
 
-const identifier = "break-glass:global-settings";
+const identifierPrefix = "break-glass:global-settings:";
 const ttlMinutes = 15;
 
 async function main() {
@@ -30,21 +30,23 @@ async function main() {
   await prisma.verificationToken.deleteMany({
     where: {
       OR: [
-        { identifier, expires: { lte: new Date() } },
-        { identifier, token: hashToken(rawToken) }
+        { identifier: { startsWith: identifierPrefix }, expires: { lte: new Date() } },
+        { token: hashToken(rawToken) }
       ]
     }
   });
   await prisma.verificationToken.create({
     data: {
-      identifier,
+      identifier: `${identifierPrefix}${user.id}`,
       token: hashToken(rawToken),
       expires
     }
   });
 
-  const baseUrl = normalizeBaseUrl(args.baseUrl ?? (await getSetting("portal.siteUrl", null)) ?? process.env.SERVER_URL ?? "http://localhost:3000");
-  const url = `${baseUrl}/api/break-glass/settings/${rawToken}`;
+  const configuredBaseUrl = args.baseUrl ?? (await getSetting("portal.siteUrl", globalTenantId));
+  if (!configuredBaseUrl) throw new Error("Geen portal URL ingesteld. Gebruik --base-url=https://portal.example.nl.");
+  const baseUrl = normalizeBaseUrl(configuredBaseUrl);
+  const url = `${baseUrl}/break-glass#token=${encodeURIComponent(rawToken)}`;
   console.log("Eenmalige Global instellingen-link aangemaakt.");
   console.log(`Gebruiker: ${user.name ?? user.email} <${user.email}>`);
   console.log(`Geldig tot: ${expires.toISOString()}`);
@@ -65,7 +67,7 @@ function parseArgs(args: string[]) {
 
 function normalizeBaseUrl(value: string) {
   const trimmed = value.trim().replace(/\/+$/, "");
-  if (!trimmed) return "http://localhost:3000";
+  if (!trimmed) throw new Error("Base URL is verplicht.");
   return trimmed.includes("://") ? trimmed : `https://${trimmed}`;
 }
 

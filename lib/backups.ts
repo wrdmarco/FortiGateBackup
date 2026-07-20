@@ -23,10 +23,14 @@ export function backupDisplayName(backup: Pick<BackupWithDevice, "filename" | "i
 
 export function backupFilePath(filename: string) {
   const backupRoot = path.resolve(process.cwd(), "data", "backups");
-  const fullPath = path.resolve(process.cwd(), filename);
-  if (!fullPath.startsWith(`${backupRoot}${path.sep}`)) {
+  const normalized = filename.replace(/\\/g, "/");
+  const storagePrefix = "data/backups/";
+  if (!normalized.startsWith(storagePrefix)) {
     throw new Error("Invalid backup path.");
   }
+  const fullPath = path.resolve(backupRoot, normalized.slice(storagePrefix.length));
+  const relativePath = path.relative(backupRoot, fullPath);
+  if (!relativePath || relativePath.startsWith("..") || path.isAbsolute(relativePath)) throw new Error("Invalid backup path.");
   return fullPath;
 }
 

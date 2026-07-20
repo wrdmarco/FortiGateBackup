@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { fetchWithTimeout, readResponseJson, readResponseText } from "@/lib/network-safety";
 import { getSetting } from "@/lib/settings";
 import { mainTenantId } from "@/lib/tenant-main";
 
@@ -78,12 +79,21 @@ async function sendSmtpMail(input: MailInput) {
   const pass = await getMailSetting("smtp.password", input.tenantId);
   const from = await getMailSetting("smtp.from", input.tenantId);
   if (!host || !from) throw new Error("SMTP settings are incomplete.");
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("SMTP poort moet tussen 1 en 65535 liggen.");
+  if (!/^[A-Za-z0-9.-]+$/.test(host)) throw new Error("SMTP hostnaam is ongeldig.");
 
   const transporter = nodemailer.createTransport({
     host,
     port,
     secure: port === 465,
-    auth: user && pass ? { user, pass } : undefined
+    requireTLS: port !== 465,
+    auth: user && pass ? { user, pass } : undefined,
+    connectionTimeout: 20_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 30_000,
+    tls: { rejectUnauthorized: true, minVersion: "TLSv1.2" },
+    disableFileAccess: true,
+    disableUrlAccess: true
   });
   return transporter.sendMail({ from, to: input.to, subject: input.subject, text: input.text });
 }
@@ -93,21 +103,28 @@ async function sendGraphMail(input: MailInput) {
   const from = await getMailSetting("graph.from", input.tenantId);
   if (!token || !from) throw new Error("Microsoft Graph mail settings are incomplete.");
 
-  const response = await fetch(`https://graph.microsoft.com/v1.0/users/${from}/sendMail`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json"
+  const response = await fetchWithTimeout(
+    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(from)}/sendMail`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        message: {
+          subject: input.subject,
+          body: { contentType: "Text", content: input.text },
+          toRecipients: mailRecipients(input.to).map((address) => ({ emailAddress: { address } }))
+        }
+      })
     },
-    body: JSON.stringify({
-      message: {
-        subject: input.subject,
-        body: { contentType: "Text", content: input.text },
-        toRecipients: mailRecipients(input.to).map((address) => ({ emailAddress: { address } }))
-      }
-    })
-  });
-  if (!response.ok) throw new Error(`Microsoft Graph returned ${response.status}.`);
+    20_000
+  );
+  if (!response.ok) {
+    const body = await readResponseText(response, 32 * 1024).catch(() => "");
+    throw new Error(`Microsoft Graph gaf HTTP ${response.status}.${body ? ` Body: ${body.slice(0, 500)}` : ""}`);
+  }
 }
 
 async function getGraphAccessToken(tenantId?: string | null) {
@@ -116,19 +133,24 @@ async function getGraphAccessToken(tenantId?: string | null) {
   const clientSecret = await getMailSetting("graph.clientSecret", tenantId);
 
   if (tenant && clientId && clientSecret) {
-    const response = await fetch(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        client_id: clientId,
-        client_secret: clientSecret,
-        grant_type: "client_credentials",
-        scope: "https://graph.microsoft.com/.default"
-      })
-    });
+    const response = await fetchWithTimeout(
+      `https://login.microsoftonline.com/${encodeURIComponent(tenant)}/oauth2/v2.0/token`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: clientId,
+          client_secret: clientSecret,
+          grant_type: "client_credentials",
+          scope: "https://graph.microsoft.com/.default"
+        })
+      },
+      20_000
+    );
     if (!response.ok) throw new Error(`Microsoft Graph token request returned ${response.status}.`);
-    const payload = (await response.json()) as { access_token?: string };
-    return payload.access_token ?? null;
+    const payload = await readResponseJson<{ access_token?: string }>(response, 64 * 1024);
+    if (!payload.access_token) throw new Error("Microsoft Graph token response bevat geen access token.");
+    return payload.access_token;
   }
 
   return getMailSetting("graph.accessToken", tenantId);

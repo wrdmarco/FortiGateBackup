@@ -31,8 +31,5 @@ export function breakGlassCookieOptions(expires?: Date) {
 }
 
 function shouldUseSecureSessionCookie() {
-  if (process.env.NODE_ENV !== "production") return false;
-  const serverUrl = process.env.SERVER_URL?.toLowerCase() ?? "";
-  if (serverUrl.startsWith("http://")) return false;
-  return true;
+  return process.env.NODE_ENV === "production";
 }

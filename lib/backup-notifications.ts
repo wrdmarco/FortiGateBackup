@@ -2,6 +2,7 @@ import { BackupStatus } from "@prisma/client";
 import { auditLog } from "@/lib/audit";
 import { createAutotaskBackupTicket } from "@/lib/autotask";
 import { prisma } from "@/lib/db";
+import { fetchPublicHttps, readResponseText } from "@/lib/network-safety";
 import { sendMail } from "@/lib/mail";
 import { getSetting } from "@/lib/settings";
 
@@ -105,13 +106,17 @@ async function notifyByMail(tenantId: string, recipients: string, payload: Backu
 
 async function notifyByWebhook(tenantId: string, webhookUrl: string, payload: BackupNotificationPayload) {
   try {
-    const response = await fetch(webhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
+    const response = await fetchPublicHttps(
+      webhookUrl,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      },
+      { timeoutMs: 20_000, maximumBytes: 32 * 1024, maximumRedirects: 3 }
+    );
     if (!response.ok) {
-      const body = await response.text().catch(() => "");
+      const body = await readResponseText(response, 32 * 1024).catch(() => "");
       throw new Error(`Webhook gaf HTTP ${response.status}.${body ? ` Body: ${body.slice(0, 500)}` : ""}`);
     }
   } catch (error) {

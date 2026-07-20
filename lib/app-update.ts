@@ -1,13 +1,32 @@
 import { spawn, execFile } from "node:child_process";
-import { mkdir, open, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { createHash, randomBytes } from "node:crypto";
+import { chmod, copyFile, mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
+import { cookies } from "next/headers";
 
 const execFileAsync = promisify(execFile);
 const UPDATE_LOG = path.join("data", "logs", "update.log");
 const UPDATE_LOCK = path.join("data", "logs", "update.lock");
 const UPDATE_STATUS = path.join("data", "logs", "update-status.json");
+const MAINTENANCE_SOURCE = path.join("scripts", "maintenance-server.mjs");
+const MAINTENANCE_RUNTIME = path.join("data", "update-runtime", "maintenance-server.mjs");
+const UPDATE_VIEWER_COOKIE = "fgbp_update_viewer";
 const LOCK_TTL_MS = 1000 * 60 * 30;
+
+export type UpdateOutcome = "idle" | "running" | "success" | "error";
+
+type PersistedUpdateStatus = {
+  schemaVersion?: number;
+  operation?: "update" | "rollback";
+  outcome?: UpdateOutcome;
+  startedAt?: string;
+  startedByUserId?: string | null;
+  returnTo?: string;
+  viewerTokenHash?: string | null;
+  finishedAt?: string | null;
+  exitCode?: number | null;
+};
 
 type AppUpdateStatus = {
   currentVersion: string;
@@ -22,7 +41,10 @@ type AppUpdateStatus = {
 
 export type UpdateRuntimeStatus = {
   running: boolean;
+  outcome: UpdateOutcome;
+  operation: "update" | "rollback";
   startedAt: string | null;
+  finishedAt: string | null;
   startedByUserId: string | null;
   returnTo: string;
   lastLog: string | null;
@@ -55,17 +77,29 @@ export async function getAppUpdateStatus(): Promise<AppUpdateStatus> {
 export async function getUpdateRuntimeStatus(): Promise<UpdateRuntimeStatus> {
   const appDir = process.cwd();
   const lockPath = path.join(appDir, UPDATE_LOCK);
-  const [running, status, lastLog] = await Promise.all([
+  const [lockPresent, status, lastLog] = await Promise.all([
     isUpdateRunning(),
     readUpdateStatus(),
     readLastUpdateLog(120)
   ]);
-  if (!running) {
+  const declaredOutcome = normalizeOutcome(status?.outcome);
+  const running = lockPresent && declaredOutcome !== "success" && declaredOutcome !== "error";
+  const outcome: UpdateOutcome = running
+    ? "running"
+    : declaredOutcome === "success" || declaredOutcome === "error"
+      ? declaredOutcome
+      : declaredOutcome === "running"
+        ? "error"
+        : "idle";
+  if (!running && lockPresent) {
     await rm(lockPath, { force: true }).catch(() => undefined);
   }
   return {
     running,
+    outcome,
+    operation: status?.operation === "rollback" ? "rollback" : "update",
     startedAt: status?.startedAt ?? null,
+    finishedAt: status?.finishedAt ?? null,
     startedByUserId: status?.startedByUserId ?? null,
     returnTo: safeReturnTo(status?.returnTo, "/"),
     lastLog
@@ -77,7 +111,9 @@ export async function startAppUpdate({ userId, returnTo }: { userId: string; ret
   const logPath = path.join(appDir, UPDATE_LOG);
   const lockPath = path.join(appDir, UPDATE_LOCK);
   const statusPath = path.join(appDir, UPDATE_STATUS);
-  await mkdir(path.dirname(logPath), { recursive: true });
+  const runtimePath = path.join(appDir, MAINTENANCE_RUNTIME);
+  await prepareMaintenanceRuntime(appDir);
+  await mkdir(path.dirname(logPath), { recursive: true, mode: 0o700 });
   await clearStaleLock(lockPath);
 
   let lockHandle;
@@ -90,18 +126,35 @@ export async function startAppUpdate({ userId, returnTo }: { userId: string; ret
     await lockHandle?.close();
   }
   const startedAt = new Date().toISOString();
-  await writeFile(
-    statusPath,
-    JSON.stringify({ startedAt, startedByUserId: userId, returnTo: safeReturnTo(returnTo, "/") }, null, 2)
-  );
+  const viewerToken = randomBytes(32).toString("base64url");
+  await writeJsonAtomic(statusPath, {
+    schemaVersion: 1,
+    operation: "update",
+    outcome: "running",
+    startedAt,
+    startedByUserId: userId,
+    returnTo: safeReturnTo(returnTo, "/"),
+    viewerTokenHash: createHash("sha256").update(viewerToken).digest("hex"),
+    finishedAt: null,
+    exitCode: null
+  } satisfies PersistedUpdateStatus);
+
+  const cookieStore = await cookies();
+  cookieStore.set(UPDATE_VIEWER_COOKIE, viewerToken, {
+    httpOnly: true,
+    sameSite: "strict",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 60 * 60 * 2
+  });
 
   const command = [
     `cd ${shellQuote(appDir)}`,
     `echo "--- update started $(date -Is) ---" > ${shellQuote(logPath)}`,
-    `FORTIGATE_UPDATE_LOCK_PATH=${shellQuote(lockPath)} bash ./update.sh >> ${shellQuote(logPath)} 2>&1`,
-    `status=$?`,
+    `status=0`,
+    `FORTIGATE_UPDATE_LOCK_PATH=${shellQuote(lockPath)} bash ./update.sh >> ${shellQuote(logPath)} 2>&1 || status=$?`,
     `echo "--- update finished $(date -Is) exit=$status ---" >> ${shellQuote(logPath)}`,
-    `rm -f ${shellQuote(lockPath)}`,
+    `node ${shellQuote(runtimePath)} finalize --app-dir ${shellQuote(appDir)} --exit-code "$status" || rm -f ${shellQuote(lockPath)}`,
     `exit $status`
   ].join("; ");
 
@@ -145,7 +198,13 @@ async function isUpdateRunning() {
 async function clearStaleLock(lockPath: string) {
   try {
     const info = await stat(lockPath);
-    if ((await lockHasFinishedLog(info.mtimeMs)) || Date.now() - info.mtimeMs > LOCK_TTL_MS) {
+    const status = await readUpdateStatus();
+    if (
+      status?.outcome === "success" ||
+      status?.outcome === "error" ||
+      (await lockHasFinishedLog(info.mtimeMs)) ||
+      Date.now() - info.mtimeMs > LOCK_TTL_MS
+    ) {
       await rm(lockPath, { force: true });
     }
   } catch {
@@ -179,10 +238,28 @@ async function readLastUpdateLog(maxLines = 8) {
 async function readUpdateStatus() {
   try {
     const raw = await readFile(path.join(process.cwd(), UPDATE_STATUS), "utf8");
-    return JSON.parse(raw) as { startedAt?: string; startedByUserId?: string; returnTo?: string };
+    return JSON.parse(raw) as PersistedUpdateStatus;
   } catch {
     return null;
   }
+}
+
+async function prepareMaintenanceRuntime(appDir: string) {
+  const source = path.join(appDir, MAINTENANCE_SOURCE);
+  const runtime = path.join(appDir, MAINTENANCE_RUNTIME);
+  await mkdir(path.dirname(runtime), { recursive: true, mode: 0o700 });
+  await copyFile(source, runtime);
+  await chmod(runtime, 0o700);
+}
+
+async function writeJsonAtomic(target: string, value: PersistedUpdateStatus) {
+  const temporary = `${target}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
+  await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+  await rename(temporary, target);
+}
+
+function normalizeOutcome(value: unknown): UpdateOutcome {
+  return value === "running" || value === "success" || value === "error" ? value : "idle";
 }
 
 function safeReturnTo(value: unknown, fallback: string) {

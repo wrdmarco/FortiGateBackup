@@ -1,4 +1,5 @@
 import { Backup, Customer, FortiGate } from "@prisma/client";
+import { fetchPublicHttps, normalizeHttpsServiceBaseUrl, readResponseText } from "@/lib/network-safety";
 import { getSetting } from "@/lib/settings";
 
 export type AutotaskTicketTarget = FortiGate & { customer: Customer };
@@ -23,6 +24,11 @@ type CreateTicketInput = {
   device: AutotaskTicketTarget;
   backup: Backup;
 };
+
+type AutotaskTicketSettings = Pick<
+  AutotaskSettings,
+  "queueId" | "priorityId" | "workTypeId" | "statusId" | "sourceId" | "issueTypeId" | "subIssueTypeId"
+>;
 
 export async function getAutotaskSettings(tenantId?: string | null): Promise<AutotaskSettings> {
   const [
@@ -85,7 +91,42 @@ export async function createAutotaskBackupTicket({ tenantId, device, backup }: C
     throw new Error("Autotask queue en priority zijn verplicht voor backup tickets.");
   }
 
-  const body = compactObject({
+  const body = buildAutotaskTicketPayload(device, backup, settings);
+
+  const response = await fetchPublicHttps(
+    `${settings.baseUrl}/Tickets`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        ApiIntegrationCode: settings.integrationCode,
+        UserName: settings.username,
+        Secret: settings.secret
+      },
+      body: JSON.stringify(body)
+    },
+    { timeoutMs: 20_000, maximumBytes: 512 * 1024, maximumRedirects: 2 }
+  );
+  const text = await readResponseText(response, 512 * 1024);
+  if (!response.ok) {
+    throw new Error(`Autotask ticket aanmaken mislukt met HTTP ${response.status}.${text ? ` Body: ${text.slice(0, 500)}` : ""}`);
+  }
+
+  const parsed = parseAutotaskResponse(text);
+  return {
+    skipped: false,
+    ticketId: parsed.itemId ?? parsed.id ?? parsed.item?.id ?? null,
+    rawStatus: response.status
+  };
+}
+
+export function buildAutotaskTicketPayload(
+  device: AutotaskTicketTarget,
+  backup: Backup,
+  settings: AutotaskTicketSettings
+) {
+  return compactObject({
     companyID: numberValue(device.customer.autotaskCompanyId),
     title: `${backup.status === "FAILED" ? "FortiGate backup mislukt" : "FortiGate backup rapport"} - ${
       device.hostname ?? device.managementUrl
@@ -97,31 +138,8 @@ export async function createAutotaskBackupTicket({ tenantId, device, backup }: C
     source: numberValue(settings.sourceId),
     issueType: numberValue(settings.issueTypeId),
     subIssueType: numberValue(settings.subIssueTypeId),
-    workTypeID: numberValue(settings.workTypeId)
+    billingCodeID: numberValue(settings.workTypeId)
   });
-
-  const response = await fetch(`${settings.baseUrl}/Tickets`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-      ApiIntegrationCode: settings.integrationCode,
-      UserName: settings.username,
-      Secret: settings.secret
-    },
-    body: JSON.stringify(body)
-  });
-  const text = await response.text();
-  if (!response.ok) {
-    throw new Error(`Autotask ticket aanmaken mislukt met HTTP ${response.status}.${text ? ` Body: ${text.slice(0, 500)}` : ""}`);
-  }
-
-  const parsed = parseAutotaskResponse(text);
-  return {
-    skipped: false,
-    ticketId: parsed.itemId ?? parsed.id ?? parsed.item?.id ?? null,
-    rawStatus: response.status
-  };
 }
 
 function ticketDescription(device: AutotaskTicketTarget, backup: Backup) {
@@ -142,9 +160,12 @@ function ticketDescription(device: AutotaskTicketTarget, backup: Backup) {
 }
 
 function normalizeBaseUrl(value: string) {
-  const trimmed = value.trim().replace(/\/+$/, "");
-  if (!trimmed) return "https://webservices.autotask.net/atservicesrest/v1.0";
-  return trimmed.includes("://") ? trimmed : `https://${trimmed}`;
+  return normalizeHttpsServiceBaseUrl(
+    value,
+    "https://webservices.autotask.net/atservicesrest/v1.0",
+    "Autotask",
+    ["autotask.net"]
+  );
 }
 
 function numberValue(value: string | null) {

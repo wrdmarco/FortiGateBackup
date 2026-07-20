@@ -6,20 +6,27 @@ import {
   readBackupText,
   unifiedDiff
 } from "@/lib/backups";
-import { assertOperationalTenant, assertPermission, requireTenantUser } from "@/lib/authz";
+import { assertOperationalTenant, requirePermission } from "@/lib/authz";
+import { normalizePage, parsePageParam, ServerPagination } from "@/components/server-pagination";
 import { ActionLink, Card, PageHeader, Panel, Shell } from "@/components/ui";
+import { hasPermission } from "@/lib/rbac";
 import { formatDateTime } from "@/lib/time";
 import { getTenantTimeZone } from "@/lib/tenant-timezone";
 
 export const dynamic = "force-dynamic";
+const DIFF_PAGE_SIZE = 500;
 
 export default async function CustomerFortiGateBackupDiffPage({
-  params
+  params,
+  searchParams
 }: {
   params: Promise<{ id: string; fortigateId: string; backupId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const user = await requireTenantUser();
-  await assertPermission(user, "backups.diff.read");
+  const user = await requirePermission("backups.diff.read");
+  const queryParams = await searchParams;
+  const requestedPage = parsePageParam(queryParams.page);
+  const canDownload = await hasPermission(user, "backups.download");
   const { id, fortigateId, backupId } = await params;
   const backup = await getBackupForUser(backupId, user);
   if (backup.fortigateId !== fortigateId || backup.fortigate.customer.id !== id) notFound();
@@ -55,9 +62,11 @@ export default async function CustomerFortiGateBackupDiffPage({
     backupDisplayName(previous),
     backupDisplayName(backup)
   );
-  const added = diff.split("\n").filter((line) => line.startsWith("+") && !line.startsWith("+++")).length;
-  const removed = diff.split("\n").filter((line) => line.startsWith("-") && !line.startsWith("---")).length;
-  const diffLines = diff.split("\n");
+  const allDiffLines = diff.split("\n");
+  const added = allDiffLines.filter((line) => line.startsWith("+") && !line.startsWith("+++")).length;
+  const removed = allDiffLines.filter((line) => line.startsWith("-") && !line.startsWith("---")).length;
+  const page = normalizePage(requestedPage, allDiffLines.length, DIFF_PAGE_SIZE);
+  const diffLines = allDiffLines.slice((page - 1) * DIFF_PAGE_SIZE, page * DIFF_PAGE_SIZE);
 
   return (
     <Shell>
@@ -66,8 +75,8 @@ export default async function CustomerFortiGateBackupDiffPage({
         description={`${backup.fortigate.customer.name} - ${backup.fortigate.hostname ?? backup.fortigate.managementUrl} - ${formatDateTime(previous.createdAt, timeZone)} naar ${formatDateTime(backup.createdAt, timeZone)}`}
         actions={
           <>
-            <ActionLink href={`/api/backups/${previous.id}/download`}>Vorige downloaden</ActionLink>
-            <ActionLink href={`/api/backups/${backup.id}/download`}>Huidige downloaden</ActionLink>
+            {canDownload ? <ActionLink href={`/api/backups/${previous.id}/download`}>Vorige downloaden</ActionLink> : null}
+            {canDownload ? <ActionLink href={`/api/backups/${backup.id}/download`}>Huidige downloaden</ActionLink> : null}
             <ActionLink href={backupsHref}>Terug naar backups</ActionLink>
           </>
         }
@@ -81,7 +90,7 @@ export default async function CustomerFortiGateBackupDiffPage({
           <div>
             <h2 className="font-semibold">Diff log</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              FortiGate export-metadata is genegeerd; alleen inhoudelijke configuratieregels staan hieronder.
+              FortiGate export-metadata is genegeerd. Per pagina worden maximaal {DIFF_PAGE_SIZE} diffregels gerenderd.
             </p>
           </div>
           <div className="flex flex-wrap gap-2 text-xs font-semibold">
@@ -101,6 +110,13 @@ export default async function CustomerFortiGateBackupDiffPage({
           </ol>
         </div>
       </section>
+      <ServerPagination
+        itemLabel="diffregels"
+        page={page}
+        pageSize={DIFF_PAGE_SIZE}
+        path={`${backupsHref}/${backup.id}/diff`}
+        totalItems={allDiffLines.length}
+      />
     </Shell>
   );
 }

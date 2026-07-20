@@ -1,5 +1,6 @@
 import path from "node:path";
 import { Backup, Customer, FortiGate } from "@prisma/client";
+import { fetchPublicHttps, normalizeHttpsServiceBaseUrl, readResponseText } from "@/lib/network-safety";
 import { getSetting } from "@/lib/settings";
 
 export type ItGlueUploadTarget = FortiGate & { customer: Customer };
@@ -45,31 +46,36 @@ export async function uploadBackupToItGlue({
   if (!settings.apiKey) throw new Error("IT Glue API key ontbreekt.");
   if (!device.customer.itGlueOrganizationId) throw new Error("IT Glue organization ID ontbreekt op de klant.");
   if (!device.itGlueConfigurationId) throw new Error("IT Glue configuration ID ontbreekt op de FortiGate.");
+  if (config.byteLength > 64 * 1024 * 1024) throw new Error("IT Glue upload overschrijdt de limiet van 64 MiB.");
 
   const uploadName = path.basename(filename);
-  const response = await fetch(`${settings.baseUrl}/attachments`, {
-    method: "POST",
-    headers: {
-      "x-api-key": settings.apiKey,
-      "content-type": "application/vnd.api+json",
-      accept: "application/vnd.api+json"
-    },
-    body: JSON.stringify({
-      data: {
-        type: "attachments",
-        attributes: {
-          name: uploadName,
-          description: `FortiGate backup ${backup.id} - ${new Date().toISOString()}`,
-          attachment: config.toString("base64"),
-          "resource-type": "configurations",
-          "resource-id": device.itGlueConfigurationId,
-          "organization-id": device.customer.itGlueOrganizationId
+  const response = await fetchPublicHttps(
+    `${settings.baseUrl}/attachments`,
+    {
+      method: "POST",
+      headers: {
+        "x-api-key": settings.apiKey,
+        "content-type": "application/vnd.api+json",
+        accept: "application/vnd.api+json"
+      },
+      body: JSON.stringify({
+        data: {
+          type: "attachments",
+          attributes: {
+            name: uploadName,
+            description: `FortiGate backup ${backup.id} - ${new Date().toISOString()}`,
+            attachment: config.toString("base64"),
+            "resource-type": "configurations",
+            "resource-id": device.itGlueConfigurationId,
+            "organization-id": device.customer.itGlueOrganizationId
+          }
         }
-      }
-    })
-  });
+      })
+    },
+    { timeoutMs: 45_000, maximumBytes: 512 * 1024, maximumRedirects: 2 }
+  );
 
-  const body = await response.text();
+  const body = await readResponseText(response, 512 * 1024);
   if (!response.ok) {
     throw new Error(`IT Glue upload failed with HTTP ${response.status}.${body ? ` Body: ${body.slice(0, 500)}` : ""}`);
   }
@@ -83,9 +89,7 @@ export async function uploadBackupToItGlue({
 }
 
 function normalizeBaseUrl(value: string) {
-  const trimmed = value.trim().replace(/\/+$/, "");
-  if (!trimmed) return "https://api.itglue.com";
-  return trimmed.includes("://") ? trimmed : `https://${trimmed}`;
+  return normalizeHttpsServiceBaseUrl(value, "https://api.itglue.com", "IT Glue", ["itglue.com"]);
 }
 
 function parseJsonApi(body: string) {

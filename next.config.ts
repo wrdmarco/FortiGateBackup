@@ -1,23 +1,10 @@
 import type { NextConfig } from "next";
 
-function serverUrlHost() {
-  const value = process.env.SERVER_URL?.trim();
-  if (!value) return null;
-  try {
-    return new URL(value.includes("://") ? value : `https://${value}`).host;
-  } catch {
-    throw new Error("SERVER_URL must be a valid URL or hostname.");
-  }
-}
-
-const serverHost = serverUrlHost();
-
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   experimental: {
     serverActions: {
-      bodySizeLimit: "2mb",
-      ...(serverHost ? { allowedOrigins: [serverHost] } : {})
+      bodySizeLimit: "2mb"
     }
   },
   async headers() {

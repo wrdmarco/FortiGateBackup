@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { updateFortiGate } from "@/app/actions";
 import { ActionLink, Button, Field, PageHeader, Shell } from "@/components/ui";
-import { assertOperationalTenant, assertPermission, assertTenantAccess, requireTenantUser } from "@/lib/authz";
+import { assertOperationalTenant, assertTenantAccess, requirePermission } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { isItGlueEnabled } from "@/lib/itglue";
 
@@ -12,7 +12,7 @@ export default async function EditCustomerFortiGatePage({
 }: {
   params: Promise<{ id: string; fortigateId: string }>;
 }) {
-  const user = await requireTenantUser();
+  const user = await requirePermission("fortigates.update");
   const { id, fortigateId } = await params;
   const device = await prisma.fortiGate.findFirst({
     where: { id: fortigateId, customerId: id },
@@ -21,7 +21,6 @@ export default async function EditCustomerFortiGatePage({
   if (!device) notFound();
   assertTenantAccess(user, device.customer.tenantId);
   await assertOperationalTenant(user, device.customer.tenantId);
-  await assertPermission(user, "fortigates.update");
   const itGlueEnabled = await isItGlueEnabled(device.customer.tenantId);
   const detailHref = `/customers/${device.customerId}/fortigates/${device.id}`;
 
@@ -65,7 +64,7 @@ export default async function EditCustomerFortiGatePage({
         <Field label="Cron expressie" name="cronExpression" defaultValue={device.cronExpression ?? ""} />
         <label className="flex items-start gap-3 rounded-md border border-border bg-surface-soft p-4 text-sm">
           <input name="tlsVerify" type="hidden" value="false" />
-          <input className="mt-1" name="tlsVerify" type="checkbox" value="true" defaultChecked={device.tlsVerify} />
+          <input className="mt-1" name="tlsVerify" type="checkbox" value="true" defaultChecked={device.tlsVerify} required />
           <span>
             <span className="block font-medium">TLS certificaat valideren</span>
             <span className="text-muted-foreground">Gebruik dit alleen met een vertrouwd certificaat op de managementinterface.</span>

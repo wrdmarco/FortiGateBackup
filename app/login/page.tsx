@@ -1,12 +1,17 @@
 import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/login-form";
 import { prisma } from "@/lib/db";
+import { hasAvailableEntraSso } from "@/lib/entra-auth";
 
 export const dynamic = "force-dynamic";
 
-export default async function LoginPage() {
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const tenantCount = await prisma.tenant.count();
   if (tenantCount === 0) redirect("/setup");
+  const [{ error }, ssoAvailable] = await Promise.all([
+    searchParams,
+    hasAvailableEntraSso().catch(() => false)
+  ]);
 
   return (
     <main className="grid min-h-screen place-items-center bg-background px-4 py-10">
@@ -23,7 +28,10 @@ export default async function LoginPage() {
           </div>
         </div>
         <div className="px-6 py-6">
-          <LoginForm />
+          <LoginForm
+            ssoAvailable={ssoAvailable}
+            externalError={error ? "Inloggen is niet gelukt. Controleer uw account of neem contact op met uw beheerder." : undefined}
+          />
         </div>
       </section>
     </main>

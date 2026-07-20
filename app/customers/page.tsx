@@ -1,26 +1,52 @@
 import { createCustomer } from "@/app/actions";
 import { Modal } from "@/components/modal";
+import { firstQueryValue, normalizePage, parsePageParam, ServerPagination } from "@/components/server-pagination";
 import { ActionLink, Badge, Button, Field, PageHeader, Shell, TableShell } from "@/components/ui";
-import { isSuperAdmin } from "@/lib/authz";
+import { requirePermission, tenantFilter } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { hasPermission } from "@/lib/rbac";
-import { requireUser } from "@/lib/session";
-import { isGlobalTenantId, mainTenantId } from "@/lib/tenant-main";
+import { isGlobalTenantId } from "@/lib/tenant-main";
 
 export const dynamic = "force-dynamic";
+const PAGE_SIZE = 25;
 
-export default async function CustomersPage() {
-  const user = await requireUser();
-  const globalTenantId = await mainTenantId();
-  const activeTenantId = isSuperAdmin(user) ? user.activeTenantId ?? globalTenantId ?? "" : user.tenantId ?? "";
+export default async function CustomersPage({
+  searchParams
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const user = await requirePermission("customers.read");
+  const queryParams = await searchParams;
+  const query = firstQueryValue(queryParams.q);
+  const requestedPage = parsePageParam(queryParams.page);
+  const activeTenantId = tenantFilter(user) ?? "";
   const isGlobalContext = await isGlobalTenantId(activeTenantId);
   const canCreateCustomer = await hasPermission(user, "customers.create");
-  const customerWhere = { tenantId: isGlobalContext ? "__global_has_no_customers__" : activeTenantId };
-  const customers = await prisma.customer.findMany({
-    where: customerWhere,
-    include: { tenant: true, devices: true },
-    orderBy: { name: "asc" }
-  });
+  const customerWhere = {
+    tenantId: isGlobalContext ? "__global_has_no_customers__" : activeTenantId,
+    ...(query
+      ? {
+          OR: [
+            { name: { contains: query } },
+            { contact: { contains: query } },
+            { email: { contains: query } }
+          ]
+        }
+      : {})
+  };
+  const totalCustomers = isGlobalContext ? 0 : await prisma.customer.count({ where: customerWhere });
+  const page = normalizePage(requestedPage, totalCustomers, PAGE_SIZE);
+  const customers = isGlobalContext
+    ? []
+    : await prisma.customer.findMany({
+        where: customerWhere,
+        include: {
+          _count: { select: { devices: true } }
+        },
+        orderBy: { name: "asc" },
+        skip: (page - 1) * PAGE_SIZE,
+        take: PAGE_SIZE
+      });
 
   return (
     <Shell>
@@ -55,13 +81,25 @@ export default async function CustomersPage() {
           Global is alleen voor platformbeheer. Wissel naar een tenant om klanten te beheren.
         </div>
       ) : null}
-      <div className="mt-6">
+      {!isGlobalContext ? <div className="mt-6">
+        <form className="mb-4 flex flex-wrap items-end gap-3" method="get">
+          <label className="grid min-w-64 flex-1 gap-1 text-sm">
+            <span className="font-medium">Zoeken</span>
+            <input
+              className="min-h-11 rounded-md border border-border bg-surface px-3 py-2 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+              defaultValue={query}
+              name="q"
+              placeholder="Naam, contactpersoon of e-mail"
+            />
+          </label>
+          <Button variant="secondary">Zoeken</Button>
+          {query ? <ActionLink href="/customers">Filter wissen</ActionLink> : null}
+        </form>
         <TableShell>
           <table className="table-pro w-full text-left text-sm">
             <thead className="bg-surface-soft">
               <tr>
                 <th className="px-3 py-2">Klant</th>
-                <th className="px-3 py-2">Tenant</th>
                 <th className="px-3 py-2">Contact</th>
                 <th className="px-3 py-2">FortiGates</th>
                 <th className="px-3 py-2">Integraties</th>
@@ -72,9 +110,8 @@ export default async function CustomersPage() {
               {customers.map((customer) => (
                 <tr key={customer.id} className="border-t border-border">
                   <td className="px-3 py-2 font-medium">{customer.name}</td>
-                  <td className="px-3 py-2">{customer.tenant.name}</td>
                   <td className="px-3 py-2">{customer.email ?? customer.contact ?? "-"}</td>
-                  <td className="px-3 py-2"><Badge>{customer.devices.length}</Badge></td>
+                  <td className="px-3 py-2"><Badge>{customer._count.devices}</Badge></td>
                   <td className="px-3 py-2">
                     <div className="flex flex-wrap gap-2">
                       {customer.itGlueOrganizationId ? <Badge tone="success">IT Glue {customer.itGlueOrganizationId}</Badge> : null}
@@ -87,10 +124,23 @@ export default async function CustomersPage() {
                   </td>
                 </tr>
               ))}
+              {!customers.length ? (
+                <tr className="border-t border-border">
+                  <td className="px-3 py-8 text-center text-muted-foreground" colSpan={5}>Geen klanten gevonden.</td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </TableShell>
-      </div>
+        <ServerPagination
+          itemLabel="klanten"
+          page={page}
+          pageSize={PAGE_SIZE}
+          path="/customers"
+          query={{ q: query }}
+          totalItems={totalCustomers}
+        />
+      </div> : null}
     </Shell>
   );
 }

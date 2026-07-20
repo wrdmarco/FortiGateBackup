@@ -1,0 +1,30 @@
+[Unit]
+Description=FortiGate Backup Portal Update Maintenance Server
+Wants=network-online.target
+After=network-online.target
+Conflicts=fortigate-backup.service
+
+[Service]
+Type=simple
+User=@SERVICE_USER@
+Group=@SERVICE_GROUP@
+WorkingDirectory="@APP_DIR@"
+Environment=NODE_ENV=production
+Environment=HOST=0.0.0.0
+Environment=PORT=3000
+ExecStart=/usr/bin/env node "@APP_DIR@/data/update-runtime/maintenance-server.mjs" serve --app-dir "@APP_DIR@"
+Restart=on-failure
+RestartSec=1
+TimeoutStopSec=10
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=full
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6

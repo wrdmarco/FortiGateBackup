@@ -3,6 +3,7 @@ import { UserRole } from "@prisma/client";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { hasPermission } from "@/lib/rbac";
 import {
   breakGlassCookieName,
   breakGlassCookieOptions,
@@ -19,6 +20,10 @@ async function defaultActiveTenantId(user: { role: UserRole; tenantId: string | 
   return user.tenantId;
 }
 
+function sessionTokenHash(token: string) {
+  return crypto.createHash("sha256").update(token, "utf8").digest("hex");
+}
+
 export async function createSession(userId: string) {
   const token = crypto.randomBytes(32).toString("hex");
   const expires = sessionExpiresAt();
@@ -32,7 +37,7 @@ export async function createSession(userId: string) {
       expires: { lt: new Date() }
     }
   });
-  await prisma.session.create({ data: { userId, sessionToken: token, activeTenantId, expires } });
+  await prisma.session.create({ data: { userId, sessionToken: sessionTokenHash(token), activeTenantId, expires } });
   const cookieStore = await cookies();
   cookieStore.set(sessionCookieName, token, sessionCookieOptions(expires));
 }
@@ -44,7 +49,7 @@ export async function createBreakGlassSettingsSession(userId: string) {
   await prisma.session.create({
     data: {
       userId,
-      sessionToken: token,
+      sessionToken: sessionTokenHash(token),
       activeTenantId,
       breakGlassSettingsOnly: true,
       expires
@@ -58,7 +63,11 @@ export async function createBreakGlassSettingsSession(userId: string) {
 export async function destroySession() {
   const cookieStore = await cookies();
   const token = cookieStore.get(sessionCookieName)?.value;
-  if (token) await prisma.session.deleteMany({ where: { sessionToken: token } });
+  if (token) {
+    await prisma.session.deleteMany({
+      where: { sessionToken: { in: [sessionTokenHash(token), token] } }
+    });
+  }
   cookieStore.delete(sessionCookieName);
   cookieStore.delete(breakGlassCookieName);
 }
@@ -67,14 +76,26 @@ export async function currentUser() {
   const cookieStore = await cookies();
   const token = cookieStore.get(sessionCookieName)?.value;
   if (!token) return null;
-  const session = await prisma.session.findUnique({
-    where: { sessionToken: token },
+  const tokenHash = sessionTokenHash(token);
+  const session = await prisma.session.findFirst({
+    where: { sessionToken: { in: [tokenHash, token] } },
     include: { user: { include: { tenant: true } } }
   });
   if (!session || session.expires < new Date() || !session.user.active) return null;
+  if (session.sessionToken !== tokenHash) {
+    await prisma.session.update({ where: { id: session.id }, data: { sessionToken: tokenHash } });
+  }
   if (session.user.role !== UserRole.SUPER_ADMIN && !session.user.tenant?.active) return null;
   const fallbackActiveTenantId = await defaultActiveTenantId(session.user);
-  const requestedActiveTenantId = session.user.role === UserRole.SUPER_ADMIN ? session.activeTenantId ?? fallbackActiveTenantId : fallbackActiveTenantId;
+  const globalTenantId = await mainTenantId();
+  const canSwitchTenants =
+    session.user.role === UserRole.SUPER_ADMIN ||
+    (session.user.tenantId === globalTenantId &&
+      (await hasPermission(
+        { ...session.user, activeTenantId: session.activeTenantId ?? fallbackActiveTenantId },
+        "platform.tenants.switch"
+      )));
+  const requestedActiveTenantId = canSwitchTenants ? session.activeTenantId ?? fallbackActiveTenantId : fallbackActiveTenantId;
   const activeTenant = requestedActiveTenantId
     ? await prisma.tenant.findFirst({
         where: { id: requestedActiveTenantId, active: true },
@@ -84,13 +105,13 @@ export async function currentUser() {
   const activeTenantId = activeTenant?.id ?? fallbackActiveTenantId ?? null;
   if (activeTenantId !== session.activeTenantId) {
     await prisma.session.update({
-      where: { sessionToken: token },
+      where: { id: session.id },
       data: { activeTenantId }
     });
   }
   if (session.expires.getTime() - Date.now() < sessionRefreshThresholdMs) {
     await prisma.session.update({
-      where: { sessionToken: token },
+      where: { id: session.id },
       data: { expires: sessionExpiresAt() }
     });
   }
@@ -109,8 +130,13 @@ export async function setActiveTenantContext(tenantId: string) {
   const cookieStore = await cookies();
   const token = cookieStore.get(sessionCookieName)?.value;
   if (!token) redirect("/login");
+  const session = await prisma.session.findFirst({
+    where: { sessionToken: { in: [sessionTokenHash(token), token] } },
+    select: { id: true }
+  });
+  if (!session) redirect("/login");
   await prisma.session.update({
-    where: { sessionToken: token },
+    where: { id: session.id },
     data: { activeTenantId: tenantId }
   });
 }

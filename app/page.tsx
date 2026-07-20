@@ -1,40 +1,47 @@
 import { BackupStatus } from "@prisma/client";
 import { ActionLink, Badge, Card, PageHeader, Shell, TableShell } from "@/components/ui";
 import { getAppUpdateStatus } from "@/lib/app-update";
-import { isSuperAdmin } from "@/lib/authz";
+import { requireContextPermission, tenantFilter } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { hasPermission } from "@/lib/rbac";
-import { requireUser } from "@/lib/session";
-import { isGlobalTenantId, mainTenantId } from "@/lib/tenant-main";
+import { isGlobalTenantId } from "@/lib/tenant-main";
 import { formatDateTime } from "@/lib/time";
 import { getTenantTimeZone } from "@/lib/tenant-timezone";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const user = await requireUser();
-  const canManagePlatform = isSuperAdmin(user);
-  const globalTenantId = await mainTenantId();
-  const tenantId = canManagePlatform ? user.activeTenantId ?? globalTenantId ?? undefined : user.tenantId ?? undefined;
+  const user = await requireContextPermission({
+    global: "platform.dashboard.read",
+    tenant: "tenant.dashboard.read"
+  });
+  const tenantId = tenantFilter(user);
   const isGlobalContext = await isGlobalTenantId(tenantId);
-  const canReadUpdates = isGlobalContext && (await hasPermission(user, "platform.updates.read"));
+  const [canReadUpdates, canReadAudit, canReadAlerts, canReadTenants] = await Promise.all([
+    isGlobalContext ? hasPermission(user, "platform.updates.read") : Promise.resolve(false),
+    hasPermission(user, isGlobalContext ? "platform.audit.read" : "audit.read"),
+    !isGlobalContext ? hasPermission(user, "alerts.read") : Promise.resolve(false),
+    isGlobalContext ? hasPermission(user, "platform.tenants.read") : Promise.resolve(false)
+  ]);
   const timeZone = await getTenantTimeZone(tenantId);
   const customerWhere = tenantId && !isGlobalContext ? { tenantId } : { tenantId: "__global_has_no_customers__" };
   const fortigateWhere = tenantId && !isGlobalContext ? { customer: { tenantId } } : { customer: { tenantId: "__global_has_no_fortigates__" } };
   const backupWhere = tenantId && !isGlobalContext ? { fortigate: { customer: { tenantId } } } : { fortigate: { customer: { tenantId: "__global_has_no_backups__" } } };
   const auditWhere = tenantId ? { tenantId } : {};
   const [tenants, customers, fortigates, backups, failures, latestAudit, changed, updateStatus] = await Promise.all([
-    canManagePlatform ? prisma.tenant.count() : Promise.resolve(1),
+    canReadTenants ? prisma.tenant.count() : Promise.resolve(isGlobalContext ? 0 : 1),
     prisma.customer.count({ where: customerWhere }),
     prisma.fortiGate.count({ where: fortigateWhere }),
     prisma.backup.count({ where: backupWhere }),
     prisma.backup.count({ where: { ...backupWhere, status: BackupStatus.FAILED } }),
-    prisma.auditLog.findMany({
-      where: auditWhere,
-      include: { user: { select: { name: true, email: true } } },
-      orderBy: { createdAt: "desc" },
-      take: 8
-    }),
+    canReadAudit && tenantId
+      ? prisma.auditLog.findMany({
+          where: auditWhere,
+          include: { user: { select: { name: true, email: true } } },
+          orderBy: { createdAt: "desc" },
+          take: 8
+        })
+      : Promise.resolve([]),
     prisma.backup.count({ where: { ...backupWhere, status: BackupStatus.CHANGED } }),
     canReadUpdates ? getAppUpdateStatus() : Promise.resolve(null)
   ]);
@@ -44,14 +51,20 @@ export default async function DashboardPage() {
       <PageHeader
         title="Dashboard"
         description={isGlobalContext ? "Platformstatus, tenants, updates en Global audit." : "Tenantstatus van FortiGates, backups en alerts."}
-        actions={!isGlobalContext ? <ActionLink href="/alerts" variant="secondary">Alerts bekijken</ActionLink> : null}
+        actions={canReadAlerts ? <ActionLink href="/alerts" variant="secondary">Alerts bekijken</ActionLink> : null}
       />
       <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
-        <Card title={canManagePlatform ? "Tenants" : "Tenant"} value={tenants} />
-        <Card title="Klanten" value={customers} />
-        <Card title="FortiGates" value={fortigates} />
-        <Card title="Backups" value={backups} detail={`${changed} gewijzigd`} />
-        <Card title="Fouten" value={failures} />
+        {isGlobalContext ? (
+          canReadTenants ? <Card title="Tenants" value={tenants} /> : null
+        ) : (
+          <>
+            <Card title="Tenant" value={tenants} />
+            <Card title="Klanten" value={customers} />
+            <Card title="FortiGates" value={fortigates} />
+            <Card title="Backups" value={backups} detail={`${changed} gewijzigd`} />
+            <Card title="Fouten" value={failures} />
+          </>
+        )}
         {canReadUpdates ? (
           <Card
             title="Applicatie"
@@ -80,7 +93,7 @@ export default async function DashboardPage() {
         </section>
       ) : null}
 
-      <section className="mt-8">
+      {canReadAudit ? <section className="mt-8">
         <h2 className="mb-3 text-xl font-semibold">Recente activiteiten</h2>
         <TableShell>
           <table className="table-pro w-full text-left text-sm">
@@ -93,7 +106,7 @@ export default async function DashboardPage() {
               </tr>
             </thead>
             <tbody>
-              {latestAudit.map((item) => {
+              {latestAudit.length ? latestAudit.map((item) => {
                 const metadata = parseMetadata(item.metadata);
                 return (
                   <tr key={item.id} className="border-t border-border">
@@ -106,11 +119,15 @@ export default async function DashboardPage() {
                     <td className="px-3 py-2">{formatDateTime(item.createdAt, timeZone)}</td>
                   </tr>
                 );
-              })}
+              }) : (
+                <tr className="border-t border-border">
+                  <td className="px-3 py-8 text-center text-muted-foreground" colSpan={4}>Nog geen auditregels voor deze tenant.</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </TableShell>
-      </section>
+      </section> : null}
     </Shell>
   );
 }

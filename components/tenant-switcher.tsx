@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 type TenantOption = {
   id: string;
@@ -21,10 +21,6 @@ export function TenantSwitcher({
   canSwitch: boolean;
 }) {
   const [selectedTenantId, setSelectedTenantId] = useState(activeTenantId ?? "");
-
-  useEffect(() => {
-    setSelectedTenantId(activeTenantId ?? "");
-  }, [activeTenantId]);
 
   if (!canSwitch) {
     return (

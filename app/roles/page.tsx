@@ -4,13 +4,15 @@ import { deleteAccessRole } from "@/app/actions";
 import { Modal } from "@/components/modal";
 import { RoleCreateForm } from "@/components/role-create-form";
 import { RoleEditForm } from "@/components/role-edit-form";
-import { isSuperAdmin, requireTenantUser } from "@/lib/authz";
+import { firstQueryValue, normalizePage, parsePageParam, ServerPagination } from "@/components/server-pagination";
+import { requireContextPermission, tenantFilter } from "@/lib/authz";
 import { prisma } from "@/lib/db";
-import { ensureTenantRbac, permissions } from "@/lib/rbac";
-import { mainTenantId } from "@/lib/tenant-main";
+import { ensureTenantRbac, hasPermission, permissions } from "@/lib/rbac";
+import { isGlobalTenantId } from "@/lib/tenant-main";
 import { Button, PageHeader, Panel, Shell } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
+const PAGE_SIZE = 8;
 
 type RoleWithDetails = Prisma.AccessRoleGetPayload<{
   include: {
@@ -24,21 +26,52 @@ type PermissionForDisplay = {
   description: string;
 };
 
-export default async function RolesPage() {
-  const user = await requireTenantUser();
-  const canManagePlatform = isSuperAdmin(user);
-  const globalTenantId = canManagePlatform ? await mainTenantId() : null;
-  const selectedTenantId = canManagePlatform ? user.activeTenantId ?? globalTenantId : user.tenantId;
+export default async function RolesPage({
+  searchParams
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const user = await requireContextPermission({
+    global: "platform.roles.read",
+    tenant: "tenant.roles.read"
+  });
+  const queryParams = await searchParams;
+  const query = firstQueryValue(queryParams.q);
+  const requestedPage = parsePageParam(queryParams.page);
+  const selectedTenantId = tenantFilter(user);
+  const isGlobalContext = await isGlobalTenantId(selectedTenantId);
+  const [canCreate, canUpdate, canDelete] = await Promise.all([
+    hasPermission(user, isGlobalContext ? "platform.roles.create" : "tenant.roles.create"),
+    hasPermission(user, isGlobalContext ? "platform.roles.update" : "tenant.roles.update"),
+    hasPermission(user, isGlobalContext ? "platform.roles.delete" : "tenant.roles.delete")
+  ]);
 
   let roles: RoleWithDetails[] = [];
   let rolesError: string | null = null;
+  let totalRoles = 0;
+  let page = 1;
 
   if (selectedTenantId) {
     try {
       await ensureTenantRbac(selectedTenantId);
+      const roleWhere = {
+        tenantId: selectedTenantId,
+        ...(query
+          ? {
+              OR: [
+                { name: { contains: query } },
+                { description: { contains: query } }
+              ]
+            }
+          : {})
+      };
+      totalRoles = await prisma.accessRole.count({ where: roleWhere });
+      page = normalizePage(requestedPage, totalRoles, PAGE_SIZE);
       roles = await prisma.accessRole.findMany({
-        where: { tenantId: selectedTenantId },
+        where: roleWhere,
         orderBy: [{ system: "desc" }, { name: "asc" }],
+        skip: (page - 1) * PAGE_SIZE,
+        take: PAGE_SIZE,
         include: {
           permissions: { include: { permission: true } },
           _count: { select: { users: true } }
@@ -54,7 +87,7 @@ export default async function RolesPage() {
   const selectedTenant = selectedTenantId
     ? await prisma.tenant.findUnique({ where: { id: selectedTenantId }, select: { id: true, name: true } })
     : null;
-  const showPlatformPermissions = selectedTenantId === globalTenantId;
+  const showPlatformPermissions = isGlobalContext;
   const visiblePermissions: PermissionForDisplay[] = permissions
     .filter((permission) => showPlatformPermissions || !permission.key.startsWith("platform."))
     .map((permission) => ({ key: permission.key, category: permission.category, description: permission.description }));
@@ -79,7 +112,7 @@ export default async function RolesPage() {
         title="Rollen"
         description="Tenant-scoped RBAC rollen met een centrale permission catalogus voor tenant- en platformrechten."
         actions={
-          selectedTenantId && !rolesError ? (
+          selectedTenantId && !rolesError && canCreate ? (
             <Modal
               title="Custom rol aanmaken"
               description={selectedTenant ? `Maak een tenantrol voor ${selectedTenant.name} en kies exact welke rechten erbij horen.` : "Maak een tenantrol en kies exact welke rechten erbij horen."}
@@ -96,6 +129,19 @@ export default async function RolesPage() {
           title={selectedTenant ? `Rollenmatrix voor ${selectedTenant.name}` : "Rollenmatrix"}
           description="Vergelijk permissies per rol."
         >
+          <form className="mb-4 flex flex-wrap items-end gap-3" method="get">
+            <label className="grid min-w-64 flex-1 gap-1 text-sm">
+              <span className="font-medium">Rollen zoeken</span>
+              <input
+                className="min-h-11 rounded-md border border-border bg-surface px-3 py-2 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+                defaultValue={query}
+                name="q"
+                placeholder="Naam of omschrijving"
+              />
+            </label>
+            <Button variant="secondary">Zoeken</Button>
+            {query ? <a className="inline-flex min-h-11 items-center justify-center rounded-md border border-border bg-surface px-4 py-2 text-sm font-medium" href="/roles">Filter wissen</a> : null}
+          </form>
           {rolesError ? (
             <div className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
               {rolesError}
@@ -160,7 +206,7 @@ export default async function RolesPage() {
               Geen rollen gevonden voor deze tenant.
             </div>
           ) : null}
-          {roles.some((role) => !role.system) ? (
+          {(canUpdate || canDelete) && roles.some((role) => !role.system) ? (
             <div className="mt-4 grid gap-2 rounded-md border border-border bg-surface-soft p-3">
               <h3 className="text-sm font-semibold">Custom rollen beheren</h3>
               <div className="flex flex-wrap gap-2">
@@ -172,7 +218,7 @@ export default async function RolesPage() {
                       <span className="text-xs text-muted-foreground">
                         {role._count.users} gebruiker{role._count.users === 1 ? "" : "s"}
                       </span>
-                      <Modal
+                      {canUpdate ? <Modal
                         title={`Rol ${role.name} aanpassen`}
                         description="Wijzig de naam, omschrijving en permissies van deze custom rol."
                         trigger={<Button variant="secondary">Aanpassen</Button>}
@@ -186,22 +232,30 @@ export default async function RolesPage() {
                             permissionKeys: role.permissions.map(({ permission }) => permission.key)
                           }}
                         />
-                      </Modal>
-                      {role._count.users === 0 ? (
+                      </Modal> : null}
+                      {canDelete && role._count.users === 0 ? (
                         <form action={deleteAccessRole}>
                           <input type="hidden" name="roleId" value={role.id} />
                           <Button variant="danger">Verwijderen</Button>
                         </form>
-                      ) : (
+                      ) : canDelete ? (
                         <Button variant="secondary" disabled>
                           In gebruik
                         </Button>
-                      )}
+                      ) : null}
                     </div>
                   ))}
               </div>
             </div>
           ) : null}
+          <ServerPagination
+            itemLabel="rollen"
+            page={page}
+            pageSize={PAGE_SIZE}
+            path="/roles"
+            query={{ q: query }}
+            totalItems={totalRoles}
+          />
         </Panel>
       </div>
     </Shell>

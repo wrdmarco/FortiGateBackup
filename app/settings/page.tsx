@@ -4,13 +4,12 @@ import { SettingsTabs } from "@/components/settings-tabs";
 import { UpdateStartForm } from "@/components/update-start-form";
 import { Badge, PageHeader, Panel, Shell } from "@/components/ui";
 import { getAppUpdateStatus } from "@/lib/app-update";
-import { isSuperAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { getMailProviderMode } from "@/lib/mail";
 import { hasPermission } from "@/lib/rbac";
 import { getSetting } from "@/lib/settings";
 import { requireUser } from "@/lib/session";
-import { mainTenantId } from "@/lib/tenant-main";
+import { isGlobalTenantId, mainTenantId } from "@/lib/tenant-main";
 import { defaultTimeZone } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
@@ -31,14 +30,35 @@ export default async function SettingsPage({
   searchParams?: Promise<{ tab?: string }>;
 }) {
   const user = await requireUser({ allowBreakGlassSettingsOnly: true });
-  const canManagePlatform = isSuperAdmin(user);
+  const canManagePlatform = Boolean(user.tenantId && (await isGlobalTenantId(user.tenantId)));
   const params = await searchParams;
   const globalTenantId = await mainTenantId();
   const selectedTenantId = canManagePlatform ? user.activeTenantId ?? globalTenantId ?? "" : user.tenantId ?? "";
   const tenantId = selectedTenantId || null;
   const isGlobalScope = Boolean(tenantId && tenantId === globalTenantId);
-  const canReadUpdates = isGlobalScope && (await hasPermission(user, "platform.updates.read"));
-  const canRunUpdates = isGlobalScope && (await hasPermission(user, "platform.updates.run"));
+  const [canReadBaseSettings, canReadMail, canReadItGlue, canReadAutotask, canReadSso, canReadUpdates, canRunUpdates] =
+    user.breakGlassSettingsOnly
+      ? [false, false, false, false, true, false, false]
+      : await Promise.all([
+          hasPermission(user, isGlobalScope ? "platform.settings.read" : "tenant.settings.read"),
+          hasPermission(user, "integrations.mail.read"),
+          hasPermission(user, "integrations.itglue.read"),
+          hasPermission(user, "integrations.autotask.read"),
+          hasPermission(user, "integrations.sso.read"),
+          isGlobalScope ? hasPermission(user, "platform.updates.read") : Promise.resolve(false),
+          isGlobalScope ? hasPermission(user, "platform.updates.run") : Promise.resolve(false)
+        ]);
+  const [canUpdateBaseSettings, canUpdateMail, canUpdateItGlue, canUpdateAutotask, canUpdateSso, canTestMail] =
+    user.breakGlassSettingsOnly
+      ? [false, false, false, false, true, false]
+      : await Promise.all([
+          hasPermission(user, isGlobalScope ? "platform.settings.update" : "tenant.settings.update"),
+          hasPermission(user, "integrations.mail.update"),
+          hasPermission(user, "integrations.itglue.update"),
+          hasPermission(user, "integrations.autotask.update"),
+          hasPermission(user, "integrations.sso.update"),
+          hasPermission(user, "integrations.mail.test")
+        ]);
   const selectedTenantName =
     user.activeTenant?.name ??
     (user.tenantId === selectedTenantId ? user.tenant?.name : null) ??
@@ -89,7 +109,7 @@ export default async function SettingsPage({
     updateStatus
   ] = await Promise.all([
     getSetting("portal.siteUrl", tenantId),
-    tenantId ? getSetting("portal.siteUrl", null) : Promise.resolve(process.env.SERVER_URL ?? ""),
+    globalTenantId ? getSetting("portal.siteUrl", globalTenantId) : Promise.resolve(""),
     getSetting("ui.timeZone", tenantId),
     getSetting("itglue.enabled", tenantId),
     getSetting("itglue.baseUrl", tenantId),
@@ -185,12 +205,82 @@ export default async function SettingsPage({
     backupNotifyRecipients: backupNotifyRecipients ?? "",
     backupWebhookUrl: backupWebhookUrl ?? ""
   };
-  const formProps = { action: saveSettings, testMailAction: testMailSettings, tenants: [], selectedTenantId, selectedTenantName, values, allowSystemMail: !isGlobalScope };
+  const safeValues = {
+    ...values,
+    ...(!canReadBaseSettings
+      ? {
+          portalSiteUrl: "",
+          effectiveSiteUrl: "",
+          schedulerEnabled: false,
+          schedulerMaxParallelJobs: "",
+          backupScheduleEnabled: false,
+          backupDefaultSchedule: "DAILY",
+          backupRetentionCount: "",
+          backupRetryCount: "",
+          backupNotifyFailures: false,
+          backupNotifySuccess: false,
+          backupNotifyEmail: false,
+          backupNotifyWebhook: false,
+          backupNotifyAutotask: false,
+          backupNotifyRecipients: "",
+          backupWebhookUrl: ""
+        }
+      : {}),
+    ...(!canReadItGlue ? { itGlueEnabled: false, itGlueBaseUrl: "", hasItGlueApiKey: false } : {}),
+    ...(!canReadAutotask
+      ? {
+          autotaskEnabled: false,
+          autotaskBaseUrl: "",
+          autotaskUsername: "",
+          hasAutotaskIntegrationCode: false,
+          hasAutotaskSecret: false,
+          autotaskQueueId: "",
+          autotaskPriorityId: "",
+          autotaskWorkTypeId: "",
+          autotaskStatusId: "",
+          autotaskSourceId: "",
+          autotaskIssueTypeId: "",
+          autotaskSubIssueTypeId: ""
+        }
+      : {}),
+    ...(!canReadMail
+      ? {
+          mailProvider: "SMTP" as const,
+          smtpHost: "",
+          smtpPort: "",
+          smtpUser: "",
+          smtpFrom: "",
+          graphFrom: "",
+          graphTenantId: "",
+          graphClientId: "",
+          hasSmtpPassword: false,
+          hasGraphClientSecret: false
+        }
+      : {}),
+    ...(!canReadSso ? { entraEnabled: false, entraTenantId: "", entraClientId: "", hasEntraSecret: false } : {})
+  };
+  const formProps = {
+    action: saveSettings,
+    testMailAction: testMailSettings,
+    tenants: [],
+    selectedTenantId,
+    selectedTenantName,
+    values: safeValues,
+    allowSystemMail: !isGlobalScope
+  };
   const configTabs = user.breakGlassSettingsOnly
     ? ["sso"]
-    : isGlobalScope ? ["mail", "sso", "scheduler"] : ["portal", "itglue", "autotask", "mail", "sso", "scheduler"];
+    : [
+        ...(!isGlobalScope && canReadBaseSettings ? ["portal"] : []),
+        ...(!isGlobalScope && canReadItGlue ? ["itglue"] : []),
+        ...(!isGlobalScope && canReadAutotask ? ["autotask"] : []),
+        ...(canReadMail ? ["mail"] : []),
+        ...(canReadSso ? ["sso"] : []),
+        ...(canReadBaseSettings ? ["scheduler"] : [])
+      ];
   const tabIds = [...configTabs, ...(updateStatus ? ["updates"] : [])];
-  const activeTab = params?.tab && tabIds.includes(params.tab) ? params.tab : configTabs[0];
+  if (!tabIds.length || (params?.tab && !tabIds.includes(params.tab))) notFound();
+  const activeTab = params?.tab ?? tabIds[0];
 
   return (
     <Shell>
@@ -201,72 +291,79 @@ export default async function SettingsPage({
       <SettingsTabs
         activeTab={activeTab}
         tabs={[
-          ...(!isGlobalScope ? [{
+          ...(!isGlobalScope && canReadBaseSettings ? [{
             id: "portal",
             label: "Portal",
             href: settingsHref("portal"),
             description: "Beheer de publieke URL per tenant voor links, notificaties en portalverwijzingen.",
             content: (
               <Panel className="max-w-4xl">
-                <SettingsForm {...formProps} visibleTabs={["portal"]} initialTab="portal" />
+                <SettingsForm key={`${selectedTenantId}:portal`} {...formProps} canUpdate={canUpdateBaseSettings} visibleTabs={["portal"]} initialTab="portal" />
               </Panel>
             )
           }] : []),
-          ...(!isGlobalScope ? [{
+          ...(!isGlobalScope && canReadItGlue ? [{
             id: "itglue",
             label: "IT Glue",
             href: settingsHref("itglue"),
             description: "Koppel FortiGate backups aan IT Glue organizations en configurations.",
             content: (
               <Panel className="max-w-4xl">
-                <SettingsForm {...formProps} visibleTabs={["itglue"]} initialTab="itglue" />
+                <SettingsForm key={`${selectedTenantId}:itglue`} {...formProps} canUpdate={canUpdateItGlue} visibleTabs={["itglue"]} initialTab="itglue" />
               </Panel>
             )
           }] : []),
-          ...(!isGlobalScope ? [{
+          ...(!isGlobalScope && canReadAutotask ? [{
             id: "autotask",
             label: "Autotask",
             href: settingsHref("autotask"),
             description: "Maak Autotask tickets voor backupreports onder de juiste klant.",
             content: (
               <Panel className="max-w-4xl">
-                <SettingsForm {...formProps} visibleTabs={["autotask"]} initialTab="autotask" />
+                <SettingsForm key={`${selectedTenantId}:autotask`} {...formProps} canUpdate={canUpdateAutotask} visibleTabs={["autotask"]} initialTab="autotask" />
               </Panel>
             )
           }] : []),
-          {
+          ...(canReadMail ? [{
             id: "mail",
             label: "Mail",
             href: settingsHref("mail"),
             description: isGlobalScope ? "Beheer de globale maildefaults voor onboarding en notificaties." : "Beheer SMTP of Microsoft Graph mailconfiguratie voor deze tenant.",
             content: (
               <Panel className="max-w-4xl">
-                <SettingsForm {...formProps} visibleTabs={["mail"]} initialTab="mail" />
+                <SettingsForm
+                  key={`${selectedTenantId}:mail`}
+                  {...formProps}
+                  canUpdate={canUpdateMail}
+                  canTestMail={canTestMail}
+                  visibleTabs={["mail"]}
+                  initialTab="mail"
+                />
               </Panel>
             )
-          },
-          {
+          }] : []),
+          ...(canReadBaseSettings ? [{
             id: "scheduler",
             label: isGlobalScope ? "Scheduler" : "Backupschema",
             href: settingsHref("scheduler"),
             description: isGlobalScope ? "Beheer scheduler-engine en globale veiligheidslimieten." : "Beheer automatische backupinstellingen voor deze tenant.",
             content: (
               <Panel className="max-w-4xl">
-                <SettingsForm {...formProps} visibleTabs={["scheduler"]} initialTab="scheduler" />
+                <SettingsForm key={`${selectedTenantId}:scheduler`} {...formProps} canUpdate={canUpdateBaseSettings} visibleTabs={["scheduler"]} initialTab="scheduler" />
               </Panel>
             )
-          },
-          {
+          }] : []),
+          ...(canReadSso ? [{
             id: "sso",
             label: "SSO",
             href: settingsHref("sso"),
             description: isGlobalScope ? "Beheer Microsoft Entra ID login voor platformbeheerders." : "Beheer Microsoft Entra ID login voor deze tenant.",
             content: (
               <Panel className="max-w-4xl">
-                <SettingsForm {...formProps} visibleTabs={["sso"]} initialTab="sso" />
+                <SettingsForm key={`${selectedTenantId}:sso`} {...formProps} canUpdate={canUpdateSso} visibleTabs={["sso"]} initialTab="sso" />
               </Panel>
             )
-          },
+          }] : []),
           ...(updateStatus
             ? [
                 {
@@ -329,3 +426,4 @@ function settingsHref(tab: string) {
   const params = new URLSearchParams({ tab });
   return `/settings?${params.toString()}`;
 }
+import { notFound } from "next/navigation";

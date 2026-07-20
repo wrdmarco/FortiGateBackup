@@ -5,7 +5,7 @@ import { FirmwareStatus } from "@/components/firmware-status";
 import { FortiGateSummary } from "@/components/fortigate-summary";
 import { Modal } from "@/components/modal";
 import { ActionLink, Button, Card, PageHeader, Shell } from "@/components/ui";
-import { assertOperationalTenant, assertTenantAccess, requireTenantUser } from "@/lib/authz";
+import { assertOperationalTenant, assertTenantAccess, requirePermission } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { hasPermission } from "@/lib/rbac";
 import { formatDateTime } from "@/lib/time";
@@ -18,36 +18,50 @@ export default async function CustomerFortiGatePage({
 }: {
   params: Promise<{ id: string; fortigateId: string }>;
 }) {
-  const user = await requireTenantUser();
+  const user = await requirePermission("fortigates.read");
   const { id, fortigateId } = await params;
   const device = await prisma.fortiGate.findFirst({
     where: { id: fortigateId, customerId: id },
-    include: {
-      customer: { include: { tenant: true } },
-      backups: { orderBy: { createdAt: "desc" }, take: 5 },
-      logs: { orderBy: { createdAt: "desc" }, take: 8 }
-    }
+    include: { customer: { include: { tenant: true } } }
   });
   if (!device) notFound();
   assertTenantAccess(user, device.customer.tenantId);
   await assertOperationalTenant(user, device.customer.tenantId);
 
-  const [canUpdate, canDelete, canRunBackup, canDownloadBackup, canReadDiff] = await Promise.all([
+  const [canUpdate, canDelete, canRunBackup, canReadBackups, canDownloadBackup, canReadDiff, canReadLogs, canReadFirmware] = await Promise.all([
     hasPermission(user, "fortigates.update"),
     hasPermission(user, "fortigates.delete"),
     hasPermission(user, "fortigates.backup.run"),
+    hasPermission(user, "backups.read"),
     hasPermission(user, "backups.download"),
-    hasPermission(user, "backups.diff.read")
+    hasPermission(user, "backups.diff.read"),
+    hasPermission(user, "fortigates.logs.read"),
+    hasPermission(user, "fortigates.firmware.read")
   ]);
-  const [timeZone, backupHistory] = await Promise.all([
+  const [timeZone, backupHistory, latestStoredBackup, logs] = await Promise.all([
     getTenantTimeZone(device.customer.tenantId),
-    prisma.backup.findMany({
-      where: { fortigateId: device.id },
-      orderBy: { createdAt: "desc" }
-    })
+    canReadBackups
+      ? prisma.backup.findMany({
+          where: { fortigateId: device.id },
+          orderBy: { createdAt: "desc" },
+          take: 50
+        })
+      : Promise.resolve([]),
+    canReadBackups
+      ? prisma.backup.findFirst({
+          where: { fortigateId: device.id, filename: { not: null } },
+          orderBy: { createdAt: "desc" }
+        })
+      : Promise.resolve(null),
+    canReadLogs
+      ? prisma.fortiGateLog.findMany({
+          where: { fortigateId: device.id },
+          orderBy: { createdAt: "desc" },
+          take: 8
+        })
+      : Promise.resolve([])
   ]);
-  const latestBackup = backupHistory[0] ?? device.backups[0];
-  const latestStoredBackup = backupHistory.find((backup) => backup.filename);
+  const latestBackup = backupHistory[0];
   const returnTo = `/customers/${device.customerId}/fortigates/${device.id}`;
   const backupRows = backupHistory.map((backup) => ({
     id: backup.id,
@@ -64,7 +78,18 @@ export default async function CustomerFortiGatePage({
     downloadHref: `/api/backups/${backup.id}/download`,
     diffHref: `${returnTo}/backups/${backup.id}/diff`
   }));
-  const deviceWithBackupHistory = { ...device, backups: backupHistory };
+  const summaryBackups = latestStoredBackup && !backupHistory.some((backup) => backup.id === latestStoredBackup.id)
+    ? [...backupHistory, latestStoredBackup]
+    : backupHistory;
+  const deviceWithBackupHistory = {
+    ...device,
+    firmwareVersion: canReadFirmware ? device.firmwareVersion : null,
+    firmwareBuild: canReadFirmware ? device.firmwareBuild : null,
+    uptime: canReadFirmware ? device.uptime : null,
+    licenseInfo: canReadFirmware ? device.licenseInfo : null,
+    backups: summaryBackups,
+    logs
+  };
 
   return (
     <Shell>
@@ -74,14 +99,15 @@ export default async function CustomerFortiGatePage({
         actions={
           <>
             <ActionLink href={`/customers/${device.customerId}`}>Klant</ActionLink>
-            <Modal
+            {canReadBackups ? <Modal
               title="Backups"
-              description="Alle backup runs voor deze FortiGate, inclusief unchanged."
+              description="De laatste 50 backup runs voor deze FortiGate, inclusief unchanged."
               trigger={<Button variant="secondary">Backups</Button>}
             >
               <BackupHistoryModal backups={backupRows} canDownload={canDownloadBackup} canReadDiff={canReadDiff} />
-            </Modal>
-            {canDownloadBackup && latestStoredBackup?.filename ? (
+            </Modal> : null}
+            {canReadBackups ? <ActionLink href={`${returnTo}/backups`} variant="secondary">Volledige historie</ActionLink> : null}
+            {canReadBackups && canDownloadBackup && latestStoredBackup?.filename ? (
               <ActionLink href={`/api/backups/${latestStoredBackup.id}/download`} variant="primary">Laatste backup downloaden</ActionLink>
             ) : null}
             {canUpdate ? <ActionLink href={`${returnTo}/edit`}>Bewerken</ActionLink> : null}
@@ -89,22 +115,22 @@ export default async function CustomerFortiGatePage({
         }
       />
 
-      <div className="grid gap-4 md:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <Card title="Model" value={device.model ?? "-"} detail={device.serialNumber ?? "Geen serienummer"} />
-        <Card title="Firmware" value={device.firmwareVersion ?? "-"} detail={device.firmwareBuild ? `Build ${device.firmwareBuild}` : "Geen build"} />
-        <Card title="Laatste backup" value={latestBackup?.status ?? "-"} detail={latestBackup ? formatDateTime(latestBackup.createdAt, timeZone) : "Nog niet uitgevoerd"} />
+        {canReadFirmware ? <Card title="Firmware" value={device.firmwareVersion ?? "-"} detail={device.firmwareBuild ? `Build ${device.firmwareBuild}` : "Geen build"} /> : null}
+        {canReadBackups ? <Card title="Laatste backup" value={latestBackup?.status ?? "-"} detail={latestBackup ? formatDateTime(latestBackup.createdAt, timeZone) : "Nog niet uitgevoerd"} /> : null}
         <Card title="Schema" value={device.scheduleType} detail={device.cronExpression ?? "Standaard schema"} />
         <Card title="TLS verify" value={device.tlsVerify ? "Aan" : "Uit"} detail={device.vdom ? `VDOM ${device.vdom}` : "Geen VDOM"} />
       </div>
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+      <div className={`mt-6 grid gap-4 ${canReadLogs ? "lg:grid-cols-[1.1fr_0.9fr]" : ""}`}>
         <section className="rounded-md border border-border bg-surface p-5 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="font-semibold">Firewall status</h2>
               <p className="mt-1 text-sm text-muted-foreground">{device.managementUrl}:{device.httpsPort}</p>
             </div>
-            <FirmwareStatus version={device.firmwareVersion} />
+            {canReadFirmware ? <FirmwareStatus version={device.firmwareVersion} /> : null}
           </div>
           <div className="mt-5 flex flex-wrap gap-2">
             {canRunBackup ? (
@@ -133,10 +159,10 @@ export default async function CustomerFortiGatePage({
           </div>
         </section>
 
-        <section className="rounded-md border border-border bg-surface p-5 shadow-sm">
+        {canReadLogs ? <section className="rounded-md border border-border bg-surface p-5 shadow-sm">
           <h2 className="font-semibold">Laatste logs</h2>
           <div className="mt-4 grid gap-3">
-            {device.logs.length ? device.logs.map((log) => (
+            {logs.length ? logs.map((log) => (
               <div key={log.id} className="rounded-md border border-border bg-surface-soft p-3 text-sm">
                 <div className={log.level === "ERROR" ? "font-medium text-red-700 dark:text-red-300" : "font-medium"}>
                   {log.level} - {log.event}
@@ -146,7 +172,7 @@ export default async function CustomerFortiGatePage({
               </div>
             )) : <p className="text-sm text-muted-foreground">Nog geen logregels.</p>}
           </div>
-        </section>
+        </section> : null}
       </div>
 
       <section className="mt-6 rounded-md border border-border bg-surface p-5 shadow-sm">
@@ -156,8 +182,31 @@ export default async function CustomerFortiGatePage({
             Technische summary, bereikbaarheid, licenties, backups en diagnose.
           </p>
         </div>
-        <FortiGateSummary device={deviceWithBackupHistory} timeZone={timeZone} />
+        {canReadFirmware && canReadBackups && canReadLogs ? (
+          <FortiGateSummary device={deviceWithBackupHistory} timeZone={timeZone} />
+        ) : (
+          <dl className="grid gap-3 text-sm sm:grid-cols-2">
+            <InfoRow label="Management" value={`${device.managementUrl}:${device.httpsPort}`} />
+            <InfoRow label="Serienummer" value={device.serialNumber ?? "Niet uitgelezen"} />
+            <InfoRow label="VDOM" value={device.vdom ?? "Global"} />
+            <InfoRow label="TLS verify" value={device.tlsVerify ? "Aan" : "Uit"} />
+            <InfoRow label="Schema" value={device.scheduleType === "CRON" ? device.cronExpression ?? "Cron" : device.scheduleType} />
+            {canReadFirmware ? <InfoRow label="Firmware" value={[device.firmwareVersion, device.firmwareBuild ? `build ${device.firmwareBuild}` : null].filter(Boolean).join(" ") || "Niet uitgelezen"} /> : null}
+            {canReadBackups ? <InfoRow label="Laatste backup" value={latestBackup ? `${latestBackup.status} - ${formatDateTime(latestBackup.createdAt, timeZone)}` : "Nog niet uitgevoerd"} /> : null}
+            {canReadBackups ? <InfoRow label="Laatste wijziging" value={latestStoredBackup ? formatDateTime(latestStoredBackup.createdAt, timeZone) : "Nog geen gewijzigde backup"} /> : null}
+            {canReadLogs ? <InfoRow label="Laatste diagnose" value={logs[0] ? `${logs[0].level} - ${logs[0].event}` : "Nog geen logregels"} /> : null}
+          </dl>
+        )}
       </section>
     </Shell>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-border bg-surface-soft p-3">
+      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
+      <dd className="mt-1 break-words font-medium">{value}</dd>
+    </div>
   );
 }

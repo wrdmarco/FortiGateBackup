@@ -1,26 +1,33 @@
+import { BackupStatus } from "@prisma/client";
 import { notFound } from "next/navigation";
+import { firstQueryValue, normalizePage, parsePageParam, ServerPagination } from "@/components/server-pagination";
 import { ActionLink, Badge, PageHeader, Shell, TableShell } from "@/components/ui";
-import { assertOperationalTenant, assertTenantAccess, requireTenantUser } from "@/lib/authz";
+import { assertOperationalTenant, assertTenantAccess, requirePermission } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { hasPermission } from "@/lib/rbac";
 import { formatDateTime } from "@/lib/time";
 import { getTenantTimeZone } from "@/lib/tenant-timezone";
 
 export const dynamic = "force-dynamic";
+const PAGE_SIZE = 50;
+const backupStatuses = new Set<BackupStatus>([BackupStatus.CHANGED, BackupStatus.UNCHANGED, BackupStatus.FAILED]);
 
 export default async function CustomerFortiGateBackupsPage({
-  params
+  params,
+  searchParams
 }: {
   params: Promise<{ id: string; fortigateId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const user = await requireTenantUser();
+  const user = await requirePermission("backups.read");
   const { id, fortigateId } = await params;
+  const queryParams = await searchParams;
+  const requestedStatus = firstQueryValue(queryParams.status);
+  const status = backupStatuses.has(requestedStatus as BackupStatus) ? requestedStatus as BackupStatus : null;
+  const requestedPage = parsePageParam(queryParams.page);
   const device = await prisma.fortiGate.findFirst({
     where: { id: fortigateId, customerId: id },
-    include: {
-      customer: { include: { tenant: true } },
-      backups: { orderBy: { createdAt: "desc" } }
-    }
+    include: { customer: { include: { tenant: true } } }
   });
   if (!device) notFound();
   assertTenantAccess(user, device.customer.tenantId);
@@ -29,6 +36,15 @@ export default async function CustomerFortiGateBackupsPage({
     hasPermission(user, "backups.download"),
     hasPermission(user, "backups.diff.read")
   ]);
+  const backupWhere = { fortigateId: device.id, ...(status ? { status } : {}) };
+  const totalBackups = await prisma.backup.count({ where: backupWhere });
+  const page = normalizePage(requestedPage, totalBackups, PAGE_SIZE);
+  const backups = await prisma.backup.findMany({
+    where: backupWhere,
+    orderBy: { createdAt: "desc" },
+    skip: (page - 1) * PAGE_SIZE,
+    take: PAGE_SIZE
+  });
   const timeZone = await getTenantTimeZone(device.customer.tenantId);
   const detailHref = `/customers/${device.customerId}/fortigates/${device.id}`;
 
@@ -39,6 +55,21 @@ export default async function CustomerFortiGateBackupsPage({
         description={`${device.customer.name} - ${device.hostname ?? device.managementUrl}`}
         actions={<ActionLink href={detailHref}>Terug naar firewall</ActionLink>}
       />
+      <form className="mt-6 flex flex-wrap items-end gap-3" method="get">
+        <label className="grid min-w-56 gap-1 text-sm">
+          <span className="font-medium">Status</span>
+          <select className="min-h-11 rounded-md border border-border bg-surface px-3 py-2" defaultValue={status ?? ""} name="status">
+            <option value="">Alle statussen</option>
+            <option value={BackupStatus.CHANGED}>Gewijzigd</option>
+            <option value={BackupStatus.UNCHANGED}>Ongewijzigd</option>
+            <option value={BackupStatus.FAILED}>Mislukt</option>
+          </select>
+        </label>
+        <button className="inline-flex min-h-11 items-center justify-center rounded-md border border-border bg-surface px-4 py-2 text-sm font-medium transition hover:border-primary/50 hover:bg-muted" type="submit">
+          Filteren
+        </button>
+        {status ? <ActionLink href={detailHref + "/backups"}>Filter wissen</ActionLink> : null}
+      </form>
       <TableShell className="mt-6">
         <table className="table-pro w-full min-w-[1080px] text-left text-sm">
           <thead className="bg-surface-soft">
@@ -53,7 +84,7 @@ export default async function CustomerFortiGateBackupsPage({
             </tr>
           </thead>
           <tbody>
-            {device.backups.length ? device.backups.map((backup) => (
+            {backups.length ? backups.map((backup) => (
               <tr key={backup.id} className="border-t border-border align-top">
                 <td className="px-3 py-2">{formatDateTime(backup.createdAt, timeZone)}</td>
                 <td className="px-3 py-2">
@@ -68,12 +99,12 @@ export default async function CustomerFortiGateBackupsPage({
                   {backup.autotaskTicketId ? <Badge tone="success">Ticket {backup.autotaskTicketId}</Badge> : backup.autotaskError ? <Badge tone="warning">Fout</Badge> : <Badge>-</Badge>}
                 </td>
                 <td className="flex flex-wrap gap-2 px-3 py-2">
-                  {backup.filename ? (
+                  {backup.filename && (canDownloadBackup || canReadDiff) ? (
                     <>
                       {canDownloadBackup ? <ActionLink href={`/api/backups/${backup.id}/download`}>Download</ActionLink> : null}
                       {canReadDiff ? <ActionLink href={`${detailHref}/backups/${backup.id}/diff`}>Diff</ActionLink> : null}
                     </>
-                  ) : <span className="text-muted-foreground">Geen bestand</span>}
+                  ) : <span className="text-muted-foreground">{backup.filename ? "Geen actie toegestaan" : "Geen bestand"}</span>}
                 </td>
               </tr>
             )) : (
@@ -84,6 +115,14 @@ export default async function CustomerFortiGateBackupsPage({
           </tbody>
         </table>
       </TableShell>
+      <ServerPagination
+        itemLabel="backup runs"
+        page={page}
+        pageSize={PAGE_SIZE}
+        path={`${detailHref}/backups`}
+        query={{ status }}
+        totalItems={totalBackups}
+      />
     </Shell>
   );
 }
