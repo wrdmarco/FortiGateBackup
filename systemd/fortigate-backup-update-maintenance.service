@@ -8,7 +8,7 @@ Conflicts=fortigate-backup.service
 Type=simple
 User=@SERVICE_USER@
 Group=@SERVICE_GROUP@
-WorkingDirectory="@APP_DIR@"
+WorkingDirectory=@APP_DIR@
 Environment=NODE_ENV=production
 Environment=HOST=0.0.0.0
 Environment=PORT=3000

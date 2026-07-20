@@ -129,9 +129,9 @@ validate_inputs() {
   case "$APP_DIR" in
     *'"'*|*'\'*|*'%'*) fail "APP_DIR cannot contain double quotes, backslashes or percent signs." ;;
   esac
-  if [[ "$APP_DIR" == *$'\n'* || "$APP_DIR" == *$'\r'* || "$APP_DIR" == *$'\t'* ]]; then
-    fail "APP_DIR cannot contain control whitespace."
-  fi
+  case "$APP_DIR" in
+    *[[:space:]]*) fail "APP_DIR cannot contain whitespace." ;;
+  esac
   if ! [[ "$SERVICE_USER" =~ ^[a-z_][a-z0-9_-]*[$]?$ ]]; then
     fail "SERVICE_USER contains unsupported characters."
   fi

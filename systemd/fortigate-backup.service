@@ -8,10 +8,10 @@ Conflicts=fortigate-backup-update-maintenance.service
 Type=simple
 User=@SERVICE_USER@
 Group=@SERVICE_GROUP@
-WorkingDirectory="@APP_DIR@"
+WorkingDirectory=@APP_DIR@
 Environment=NODE_ENV=production
 Environment=PORT=3000
-EnvironmentFile="@APP_DIR@/.env"
+EnvironmentFile=@APP_DIR@/.env
 ExecStart=/usr/bin/env pnpm start
 Restart=always
 RestartSec=5
