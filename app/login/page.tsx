@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import Image from "next/image";
 import { LoginForm } from "@/components/login-form";
-import { BrandWordmark } from "@/components/brand-wordmark";
 import { prisma } from "@/lib/db";
 import { hasAvailableEntraSso } from "@/lib/entra-auth";
 
@@ -20,9 +19,8 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       <div className="pointer-events-none absolute inset-0 opacity-40 [background-image:radial-gradient(circle_at_top,hsl(var(--primary)/.16),transparent_34rem)]" />
       <section className="relative w-full max-w-[440px] rounded-xl border border-border bg-surface p-6 shadow-2xl shadow-slate-950/10 sm:p-8 dark:shadow-black/30">
         <div className="mb-7 flex flex-col items-center text-center">
-          <Image className="dark:hidden" alt="" aria-hidden height={68} src="/brand/forti-backup-mark-light.svg" width={68}/>
-          <Image className="hidden dark:block" alt="" aria-hidden height={68} src="/brand/forti-backup-mark-dark.svg" width={68}/>
-          <div className="mt-4"><BrandWordmark size="large" /></div>
+          <Image className="h-auto w-56 dark:hidden" alt="Forti Backup" height={138} priority src="/brand/forti-backup-logo-light.svg" width={300}/>
+          <Image className="hidden h-auto w-56 dark:block" alt="Forti Backup" height={138} priority src="/brand/forti-backup-logo-dark.svg" width={300}/>
         </div>
         <div className="border-t border-border pt-6">
           <h1 className="mb-6 text-center font-display text-2xl font-semibold tracking-[-0.01em]">Inloggen</h1>
