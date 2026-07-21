@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Image from "next/image";
 import { LoginForm } from "@/components/login-form";
 import { prisma } from "@/lib/db";
 import { hasAvailableEntraSso } from "@/lib/entra-auth";
@@ -17,13 +18,13 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     <main className="grid min-h-screen bg-background lg:grid-cols-[minmax(0,1.1fr)_minmax(28rem,.9fr)]">
       <section className="relative hidden overflow-hidden bg-[hsl(var(--header))] p-12 text-[hsl(var(--header-foreground))] lg:flex lg:flex-col lg:justify-between">
         <div className="absolute inset-0 opacity-15 [background-image:linear-gradient(rgba(255,255,255,.18)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.18)_1px,transparent_1px)] [background-size:40px_40px]" />
-        <div className="relative font-mono text-sm font-bold tracking-[0.22em]">FORTI BACKUP</div>
+        <div className="relative flex items-center gap-3 font-mono text-sm font-bold tracking-[0.18em]"><Image alt="" aria-hidden height={42} src="/brand/forti-backup-mark-dark.svg" width={42}/>FORTI BACKUP</div>
         <div className="relative max-w-xl"><p className="mb-4 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-200">Security operations</p><h2 className="font-display text-5xl font-semibold leading-[1.12] tracking-[-0.015em]">Elke configuratie.<br/>Veilig vastgelegd.</h2><p className="mt-6 max-w-lg text-lg leading-7 text-white/65">Centraal beheer, geverifieerde snapshots en een volledig auditspoor voor iedere FortiGate binnen je MSP-omgeving.</p></div>
-        <div className="relative flex items-center gap-3 text-sm text-white/55"><span className="status-pulse"/>Productieomgeving beveiligd</div>
+        <div className="relative flex items-center gap-3 text-sm text-white/55"><span className="h-2 w-2 rounded-full bg-emerald-400"/>Productieomgeving beveiligd</div>
       </section>
       <section className="grid place-items-center px-4 py-10 sm:px-8">
         <div className="w-full max-w-[430px]">
-          <div className="mb-10 font-mono text-xs font-bold tracking-[0.18em] lg:hidden">FORTI BACKUP</div>
+          <div className="mb-10 flex items-center gap-2.5 font-mono text-xs font-bold tracking-[0.15em] lg:hidden"><Image alt="" aria-hidden height={32} src="/brand/forti-backup-mark-light.svg" width={32}/>FORTI BACKUP</div>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-success">Welkom terug</p>
           <h1 className="mt-3 font-display text-4xl font-semibold tracking-[-0.015em]">Inloggen</h1>
           <p className="mb-8 mt-2 text-base text-muted-foreground">Gebruik je organisatieaccount om verder te gaan.</p>

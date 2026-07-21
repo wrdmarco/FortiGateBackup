@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { clsx } from "clsx";
 import { logoutAction, switchTenantContextAction } from "@/app/actions";
 import { AppNavLink, HeaderUserMenu } from "@/components/modal";
@@ -45,7 +46,7 @@ export async function Shell({ children }: { children: React.ReactNode }) {
 }
 
 function BrandLink({ href, compact = false }: { href: string; compact?: boolean }) {
-  return <Link href={href} className={clsx("brand-mark inline-flex min-h-11 items-center rounded-lg font-mono font-bold text-white", compact ? "px-0 text-xs tracking-[0.16em]" : "mx-5 my-5 px-1 text-[0.78rem] tracking-[0.22em]")}>FORTI BACKUP</Link>;
+  return <Link href={href} className={clsx("brand-mark inline-flex min-h-11 items-center gap-2.5 rounded-lg font-mono font-bold", compact ? "px-0 text-xs tracking-[0.14em] text-foreground" : "mx-5 my-5 px-1 text-[0.76rem] tracking-[0.18em] text-white")}><Image alt="" aria-hidden height={compact ? 28 : 34} src={compact ? "/brand/forti-backup-mark-light.svg" : "/brand/forti-backup-mark-dark.svg"} width={compact ? 28 : 34}/><span>FORTI BACKUP</span></Link>;
 }
 
 function NavigationLinks({ isBreakGlassSettingsOnly, isGlobalContext, canManageTenants, canReadUsers, canReadAudit }: { isBreakGlassSettingsOnly: boolean; isGlobalContext: boolean; canManageTenants: boolean; canReadUsers: boolean; canReadAudit: boolean }) {

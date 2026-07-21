@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Forti Backup</title>
+  <path fill="#F8FAFC" d="M30 3 8 14v18c0 11 6.8 20.2 22 29V47.7C21.7 42.2 18 37.4 18 31V20l12-6V3Z"/>
+  <path fill="#2563EB" d="M34 3v11l12 6v12c0 5.7-2.9 10.1-9 14.7l-4-4.1v15.8h15.7l-4-4.1C52.4 48.4 56 41.2 56 32V14L34 3Z"/>
+  <path fill="#93C5FD" d="m29.5 47.5-7.8-6.1-7.3 7.1C18.2 52.8 23.3 56.9 30 61V48l-.5-.5Z"/>
+</svg>
