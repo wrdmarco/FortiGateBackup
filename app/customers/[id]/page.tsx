@@ -195,7 +195,7 @@ export default async function CustomerDetailPage({
                 <th className="px-3 py-2">FortiGate</th>
                 <th className="px-3 py-2">Model</th>
                 {canReadFirmware ? <th className="px-3 py-2">Firmware</th> : null}
-                <th className="px-3 py-2">TLS verify</th>
+                <th className="px-3 py-2">TLS</th>
                 <th className="px-3 py-2">IT Glue</th>
                 {canReadLogs ? <th className="px-3 py-2">Laatste log</th> : null}
                 <th className="px-3 py-2">Acties</th>
@@ -218,9 +218,7 @@ export default async function CustomerDetailPage({
                       </div>
                     </td> : null}
                     <td className="px-3 py-2">
-                      <Badge tone={device.tlsVerify ? "warning" : "success"}>
-                        {device.tlsVerify ? "Aan" : "Uit"}
-                      </Badge>
+                      <Badge tone="success">Aan</Badge>
                     </td>
                     <td className="px-3 py-2">
                       {device.itGlueConfigurationId ? <Badge tone="success">Config {device.itGlueConfigurationId}</Badge> : <Badge>Niet gekoppeld</Badge>}

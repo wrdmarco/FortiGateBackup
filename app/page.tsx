@@ -3,7 +3,7 @@ import { ActionLink, Badge, Card, PageHeader, Shell, TableShell } from "@/compon
 import { getAppUpdateStatus } from "@/lib/app-update";
 import { requireContextPermission, tenantFilter } from "@/lib/authz";
 import { prisma } from "@/lib/db";
-import { hasPermission } from "@/lib/rbac";
+import { userPermissionKeys } from "@/lib/rbac";
 import { isGlobalTenantId } from "@/lib/tenant-main";
 import { formatDateTime } from "@/lib/time";
 import { getTenantTimeZone } from "@/lib/tenant-timezone";
@@ -17,12 +17,11 @@ export default async function DashboardPage() {
   });
   const tenantId = tenantFilter(user);
   const isGlobalContext = await isGlobalTenantId(tenantId);
-  const [canReadUpdates, canReadAudit, canReadAlerts, canReadTenants] = await Promise.all([
-    isGlobalContext ? hasPermission(user, "platform.updates.read") : Promise.resolve(false),
-    hasPermission(user, isGlobalContext ? "platform.audit.read" : "audit.read"),
-    !isGlobalContext ? hasPermission(user, "alerts.read") : Promise.resolve(false),
-    isGlobalContext ? hasPermission(user, "platform.tenants.read") : Promise.resolve(false)
-  ]);
+  const permissionKeys = await userPermissionKeys(user);
+  const canReadUpdates = isGlobalContext && permissionKeys.has("platform.updates.read");
+  const canReadAudit = permissionKeys.has(isGlobalContext ? "platform.audit.read" : "audit.read");
+  const canReadAlerts = !isGlobalContext && permissionKeys.has("alerts.read");
+  const canReadTenants = isGlobalContext && permissionKeys.has("platform.tenants.read");
   const timeZone = await getTenantTimeZone(tenantId);
   const customerWhere = tenantId && !isGlobalContext ? { tenantId } : { tenantId: "__global_has_no_customers__" };
   const fortigateWhere = tenantId && !isGlobalContext ? { customer: { tenantId } } : { customer: { tenantId: "__global_has_no_fortigates__" } };

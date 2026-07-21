@@ -2,10 +2,9 @@ import Link from "next/link";
 import { clsx } from "clsx";
 import { logoutAction, switchTenantContextAction } from "@/app/actions";
 import { AppNavLink, HeaderUserMenu } from "@/components/modal";
-import { RealtimeRefresh } from "@/components/realtime-refresh";
 import { TenantSwitcher } from "@/components/tenant-switcher";
 import { prisma } from "@/lib/db";
-import { hasPermission } from "@/lib/rbac";
+import { userPermissionKeys } from "@/lib/rbac";
 import { currentUser } from "@/lib/session";
 import { isGlobalTenantId } from "@/lib/tenant-main";
 
@@ -13,18 +12,15 @@ export async function Shell({ children }: { children: React.ReactNode }) {
   const user = await currentUser();
   const currentTenantId = user?.activeTenantId ?? user?.tenantId ?? null;
   const isGlobalContext = await isGlobalTenantId(currentTenantId);
-  const [canSwitchTenants, canReadTenants] = user
-    ? await Promise.all([
-        hasPermission(user, "platform.tenants.switch"),
-        isGlobalContext ? hasPermission(user, "platform.tenants.read") : Promise.resolve(false)
-      ])
-    : [false, false];
+  const permissionKeys = user ? await userPermissionKeys(user) : new Set<string>();
+  const canSwitchTenants = permissionKeys.has("platform.tenants.switch");
+  const canReadTenants = isGlobalContext && permissionKeys.has("platform.tenants.read");
   const tenants = canSwitchTenants
     ? await prisma.tenant.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } })
     : [];
   const isBreakGlassSettingsOnly = Boolean(user?.breakGlassSettingsOnly);
-  const canReadUsers = user ? await hasPermission(user, isGlobalContext ? "platform.users.read" : "tenant.users.read") : false;
-  const canReadAudit = user ? await hasPermission(user, isGlobalContext ? "platform.audit.read" : "audit.read") : false;
+  const canReadUsers = permissionKeys.has(isGlobalContext ? "platform.users.read" : "tenant.users.read");
+  const canReadAudit = permissionKeys.has(isGlobalContext ? "platform.audit.read" : "audit.read");
   const tenantName = user?.activeTenant?.name ?? user?.tenant?.name ?? "Geen tenant";
 
   return (
@@ -32,11 +28,12 @@ export async function Shell({ children }: { children: React.ReactNode }) {
       <a className="skip-link" href="#main-content">
         Naar hoofdinhoud
       </a>
-      <header className="app-header sticky top-0 z-30 border-b border-black/30 bg-[hsl(var(--header))] text-[hsl(var(--header-foreground))] shadow-md shadow-slate-950/10">
+      <header className="app-header sticky top-0 z-30 border-b border-black/25 bg-[hsl(var(--header))] text-[hsl(var(--header-foreground))] shadow-lg shadow-slate-950/10">
+        <div className="h-0.5 bg-primary" />
         <div className="mx-auto grid max-w-[1440px] gap-3 px-4 py-3 lg:px-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <Link href={user ? "/" : "/login"} className="flex min-h-11 shrink-0 items-center gap-3 rounded-sm">
-              <span className="grid h-11 w-11 place-items-center rounded-md border border-white/10 bg-primary text-sm font-black text-primary-foreground shadow-sm shadow-primary/25">
+              <span className="grid h-10 w-10 place-items-center rounded-md border border-white/10 bg-primary text-sm font-black text-primary-foreground shadow-sm shadow-primary/30">
                 FB
               </span>
               <span className="hidden sm:block">
@@ -103,7 +100,6 @@ export async function Shell({ children }: { children: React.ReactNode }) {
           ) : null}
         </div>
       </header>
-      {user ? <RealtimeRefresh /> : null}
       <main className="mx-auto max-w-[1440px] px-4 py-6 outline-none lg:px-6 lg:py-8" id="main-content" tabIndex={-1}>
         {children}
       </main>
@@ -161,7 +157,7 @@ export function PageHeader({
   actions?: React.ReactNode;
 }) {
   return (
-    <div className="mb-6 flex flex-wrap items-start justify-between gap-4 border-b border-border pb-5">
+    <div className="professional-surface mb-6 flex flex-wrap items-start justify-between gap-4 rounded-md border border-border px-5 py-4 shadow-sm shadow-slate-900/5">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
         {description ? <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p> : null}

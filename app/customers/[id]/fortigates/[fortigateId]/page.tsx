@@ -7,7 +7,7 @@ import { Modal } from "@/components/modal";
 import { ActionLink, Button, Card, PageHeader, Shell } from "@/components/ui";
 import { assertOperationalTenant, assertTenantAccess, requirePermission } from "@/lib/authz";
 import { prisma } from "@/lib/db";
-import { hasPermission } from "@/lib/rbac";
+import { userPermissionKeys } from "@/lib/rbac";
 import { formatDateTime } from "@/lib/time";
 import { getTenantTimeZone } from "@/lib/tenant-timezone";
 
@@ -28,16 +28,15 @@ export default async function CustomerFortiGatePage({
   assertTenantAccess(user, device.customer.tenantId);
   await assertOperationalTenant(user, device.customer.tenantId);
 
-  const [canUpdate, canDelete, canRunBackup, canReadBackups, canDownloadBackup, canReadDiff, canReadLogs, canReadFirmware] = await Promise.all([
-    hasPermission(user, "fortigates.update"),
-    hasPermission(user, "fortigates.delete"),
-    hasPermission(user, "fortigates.backup.run"),
-    hasPermission(user, "backups.read"),
-    hasPermission(user, "backups.download"),
-    hasPermission(user, "backups.diff.read"),
-    hasPermission(user, "fortigates.logs.read"),
-    hasPermission(user, "fortigates.firmware.read")
-  ]);
+  const permissionKeys = await userPermissionKeys(user);
+  const canUpdate = permissionKeys.has("fortigates.update");
+  const canDelete = permissionKeys.has("fortigates.delete");
+  const canRunBackup = permissionKeys.has("fortigates.backup.run");
+  const canReadBackups = permissionKeys.has("backups.read");
+  const canDownloadBackup = permissionKeys.has("backups.download");
+  const canReadDiff = permissionKeys.has("backups.diff.read");
+  const canReadLogs = permissionKeys.has("fortigates.logs.read");
+  const canReadFirmware = permissionKeys.has("fortigates.firmware.read");
   const [timeZone, backupHistory, latestStoredBackup, logs] = await Promise.all([
     getTenantTimeZone(device.customer.tenantId),
     canReadBackups
@@ -111,6 +110,7 @@ export default async function CustomerFortiGatePage({
               <ActionLink href={`/api/backups/${latestStoredBackup.id}/download`} variant="primary">Laatste backup downloaden</ActionLink>
             ) : null}
             {canUpdate ? <ActionLink href={`${returnTo}/edit`}>Bewerken</ActionLink> : null}
+            {canUpdate ? <ActionLink href={`${returnTo}/certificate`} variant="secondary">TLS-certificaat</ActionLink> : null}
           </>
         }
       />
@@ -120,7 +120,7 @@ export default async function CustomerFortiGatePage({
         {canReadFirmware ? <Card title="Firmware" value={device.firmwareVersion ?? "-"} detail={device.firmwareBuild ? `Build ${device.firmwareBuild}` : "Geen build"} /> : null}
         {canReadBackups ? <Card title="Laatste backup" value={latestBackup?.status ?? "-"} detail={latestBackup ? formatDateTime(latestBackup.createdAt, timeZone) : "Nog niet uitgevoerd"} /> : null}
         <Card title="Schema" value={device.scheduleType} detail={device.cronExpression ?? "Standaard schema"} />
-        <Card title="TLS verify" value={device.tlsVerify ? "Aan" : "Uit"} detail={device.vdom ? `VDOM ${device.vdom}` : "Geen VDOM"} />
+        <Card title="TLS" value="Altijd aan" detail={device.tlsCertificateFingerprint ? "Geaccepteerde fingerprint" : "PKI-validatie"} />
       </div>
 
       <div className={`mt-6 grid gap-4 ${canReadLogs ? "lg:grid-cols-[1.1fr_0.9fr]" : ""}`}>
@@ -189,7 +189,7 @@ export default async function CustomerFortiGatePage({
             <InfoRow label="Management" value={`${device.managementUrl}:${device.httpsPort}`} />
             <InfoRow label="Serienummer" value={device.serialNumber ?? "Niet uitgelezen"} />
             <InfoRow label="VDOM" value={device.vdom ?? "Global"} />
-            <InfoRow label="TLS verify" value={device.tlsVerify ? "Aan" : "Uit"} />
+            <InfoRow label="TLS" value={device.tlsCertificateFingerprint ? "Aan · fingerprint geaccepteerd" : "Aan · PKI-validatie"} />
             <InfoRow label="Schema" value={device.scheduleType === "CRON" ? device.cronExpression ?? "Cron" : device.scheduleType} />
             {canReadFirmware ? <InfoRow label="Firmware" value={[device.firmwareVersion, device.firmwareBuild ? `build ${device.firmwareBuild}` : null].filter(Boolean).join(" ") || "Niet uitgelezen"} /> : null}
             {canReadBackups ? <InfoRow label="Laatste backup" value={latestBackup ? `${latestBackup.status} - ${formatDateTime(latestBackup.createdAt, timeZone)}` : "Nog niet uitgevoerd"} /> : null}

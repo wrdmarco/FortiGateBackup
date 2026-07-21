@@ -79,7 +79,7 @@ export function FortiGateSummary({ device, timeZone }: { device: FortiGateSummar
           <dl className="mt-3 grid gap-2 text-sm">
             <InfoRow label="Management" value={`${device.managementUrl}:${device.httpsPort}`} />
             <InfoRow label="VDOM" value={device.vdom ?? "Global"} />
-            <InfoRow label="TLS verify" value={device.tlsVerify ? "Aan" : "Uit"} />
+            <InfoRow label="TLS" value="Altijd aan" />
             <InfoRow label="Externe IP's" value={externalIps.length ? externalIps.map(formatExternalIp).join(", ") : "Niet uitgelezen"} />
           </dl>
         </section>

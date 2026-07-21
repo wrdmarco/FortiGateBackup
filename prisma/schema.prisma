@@ -232,7 +232,13 @@ model FortiGate {
   managementUrl     String
   httpsPort         Int              @default(443)
   apiTokenEncrypted String
-  tlsVerify         Boolean          @default(false)
+  tlsVerify         Boolean          @default(true)
+  tlsCertificateFingerprint String?
+  tlsCertificateSubject String?
+  tlsCertificateIssuer String?
+  tlsCertificateValidFrom DateTime?
+  tlsCertificateValidTo DateTime?
+  tlsCertificateAcceptedAt DateTime?
   vdom              String?
   scheduleType      ScheduleType     @default(DAILY)
   cronExpression    String?

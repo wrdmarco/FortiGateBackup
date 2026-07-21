@@ -317,7 +317,7 @@ function TenantFortiGateManual() {
       description="Voeg een firewall altijd toe vanuit de klant, zodat de klant automatisch klopt."
       steps={[
         { title: "Open de klant", body: "Ga naar Klanten en klik Beheren.", result: "De klantcontext is actief." },
-        { title: "Klik FortiGate toevoegen", body: "Vul management URL, HTTPS poort, API-token, TLS verify en planning in.", result: "De firewall wordt aan deze klant gekoppeld." },
+        { title: "Klik FortiGate toevoegen", body: "Vul management URL, HTTPS-poort, API-token en planning in. TLS staat altijd aan; een ongeldig of self-signed certificaat moet je na controle eenmalig expliciet accepteren.", result: "De firewall wordt aan deze klant gekoppeld." },
         { title: "Controleer optionele integraties", body: "Vul IT Glue configuration ID alleen in als IT Glue actief is.", result: "Backups kunnen later aan de juiste externe configuratie worden gekoppeld." },
         { title: "Open de FortiGate", body: "Klik Open op de FortiGate-regel.", result: "Je ziet firewallinformatie, logs en backupacties." }
       ]}

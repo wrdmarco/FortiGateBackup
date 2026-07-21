@@ -99,6 +99,8 @@ Elk manifest is met `HMAC-SHA256` en `ENCRYPTION_KEY` ondertekend. Restore weige
 
 Voor FortiGate backups gebruikt het portaal een bearer API-token. Je hoeft in het portaal geen aparte API-gebruikersnaam op te geven: de token is op de FortiGate zelf al gekoppeld aan een admin/API-user met het juiste admin profile. Sla alleen de token op in het portaal.
 
+TLS is voor iedere FortiGate-verbinding verplicht. Certificaten met een geldige, door de server vertrouwde keten worden automatisch geaccepteerd. Bij een ongeldig of self-signed certificaat toont het portaal onderwerp, uitgever, geldigheidsperiode en SHA-256-fingerprint. Een beheerder moet die specifieke fingerprint eenmalig expliciet accepteren voordat inventory of backups worden uitgevoerd. De fingerprint wordt daarna bij iedere verbinding gecontroleerd; na een certificaatwissel blijven backups geblokkeerd totdat het nieuwe certificaat opnieuw is gecontroleerd en geaccepteerd.
+
 ## IT Glue integratie
 
 IT Glue wordt per scope ingesteld via:

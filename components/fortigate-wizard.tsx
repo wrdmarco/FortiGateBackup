@@ -21,7 +21,6 @@ type WizardFieldName =
   | "httpsPort"
   | "itGlueConfigurationId"
   | "apiToken"
-  | "tlsVerify"
   | "scheduleType"
   | "cronExpression";
 
@@ -32,7 +31,7 @@ type ValidationResult = {
 
 const fieldsByStep: Partial<Record<number, WizardFieldName[]>> = {
   0: ["customerId"],
-  2: ["managementUrl", "httpsPort", "itGlueConfigurationId", "apiToken", "tlsVerify"],
+  2: ["managementUrl", "httpsPort", "itGlueConfigurationId", "apiToken"],
   3: ["scheduleType", "cronExpression"]
 };
 
@@ -97,9 +96,6 @@ export function FortiGateWizard({
   }, [state.customerId, state.deviceId, state.ok, successHref]);
 
   function fieldElement(name: WizardFieldName) {
-    if (name === "tlsVerify") {
-      return formRef.current?.querySelector<HTMLInputElement>('input[name="tlsVerify"][type="checkbox"]') ?? null;
-    }
     return formRef.current?.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | null;
   }
 
@@ -144,10 +140,6 @@ export function FortiGateWizard({
       const apiToken = (fieldElement("apiToken") as HTMLInputElement | null)?.value.trim();
       if (!apiToken) addError("apiToken", "Vul de API-token van de REST API Admin in.");
 
-      const tlsVerify = fieldElement("tlsVerify") as HTMLInputElement | null;
-      if (!tlsVerify?.checked) {
-        addError("tlsVerify", "TLS-certificaatvalidatie is verplicht voor nieuwe FortiGate-verbindingen.");
-      }
     }
 
     if (stepIndex === 3) {
@@ -290,7 +282,7 @@ export function FortiGateWizard({
               <CheckItem text="Je kunt vanaf deze server de managementinterface van de FortiGate bereiken." />
               <CheckItem text="Je weet of de firewall VDOMs gebruikt en welke VDOM geback-upt moet worden." />
               <CheckItem text="Je hebt rechten om een REST API Admin aan te maken of een bestaande token te regenereren." />
-              <CheckItem text="Je hebt bepaald of TLS-verificatie aan kan blijven met een vertrouwd certificaat." />
+              <CheckItem text="Je kunt de certificaatgegevens en SHA-256-fingerprint via een tweede, vertrouwd kanaal controleren." />
             </div>
 
             <div className="rounded-md border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-100">
@@ -343,7 +335,7 @@ export function FortiGateWizard({
                 onBlur={() => validateField("managementUrl")}
               />
               <span id="wizard-management-url-help" className="text-xs text-muted-foreground">
-                Gebruik een HTTPS-FQDN of management-VIP die vanaf de backupserver bereikbaar is en naar een vertrouwd certificaat leidt.
+                Gebruik een HTTPS-FQDN, management-VIP of intern adres dat vanaf de backupserver bereikbaar is.
               </span>
               <FieldError id="wizard-management-url-error" message={fieldErrors.managementUrl} />
             </label>
@@ -414,28 +406,13 @@ export function FortiGateWizard({
               <FieldError id="wizard-api-token-error" message={fieldErrors.apiToken} />
             </label>
 
-            <label className="flex min-h-11 items-start gap-3 rounded-md border border-border bg-surface-soft p-4 text-sm">
-              <input name="tlsVerify" type="hidden" value="false" />
-              <input
-                className="mt-1 h-5 w-5 shrink-0"
-                name="tlsVerify"
-                type="checkbox"
-                value="true"
-                defaultChecked
-                required={step === 2}
-                aria-invalid={Boolean(fieldErrors.tlsVerify)}
-                aria-describedby={fieldErrors.tlsVerify ? "wizard-tls-help wizard-tls-error" : "wizard-tls-help"}
-                onChange={() => clearFieldError("tlsVerify")}
-                onBlur={() => validateField("tlsVerify")}
-              />
-              <span>
-                <span className="block font-medium">TLS certificaat valideren</span>
-                <span id="wizard-tls-help" className="text-muted-foreground">
-                  Verplicht. Gebruik een certificaatketen die de backupserver vertrouwt; voeg bij een intern CA-certificaat de CA toe aan de truststore.
-                </span>
-                <FieldError id="wizard-tls-error" message={fieldErrors.tlsVerify} />
-              </span>
-            </label>
+            <input name="tlsVerify" type="hidden" value="true" />
+            <div className="rounded-md border border-border bg-surface-soft p-4 text-sm">
+              <p className="font-medium">TLS is altijd ingeschakeld</p>
+              <p className="mt-1 text-muted-foreground">
+                De server valideert eerst het certificaat. Een ongeldig of self-signed certificaat wordt pas gebruikt nadat je de getoonde fingerprint expliciet accepteert.
+              </p>
+            </div>
           </section>
 
           <section hidden={step !== 3} className="grid gap-5" aria-labelledby="wizard-step-title">
@@ -500,13 +477,31 @@ export function FortiGateWizard({
           </section>
 
           <section hidden={step !== 4} className="grid gap-5" aria-labelledby="wizard-step-title">
+            {state.certificate ? (
+              <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100" role="alert">
+                <p className="font-semibold">
+                  {state.certificate.selfSigned ? "Self-signed certificaat gevonden" : "Certificaat kan niet automatisch worden gevalideerd"}
+                </p>
+                <dl className="mt-3 grid gap-2 sm:grid-cols-[9rem_1fr]">
+                  <dt className="font-medium">Onderwerp</dt><dd className="break-all">{state.certificate.subject}</dd>
+                  <dt className="font-medium">Uitgever</dt><dd className="break-all">{state.certificate.issuer}</dd>
+                  <dt className="font-medium">Geldig tot</dt><dd>{new Date(state.certificate.validTo).toLocaleString("nl-NL")}</dd>
+                  <dt className="font-medium">SHA-256</dt><dd className="break-all font-mono text-xs">{state.certificate.fingerprint}</dd>
+                  <dt className="font-medium">Validatiefout</dt><dd>{state.certificate.validationError ?? "Onbekend"}</dd>
+                </dl>
+                <label className="mt-4 flex items-start gap-3 rounded-md border border-amber-400/60 bg-white/60 p-3 dark:bg-black/20">
+                  <input className="mt-1 h-5 w-5 shrink-0" name="acceptedTlsFingerprint" type="checkbox" value={state.certificate.fingerprint} required />
+                  <span>Ik heb onderwerp, uitgever en SHA-256-fingerprint gecontroleerd en accepteer precies dit certificaat voor deze FortiGate.</span>
+                </label>
+              </div>
+            ) : null}
             <div className="grid gap-3 rounded-md border border-border bg-surface-soft p-4 text-sm">
               <p className="font-semibold">Laatste controle voor opslaan</p>
               <CheckItem text="De klant is correct geselecteerd." />
               <CheckItem text="De Management URL is bereikbaar vanaf de backupserver, niet alleen vanaf je laptop." />
               <CheckItem text="De API-token hoort bij een REST API Admin en is niet verlopen of opnieuw gegenereerd na kopieren." />
               <CheckItem text="Trusted Hosts staat na de eerste test beperkt op het IP-adres van de backupserver." />
-              <CheckItem text="Bij een self-signed certificaat staat TLS verificatie uit, of het CA-certificaat is vertrouwd." />
+              <CheckItem text="TLS blijft altijd aan; een self-signed certificaat wordt alleen op zijn geaccepteerde fingerprint vertrouwd." />
             </div>
 
             <div className="rounded-md border border-green-200 bg-green-50 p-4 text-sm text-green-950 dark:border-green-900 dark:bg-green-950 dark:text-green-100">

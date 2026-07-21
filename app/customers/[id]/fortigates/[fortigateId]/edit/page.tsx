@@ -62,14 +62,13 @@ export default async function EditCustomerFortiGatePage({
           </select>
         </label>
         <Field label="Cron expressie" name="cronExpression" defaultValue={device.cronExpression ?? ""} />
-        <label className="flex items-start gap-3 rounded-md border border-border bg-surface-soft p-4 text-sm">
-          <input name="tlsVerify" type="hidden" value="false" />
-          <input className="mt-1" name="tlsVerify" type="checkbox" value="true" defaultChecked={device.tlsVerify} required />
-          <span>
-            <span className="block font-medium">TLS certificaat valideren</span>
-            <span className="text-muted-foreground">Gebruik dit alleen met een vertrouwd certificaat op de managementinterface.</span>
-          </span>
-        </label>
+        <input name="tlsVerify" type="hidden" value="true" />
+        <div className="rounded-md border border-border bg-surface-soft p-4 text-sm">
+          <p className="font-medium">TLS is altijd ingeschakeld</p>
+          <p className="mt-1 text-muted-foreground">
+            Wijzig je host of poort, dan vervalt een eerder geaccepteerde fingerprint. Controleer daarna opnieuw het TLS-certificaat op de FortiGate-pagina.
+          </p>
+        </div>
         <div className="flex flex-wrap gap-2">
           <Button>Wijzigingen opslaan</Button>
           <ActionLink href={detailHref}>Annuleren</ActionLink>

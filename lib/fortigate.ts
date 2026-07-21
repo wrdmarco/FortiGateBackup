@@ -1,4 +1,6 @@
 import { request as httpsRequest } from "node:https";
+import { isIP } from "node:net";
+import { connect as tlsConnect, type DetailedPeerCertificate, type TLSSocket } from "node:tls";
 import { mkdir, open, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Backup, BackupStatus, FortiGate, FortiGateLogLevel } from "@prisma/client";
@@ -25,6 +27,7 @@ type RequestOptions = {
   headers: Record<string, string>;
   method?: "GET" | "POST";
   maximumBytes: number;
+  certificateFingerprint?: string | null;
 };
 
 type BackupAttempt = {
@@ -35,7 +38,21 @@ type BackupAttempt = {
   vdom?: string | null;
 };
 
-type FortiGateConnection = Pick<FortiGate, "managementUrl" | "httpsPort" | "tlsVerify" | "apiTokenEncrypted">;
+type FortiGateConnection = Pick<
+  FortiGate,
+  "managementUrl" | "httpsPort" | "tlsVerify" | "tlsCertificateFingerprint" | "apiTokenEncrypted"
+>;
+
+export type FortiGateCertificateInspection = {
+  fingerprint: string;
+  subject: string;
+  issuer: string;
+  validFrom: string;
+  validTo: string;
+  trusted: boolean;
+  selfSigned: boolean;
+  validationError: string | null;
+};
 
 function baseUrl(device: FortiGateConnection) {
   const url = normalizeFortiGateBaseUrl(device.managementUrl, device.httpsPort, device.tlsVerify);
@@ -74,12 +91,13 @@ async function requestBuffer(url: URL, options: RequestOptions) {
       clearTimeout(overallTimeout);
       reject(error);
     };
+    const pinnedFingerprint = normalizeFingerprint(options.certificateFingerprint);
     const req = httpsRequest(
       url,
       {
         method: options.method ?? "GET",
         headers: options.headers,
-        rejectUnauthorized: true,
+        rejectUnauthorized: !pinnedFingerprint,
         lookup: pinnedLookup(resolvedAddress.address, resolvedAddress.family),
         timeout: FORTIGATE_REQUEST_TIMEOUT_MS
       },
@@ -120,11 +138,95 @@ async function requestBuffer(url: URL, options: RequestOptions) {
       req.destroy(new Error(`FortiGate API timeout na ${FORTIGATE_REQUEST_TIMEOUT_MS} ms voor ${url.pathname}.`));
     });
     req.on("error", finishWithError);
+    if (pinnedFingerprint) {
+      req.on("socket", (socket) => {
+        const tlsSocket = socket as TLSSocket;
+        tlsSocket.once("secureConnect", () => {
+          const certificate = tlsSocket.getPeerCertificate();
+          const actualFingerprint = normalizeFingerprint(certificate.fingerprint256);
+          if (!certificateFingerprintMatches(pinnedFingerprint, actualFingerprint)) {
+            req.destroy(new Error("Het FortiGate TLS-certificaat is gewijzigd en moet opnieuw expliciet worden geaccepteerd."));
+            return;
+          }
+          req.end();
+        });
+      });
+    }
     const overallTimeout = setTimeout(() => {
       req.destroy(new Error(`FortiGate API timeout na ${FORTIGATE_REQUEST_TIMEOUT_MS} ms voor ${url.pathname}.`));
     }, FORTIGATE_REQUEST_TIMEOUT_MS);
     overallTimeout.unref();
-    req.end();
+    if (!pinnedFingerprint) req.end();
+  });
+}
+
+function normalizeFingerprint(value?: string | null) {
+  return value?.replace(/[^a-fA-F0-9]/g, "").toUpperCase() || null;
+}
+
+export function certificateFingerprintMatches(expected?: string | null, actual?: string | null) {
+  const normalizedExpected = normalizeFingerprint(expected);
+  const normalizedActual = normalizeFingerprint(actual);
+  return Boolean(normalizedExpected && normalizedActual && normalizedExpected === normalizedActual);
+}
+
+function certificateName(value: DetailedPeerCertificate["subject"] | DetailedPeerCertificate["issuer"]) {
+  if (!value) return "Onbekend";
+  const commonName = value.CN;
+  if (Array.isArray(commonName)) return commonName.join(", ");
+  if (commonName) return commonName;
+  return Object.entries(value)
+    .map(([key, item]) => `${key}=${Array.isArray(item) ? item.join(", ") : item}`)
+    .join(", ") || "Onbekend";
+}
+
+export async function inspectFortiGateCertificate(
+  managementUrl: string,
+  httpsPort: number
+): Promise<FortiGateCertificateInspection> {
+  const url = normalizeFortiGateBaseUrl(managementUrl, httpsPort, true);
+  const resolvedAddress = await resolveAllowedFortiGateAddress(url.hostname);
+
+  return new Promise((resolve, reject) => {
+    const socket = tlsConnect({
+      host: url.hostname,
+      port: Number(url.port || httpsPort),
+      servername: isIP(url.hostname) ? undefined : url.hostname,
+      rejectUnauthorized: false,
+      lookup: pinnedLookup(resolvedAddress.address, resolvedAddress.family),
+      minVersion: "TLSv1.2"
+    });
+    const timeout = setTimeout(() => socket.destroy(new Error("Timeout tijdens TLS-certificaatcontrole.")), FORTIGATE_REQUEST_TIMEOUT_MS);
+    timeout.unref();
+    socket.once("secureConnect", () => {
+      clearTimeout(timeout);
+      const certificate = socket.getPeerCertificate(true) as DetailedPeerCertificate;
+      const fingerprint = normalizeFingerprint(certificate.fingerprint256);
+      if (!certificate.raw || !fingerprint) {
+        socket.destroy();
+        reject(new Error("De FortiGate presenteerde geen bruikbaar TLS-certificaat."));
+        return;
+      }
+      const issuerFingerprint = normalizeFingerprint(certificate.issuerCertificate?.fingerprint256);
+      const subject = certificateName(certificate.subject);
+      const issuer = certificateName(certificate.issuer);
+      const result: FortiGateCertificateInspection = {
+        fingerprint,
+        subject,
+        issuer,
+        validFrom: new Date(certificate.valid_from).toISOString(),
+        validTo: new Date(certificate.valid_to).toISOString(),
+        trusted: socket.authorized,
+        selfSigned: issuerFingerprint === fingerprint || subject === issuer,
+        validationError: socket.authorized ? null : String(socket.authorizationError || "Certificaat niet vertrouwd")
+      };
+      socket.end();
+      resolve(result);
+    });
+    socket.once("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
   });
 }
 
@@ -378,7 +480,8 @@ async function fortigateFetch(
     response = await requestBuffer(url, {
       headers: { Authorization: `Bearer ${token}` },
       method,
-      maximumBytes
+      maximumBytes,
+      certificateFingerprint: device.tlsCertificateFingerprint
     });
   } catch (error) {
     throw new Error(networkErrorMessage(error, endpoint));
