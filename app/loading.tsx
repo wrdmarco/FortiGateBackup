@@ -4,7 +4,7 @@ export default function Loading() {
   return (
     <div className="min-h-dvh bg-background lg:grid lg:grid-cols-[14.5rem_minmax(0,1fr)]" aria-busy="true" aria-label="Pagina wordt geladen">
       <aside className="hidden min-h-dvh bg-[hsl(var(--header))] lg:block">
-        <div className="mx-5 my-5 flex min-h-11 items-center gap-2.5 px-1 font-mono text-[0.76rem] font-bold tracking-[0.18em] text-[hsl(var(--header-foreground))]"><Image alt="" aria-hidden height={34} src="/brand/forti-backup-mark-dark.svg" width={34}/>FORTI BACKUP</div>
+        <div className="mx-4 my-4 flex min-h-11 items-center gap-2.5 px-1 font-mono text-[0.72rem] font-bold tracking-[0.14em]"><Image alt="" aria-hidden height={38} src="/brand/forti-backup-mark-dark.svg" width={38}/><span><span className="text-[#ef2935]">FORTI</span><span className="text-white"> BACKUP</span></span></div>
         <div className="space-y-2 px-3">{[0, 1, 2, 3, 4, 5].map((item) => <div className="h-11 rounded-lg bg-white/[0.055]" key={item}/>)}</div>
       </aside>
       <div className="min-w-0">

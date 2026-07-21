@@ -14,7 +14,7 @@ export function SettingsTabs({ tabs, activeTab }: { tabs: SettingsTab[]; activeT
 
   return (
     <div className="grid gap-4">
-      <div className="overflow-x-auto border-b border-border">
+      <div className="overflow-x-auto overflow-y-hidden border-b border-border">
         <div className="flex min-w-max gap-6" role="tablist" aria-label="Instellingen tabs">
           {tabs.map((tab) => (
             <Link

@@ -46,7 +46,7 @@ export async function Shell({ children }: { children: React.ReactNode }) {
 }
 
 function BrandLink({ href, compact = false }: { href: string; compact?: boolean }) {
-  return <Link href={href} className={clsx("brand-mark inline-flex min-h-11 items-center gap-2.5 rounded-lg font-mono font-bold", compact ? "px-0 text-xs tracking-[0.14em] text-foreground" : "mx-5 my-5 px-1 text-[0.76rem] tracking-[0.18em] text-white")}><Image alt="" aria-hidden height={compact ? 28 : 34} src={compact ? "/brand/forti-backup-mark-light.svg" : "/brand/forti-backup-mark-dark.svg"} width={compact ? 28 : 34}/><span>FORTI BACKUP</span></Link>;
+  return <Link href={href} aria-label="Forti Backup - overzicht" className={clsx("brand-mark inline-flex min-h-11 items-center gap-2.5 rounded-lg font-mono font-bold", compact ? "px-0 text-xs tracking-[0.12em]" : "mx-4 my-4 px-1 text-[0.72rem] tracking-[0.14em]")}><Image alt="" aria-hidden height={compact ? 30 : 38} src={compact ? "/brand/forti-backup-mark-light.svg" : "/brand/forti-backup-mark-dark.svg"} width={compact ? 30 : 38}/><span><span className="text-[#ef2935]">FORTI</span><span className={compact ? "text-foreground" : "text-white"}> BACKUP</span></span></Link>;
 }
 
 function NavigationLinks({ isBreakGlassSettingsOnly, isGlobalContext, canManageTenants, canReadUsers, canReadAudit }: { isBreakGlassSettingsOnly: boolean; isGlobalContext: boolean; canManageTenants: boolean; canReadUsers: boolean; canReadAudit: boolean }) {
