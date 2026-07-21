@@ -256,6 +256,14 @@ function backupEndpoint(scope: "global" | "vdom", options?: { destination?: bool
   return `/api/v2/monitor/system/config/backup?${query.toString()}`;
 }
 
+export function backupMethodsForFirmware(firmwareVersion?: string | null): Array<"GET" | "POST"> {
+  const match = firmwareVersion?.match(/^v?(\d+)\.(\d+)/i);
+  if (!match) return ["POST", "GET"];
+  const major = Number(match[1]);
+  const minor = Number(match[2]);
+  return major > 7 || (major === 7 && minor >= 6) ? ["POST", "GET"] : ["GET", "POST"];
+}
+
 function backupAttempts(device: FortiGate): BackupAttempt[] {
   const scopes: Array<{ scope: "global" | "vdom"; vdom?: string | null }> = device.vdom
     ? [{ scope: "vdom", vdom: device.vdom }, { scope: "global" }]
@@ -263,7 +271,7 @@ function backupAttempts(device: FortiGate): BackupAttempt[] {
   const attempts: BackupAttempt[] = [];
   for (const { scope, vdom } of scopes) {
     for (const destination of [true, false]) {
-      for (const method of ["GET", "POST"] as const) {
+      for (const method of backupMethodsForFirmware(device.firmwareVersion)) {
         attempts.push({
           method,
           endpoint: backupEndpoint(scope, { destination, vdom }),
@@ -530,9 +538,9 @@ async function fetchBackupConfig(device: FortiGate) {
       failures.push(`${attempt.method} ${attempt.endpoint} -> ${message}`);
       await writeFortiGateLog(
         device.id,
-        FortiGateLogLevel.WARN,
-        "backup.fetch_config_failed",
-        message,
+        FortiGateLogLevel.INFO,
+        "backup.fetch_config_fallback",
+        `Backupvariant niet ondersteund; volgende compatibiliteitsvariant wordt geprobeerd. ${message}`,
         attempt
       );
     }
