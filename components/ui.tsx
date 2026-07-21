@@ -29,10 +29,6 @@ export async function Shell({ children }: { children: React.ReactNode }) {
       <aside className="app-sidebar hidden min-h-screen flex-col bg-[hsl(var(--header))] text-[hsl(var(--header-foreground))] lg:sticky lg:top-0 lg:flex lg:h-screen">
         <BrandLink href={user ? "/" : "/login"} />
         {user ? <nav aria-label="Hoofdnavigatie" className="flex-1 space-y-1 overflow-y-auto px-3 py-2">{navigation}</nav> : null}
-        <div className="mx-4 mb-5 border-t border-white/15 pt-4">
-          <div className="flex items-center gap-3 rounded-lg px-3 py-2 text-xs text-white/70"><span className="status-pulse" />Alle systemen operationeel</div>
-          <p className="mt-4 px-3 font-mono text-[0.68rem] text-white/40">Forti Backup Portal</p>
-        </div>
       </aside>
       <div className="min-w-0">
         <header className="app-header sticky top-0 z-30 border-b border-border bg-surface/95 backdrop-blur-sm">
@@ -66,7 +62,7 @@ function NavigationLinks({ isBreakGlassSettingsOnly, isGlobalContext, canManageT
 }
 
 export function PageHeader({ title, description, actions }: { title: string; description?: string; actions?: React.ReactNode }) {
-  return <header className="page-header mb-6 flex flex-wrap items-center justify-between gap-4"><div className="min-w-0"><h1 className="font-display text-[1.75rem] font-semibold leading-tight tracking-[-0.03em] sm:text-[2rem]">{title}</h1>{description ? <p className="mt-1 max-w-4xl text-sm leading-6 text-muted-foreground">{description}</p> : null}</div>{actions ? <div className="page-actions flex flex-wrap gap-2">{actions}</div> : null}</header>;
+  return <header className="page-header mb-6 flex flex-wrap items-center justify-between gap-4"><div className="min-w-0"><h1 className="font-display text-[1.75rem] font-semibold leading-tight tracking-[-0.012em] sm:text-[2rem]">{title}</h1>{description ? <p className="mt-1 max-w-4xl text-sm leading-6 text-muted-foreground">{description}</p> : null}</div>{actions ? <div className="page-actions flex flex-wrap gap-2">{actions}</div> : null}</header>;
 }
 
 export function Panel({ title, description, children, className }: { title?: string; description?: string; children: React.ReactNode; className?: string }) {
@@ -96,7 +92,7 @@ export function Field({ label, className, ...inputProps }: { label: string } & R
 
 export function FilterBar({ children }: { children: React.ReactNode }) { return <div className="filter-bar mb-4 rounded-[0.625rem] border border-border bg-surface-soft/55 p-3 sm:p-4">{children}</div>; }
 
-export function SectionHeading({ title, description, actions }: { title: string; description?: string; actions?: React.ReactNode }) { return <div className="mb-4 flex flex-wrap items-end justify-between gap-3"><div><h2 className="font-display text-xl font-semibold tracking-[-0.02em]">{title}</h2>{description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}</div>{actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}</div>; }
+export function SectionHeading({ title, description, actions }: { title: string; description?: string; actions?: React.ReactNode }) { return <div className="mb-4 flex flex-wrap items-end justify-between gap-3"><div><h2 className="font-display text-xl font-semibold tracking-[-0.008em]">{title}</h2>{description ? <p className="mt-1 text-sm leading-5 text-muted-foreground">{description}</p> : null}</div>{actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}</div>; }
 
 type IconName = "overview" | "device" | "queue" | "alert" | "tenant" | "user" | "shield" | "audit" | "settings" | "help" | "check" | "database" | "archive" | "clock" | "arrow";
 export function Icon({ name, className }: { name: IconName; className?: string }) {

@@ -54,7 +54,7 @@ export default async function DashboardPage() {
 
   return <Shell>
     <div className="mb-8 flex flex-wrap items-end justify-between gap-5">
-      <div><p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-success">Operationeel overzicht</p><h1 className="font-display text-4xl font-semibold tracking-[-0.04em] sm:text-5xl">Goedemorgen, {firstName}</h1><p className="mt-2 text-base text-muted-foreground">Je FortiGate-omgeving is {failures ? "bijna volledig" : "volledig"} onder controle.</p></div>
+      <div><p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-success">Operationeel overzicht</p><h1 className="font-display text-4xl font-semibold tracking-[-0.015em] sm:text-5xl">Goedemorgen, {firstName}</h1><p className="mt-2 text-base leading-6 text-muted-foreground">Je FortiGate-omgeving is {failures ? "bijna volledig" : "volledig"} onder controle.</p></div>
       <div className="grid grid-cols-3 divide-x divide-border rounded-xl border border-border bg-surface shadow-panel">
         <HeaderMetric value={fortigates} label="FortiGates" tone="neutral"/><HeaderMetric value={`${successRate.toFixed(1).replace(".", ",")}%`} label="geslaagd" tone="success"/><HeaderMetric value={failures} label="aandacht" tone={failures ? "warning" : "success"}/>
       </div>

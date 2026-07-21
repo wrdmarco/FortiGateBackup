@@ -119,7 +119,7 @@ export function Modal({
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <p className="mb-1 text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-primary">Forti Backup</p>
-              <h2 className="font-display text-xl font-semibold tracking-[-0.02em] sm:text-2xl" id={titleId}>
+              <h2 className="font-display text-xl font-semibold tracking-[-0.008em] sm:text-2xl" id={titleId}>
                 {title}
               </h2>
               {description ? (
