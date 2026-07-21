@@ -17,5 +17,5 @@ KillMode=control-group
 UMask=0077
 PrivateTmp=true
 NoNewPrivileges=true
-StandardOutput="append:@APP_DIR@/data/logs/update.log"
-StandardError="append:@APP_DIR@/data/logs/update.log"
+StandardOutput=append:@APP_DIR@/data/logs/update.log
+StandardError=append:@APP_DIR@/data/logs/update.log
