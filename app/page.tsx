@@ -67,7 +67,7 @@ export default async function DashboardPage() {
         {canReadUpdates ? (
           <Card
             title="Applicatie"
-            value={updateStatus?.updateAvailable ? "Update" : updateStatus?.updateRunning ? "Bezig" : updateStatus?.currentVersion ?? "0.1.7"}
+            value={updateStatus?.updateAvailable ? "Update" : updateStatus?.updateRunning ? "Bezig" : updateStatus?.currentVersion ?? "0.1.8"}
             detail={updateStatus?.updateAvailable ? "Nieuwe GitHub versie beschikbaar" : updateStatus?.updateRunning ? "Update draait" : "Actueel"}
           />
         ) : null}

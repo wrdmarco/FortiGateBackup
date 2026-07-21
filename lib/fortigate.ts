@@ -142,8 +142,12 @@ async function requestBuffer(url: URL, options: RequestOptions) {
       req.on("socket", (socket) => {
         const tlsSocket = socket as TLSSocket;
         tlsSocket.once("secureConnect", () => {
-          const certificate = tlsSocket.getPeerCertificate();
-          const actualFingerprint = normalizeFingerprint(certificate.fingerprint256);
+          const certificate = tlsSocket.getPeerCertificate(true) as DetailedPeerCertificate;
+          const actualFingerprint = peerCertificateFingerprint(certificate);
+          if (!actualFingerprint) {
+            req.destroy(new Error("De FortiGate TLS-verbinding leverde geen controleerbaar leaf-certificaat op."));
+            return;
+          }
           if (!certificateFingerprintMatches(pinnedFingerprint, actualFingerprint)) {
             req.destroy(new Error("Het FortiGate TLS-certificaat is gewijzigd en moet opnieuw expliciet worden geaccepteerd."));
             return;
@@ -162,6 +166,11 @@ async function requestBuffer(url: URL, options: RequestOptions) {
 
 function normalizeFingerprint(value?: string | null) {
   return value?.replace(/[^a-fA-F0-9]/g, "").toUpperCase() || null;
+}
+
+export function peerCertificateFingerprint(certificate: Pick<DetailedPeerCertificate, "fingerprint256" | "raw">) {
+  if (certificate.raw?.length) return normalizeFingerprint(sha256(certificate.raw));
+  return normalizeFingerprint(certificate.fingerprint256);
 }
 
 export function certificateFingerprintMatches(expected?: string | null, actual?: string | null) {
@@ -201,7 +210,7 @@ export async function inspectFortiGateCertificate(
     socket.once("secureConnect", () => {
       clearTimeout(timeout);
       const certificate = socket.getPeerCertificate(true) as DetailedPeerCertificate;
-      const fingerprint = normalizeFingerprint(certificate.fingerprint256);
+      const fingerprint = peerCertificateFingerprint(certificate);
       if (!certificate.raw || !fingerprint) {
         socket.destroy();
         reject(new Error("De FortiGate presenteerde geen bruikbaar TLS-certificaat."));
