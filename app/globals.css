@@ -3,37 +3,37 @@
 @tailwind utilities;
 
 :root {
-  --background: 220 23% 96%;
-  --foreground: 225 22% 12%;
+  --background: 120 8% 97%;
+  --foreground: 198 29% 13%;
   --surface: 0 0% 100%;
-  --surface-soft: 220 22% 93%;
-  --muted: 220 16% 90%;
-  --muted-foreground: 221 10% 38%;
-  --border: 220 16% 81%;
-  --primary: 358 77% 45%;
+  --surface-soft: 160 9% 95%;
+  --muted: 165 9% 92%;
+  --muted-foreground: 195 10% 40%;
+  --border: 170 10% 84%;
+  --primary: 5 76% 58%;
   --primary-foreground: 0 0% 100%;
   --danger: 0 78% 42%;
-  --success: 153 68% 29%;
-  --warning: 37 92% 39%;
-  --header: 225 25% 13%;
+  --success: 165 61% 34%;
+  --warning: 38 68% 52%;
+  --header: 195 55% 18%;
   --header-foreground: 210 28% 96%;
   --accent: 198 86% 35%;
 }
 
 .dark {
-  --background: 225 25% 9%;
+  --background: 198 30% 8%;
   --foreground: 210 26% 96%;
-  --surface: 225 21% 13%;
-  --surface-soft: 224 18% 17%;
-  --muted: 224 16% 19%;
+  --surface: 198 25% 12%;
+  --surface-soft: 196 21% 16%;
+  --muted: 196 18% 19%;
   --muted-foreground: 216 14% 69%;
-  --border: 222 13% 27%;
-  --primary: 358 84% 58%;
+  --border: 193 14% 26%;
+  --primary: 5 80% 62%;
   --primary-foreground: 0 0% 100%;
   --danger: 0 86% 62%;
-  --success: 153 68% 44%;
+  --success: 165 57% 47%;
   --warning: 42 93% 58%;
-  --header: 225 28% 8%;
+  --header: 198 36% 7%;
   --header-foreground: 210 28% 97%;
   --accent: 197 88% 56%;
 }
@@ -49,7 +49,7 @@ html.dark {
 body {
   background: hsl(var(--background));
   color: hsl(var(--foreground));
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: "Source Sans 3", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
   font-feature-settings: "rlig" 1, "calt" 1;
   overflow-x: clip;
 }
@@ -121,27 +121,28 @@ textarea {
   }
 
   .app-nav-link {
-    display: inline-flex;
-    min-height: 2.5rem;
+    display: flex;
+    min-height: 2.75rem;
     align-items: center;
-    border-radius: 0.375rem;
-    padding: 0.375rem 0.75rem;
-    color: hsl(var(--header-foreground) / 0.76);
+    gap: 0.75rem;
+    border-radius: 0.625rem;
+    padding: 0.55rem 0.75rem;
+    color: hsl(var(--header-foreground) / 0.7);
     font-size: 0.875rem;
     font-weight: 500;
     transition: background-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
   }
 
   .app-nav-link:hover {
-    background: hsl(var(--header-foreground) / 0.1);
+    background: hsl(var(--header-foreground) / 0.08);
     color: hsl(var(--header-foreground));
   }
 
   .app-nav-link[aria-current="page"] {
-    background: hsl(var(--header-foreground) / 0.1);
+    background: hsl(var(--header-foreground) / 0.13);
     color: hsl(var(--header-foreground));
     font-weight: 650;
-    box-shadow: inset 0 -2px 0 hsl(var(--primary));
+    box-shadow: inset 3px 0 0 hsl(var(--accent));
   }
 
   .app-nav-summary {
@@ -156,6 +157,60 @@ textarea {
     min-height: 2.75rem;
     text-overflow: ellipsis;
   }
+
+  .app-header .app-nav-link {
+    color: hsl(var(--foreground) / 0.78);
+  }
+
+  .app-header .app-nav-link:hover,
+  .app-header .app-nav-link[aria-current="page"] {
+    background: hsl(var(--muted));
+    color: hsl(var(--foreground));
+  }
+
+  .font-display {
+    font-family: "Arial Narrow", "Aptos Display", "Segoe UI", sans-serif;
+  }
+
+  .ui-icon { width: 1.25rem; height: 1.25rem; flex: 0 0 auto; }
+
+  .topbar-icon {
+    display: grid;
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+    place-items: center;
+    border-radius: 0.625rem;
+    color: hsl(var(--muted-foreground));
+    transition: background-color 150ms ease, color 150ms ease;
+  }
+
+  .topbar-icon:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
+
+  .brand-sigil {
+    position: relative;
+    display: grid;
+    width: 2.65rem;
+    height: 2.65rem;
+    place-items: center;
+    border: 1px solid hsl(var(--header-foreground) / 0.28);
+    border-radius: 0.7rem;
+  }
+
+  .brand-sigil::before,
+  .brand-sigil::after,
+  .brand-sigil span { content: ""; position: absolute; width: 1.35rem; height: 2px; border-radius: 2px; background: currentColor; }
+  .brand-sigil::before { transform: translateY(-0.36rem); }
+  .brand-sigil::after { transform: translateY(0.36rem); }
+  .brand-sigil-small { width: 2rem; height: 2rem; border-color: hsl(var(--border)); color: hsl(var(--foreground)); }
+  .brand-sigil-small::before, .brand-sigil-small::after, .brand-sigil-small span { width: 1rem; }
+
+  .status-pulse { width: 0.55rem; height: 0.55rem; flex: 0 0 auto; border-radius: 999px; background: hsl(var(--success)); box-shadow: 0 0 0 4px hsl(var(--success) / 0.16); }
+
+  .shadow-panel { box-shadow: 0 1px 2px hsl(198 30% 8% / 0.04), 0 8px 28px hsl(198 30% 8% / 0.035); }
+
+  .chain-grid { background-image: linear-gradient(hsl(var(--border) / .25) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--border) / .25) 1px, transparent 1px); background-size: 24px 24px; }
+
+  .metric-divider + .metric-divider { border-left: 1px solid hsl(var(--border)); }
 
   .modal-dialog::backdrop {
     background: hsl(225 28% 7% / 0.7);

@@ -24,7 +24,7 @@ export function TenantSwitcher({
 
   if (!canSwitch) {
     return (
-      <span className="rounded-md border border-white/12 bg-white/[0.04] px-3 py-2 text-sm font-medium text-white/72">
+      <span className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground">
         {tenantName}
       </span>
     );
@@ -37,7 +37,7 @@ export function TenantSwitcher({
       </label>
       <select
         id="tenant-context"
-        className="min-h-10 rounded-md border border-white/12 bg-[hsl(var(--header))] px-3 py-2 text-sm font-medium text-[hsl(var(--header-foreground))] outline-none transition hover:border-white/25 hover:bg-white/[0.08] focus:border-primary focus:bg-[hsl(var(--header))]"
+        className="min-h-11 rounded-lg border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground outline-none transition hover:border-primary/45 focus:border-primary focus:ring-2 focus:ring-primary/15"
         name="tenantId"
         value={selectedTenantId}
         onChange={(event) => {
@@ -46,7 +46,7 @@ export function TenantSwitcher({
         }}
       >
         {tenants.map((tenant) => (
-          <option className="bg-[hsl(var(--surface))] text-[hsl(var(--foreground))]" key={tenant.id} value={tenant.id}>
+          <option className="bg-surface text-foreground" key={tenant.id} value={tenant.id}>
             {tenant.name}
           </option>
         ))}

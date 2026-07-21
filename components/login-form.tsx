@@ -13,10 +13,10 @@ export function LoginForm({ ssoAvailable = false, externalError }: { ssoAvailabl
   const error = state.error ?? externalError;
 
   return (
-    <div className="grid gap-5">
+    <div className="grid gap-6">
       {error ? (
         <div
-          className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
+          className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
           role="alert"
           aria-live="polite"
         >
@@ -27,7 +27,7 @@ export function LoginForm({ ssoAvailable = false, externalError }: { ssoAvailabl
         <label className="grid gap-2 text-sm">
           <span className="font-medium text-foreground">E-mail</span>
           <input
-            className="h-11 rounded-md border border-border bg-surface px-3 text-base outline-none transition placeholder:text-muted-foreground/70 focus:border-primary focus:ring-2 focus:ring-primary/15 sm:text-sm"
+            className="h-12 rounded-lg border border-border bg-surface px-3 text-base outline-none transition placeholder:text-muted-foreground/70 focus:border-primary focus:ring-2 focus:ring-primary/15"
             name="email"
             type="email"
             autoComplete="email"
@@ -41,7 +41,7 @@ export function LoginForm({ ssoAvailable = false, externalError }: { ssoAvailabl
         <label className="grid gap-2 text-sm">
           <span className="font-medium text-foreground">Wachtwoord</span>
           <input
-            className="h-11 rounded-md border border-border bg-surface px-3 text-base outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 sm:text-sm"
+            className="h-12 rounded-lg border border-border bg-surface px-3 text-base outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15"
             name="password"
             type="password"
             autoComplete="current-password"
@@ -49,7 +49,7 @@ export function LoginForm({ ssoAvailable = false, externalError }: { ssoAvailabl
           />
         </label>
         <button
-          className="mt-1 h-11 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/25 focus:ring-offset-2 focus:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-55"
+          className="mt-1 h-12 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 transition hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/25 focus:ring-offset-2 focus:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-55"
           disabled={pending || ssoPending}
         >
           {pending ? "Inloggen..." : "Inloggen"}
@@ -66,7 +66,7 @@ export function LoginForm({ ssoAvailable = false, externalError }: { ssoAvailabl
           <form action="/api/auth/entra/start" method="post" onSubmit={() => setSsoPending(true)}>
             <input name="email" type="hidden" value={email} />
             <button
-              className="h-11 w-full rounded-md border border-border bg-surface px-4 text-sm font-semibold text-foreground transition hover:border-primary/60 hover:bg-surface-soft focus:outline-none focus:ring-2 focus:ring-primary/25 focus:ring-offset-2 focus:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-55"
+              className="h-12 w-full rounded-lg border border-border bg-surface px-4 text-sm font-semibold text-foreground transition hover:border-primary/60 hover:bg-surface-soft focus:outline-none focus:ring-2 focus:ring-primary/25 focus:ring-offset-2 focus:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-55"
               disabled={pending || ssoPending || !email.trim()}
               type="submit"
             >

@@ -220,18 +220,18 @@ export function HeaderUserMenu({
         aria-controls={menuId}
         aria-expanded={open}
         aria-label={`Gebruikersmenu voor ${displayName}`}
-        className="flex min-h-11 max-w-[11rem] items-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-2.5 py-2 text-sm font-medium text-white/80 transition hover:bg-white/10 hover:text-white sm:max-w-52 sm:px-3"
+        className="flex min-h-11 max-w-[11rem] items-center gap-2 rounded-lg border border-border bg-surface px-2.5 py-2 text-sm font-semibold text-foreground transition hover:bg-muted sm:max-w-52 sm:px-3"
         onClick={() => setOpen((value) => !value)}
         ref={triggerRef}
         type="button"
       >
-        <span aria-hidden="true" className="grid h-7 w-7 shrink-0 place-items-center rounded bg-white/10 text-xs font-semibold text-white">
+        <span aria-hidden="true" className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-[hsl(var(--header))] text-xs font-semibold text-[hsl(var(--header-foreground))]">
           {displayName.slice(0, 1).toUpperCase()}
         </span>
         <span className="hidden min-w-0 truncate sm:block">{displayName}</span>
         <span
           aria-hidden="true"
-          className={`ml-auto h-2 w-2 shrink-0 rotate-45 border-b border-r border-white/55 transition-transform ${open ? "-translate-y-0.5 rotate-[225deg]" : ""}`}
+          className={`ml-auto h-2 w-2 shrink-0 rotate-45 border-b border-r border-current opacity-55 transition-transform ${open ? "-translate-y-0.5 rotate-[225deg]" : ""}`}
         />
       </button>
 
