@@ -7,7 +7,7 @@ export async function GET() {
     await prisma.$queryRaw`SELECT 1`;
     return NextResponse.json({
       status: "ok",
-      version: "0.1.12",
+      version: "0.1.13",
       database: "ok",
       latencyMs: Date.now() - started,
       time: new Date().toISOString()
