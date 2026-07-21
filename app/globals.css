@@ -219,6 +219,8 @@ textarea {
     font-size: 0.75rem;
     letter-spacing: 0;
     text-transform: uppercase;
+    white-space: nowrap;
+    background: hsl(var(--surface-soft));
   }
 
   .table-pro td {
@@ -232,6 +234,23 @@ textarea {
   .table-pro tbody tr:hover {
     background: hsl(var(--surface-soft) / 0.82);
     box-shadow: inset 2px 0 0 hsl(var(--primary));
+  }
+
+  .table-pro tbody tr:last-child td:first-child { border-bottom-left-radius: 0.75rem; }
+  .table-pro tbody tr:last-child td:last-child { border-bottom-right-radius: 0.75rem; }
+
+  .filter-bar > form,
+  form.filter-bar { margin: 0; }
+
+  .modal-content > form { gap: 1.25rem; }
+  .modal-content textarea { border-radius: 0.625rem; }
+  .modal-content > form > :is(button, .form-actions):last-child { margin-top: 0.25rem; }
+
+  .workspace-stack { display: grid; gap: 1.5rem; }
+  .content-grid { display: grid; gap: 1.25rem; }
+
+  @media (min-width: 1024px) {
+    .content-grid-aside { grid-template-columns: minmax(0, 1fr) minmax(17rem, 0.36fr); align-items: start; }
   }
 
   .security-panel {

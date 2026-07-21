@@ -66,11 +66,11 @@ function NavigationLinks({ isBreakGlassSettingsOnly, isGlobalContext, canManageT
 }
 
 export function PageHeader({ title, description, actions }: { title: string; description?: string; actions?: React.ReactNode }) {
-  return <div className="mb-7 flex flex-wrap items-start justify-between gap-4"><div><h1 className="font-display text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">{title}</h1>{description ? <p className="mt-2 max-w-3xl text-base leading-6 text-muted-foreground">{description}</p> : null}</div>{actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}</div>;
+  return <div className="page-header mb-7 flex flex-wrap items-end justify-between gap-5 border-b border-border pb-6"><div className="min-w-0"><p className="mb-2 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-primary">Werkruimte</p><h1 className="font-display text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">{title}</h1>{description ? <p className="mt-2 max-w-3xl text-base leading-6 text-muted-foreground">{description}</p> : null}</div>{actions ? <div className="page-actions flex flex-wrap gap-2">{actions}</div> : null}</div>;
 }
 
 export function Panel({ title, description, children, className }: { title?: string; description?: string; children: React.ReactNode; className?: string }) {
-  return <section className={clsx("security-panel professional-surface overflow-hidden rounded-xl border border-border shadow-panel", className)}>{title || description ? <div className="border-b border-border bg-surface/60 px-5 py-4 pt-5">{title ? <h2 className="font-semibold">{title}</h2> : null}{description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}</div> : null}<div className="p-5">{children}</div></section>;
+  return <section className={clsx("security-panel professional-surface overflow-hidden rounded-xl border border-border shadow-panel", className)}>{title || description ? <div className="border-b border-border bg-surface-soft/55 px-5 py-4 sm:px-6 sm:py-5">{title ? <h2 className="font-display text-lg font-semibold tracking-[-0.015em]">{title}</h2> : null}{description ? <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p> : null}</div> : null}<div className="p-5 sm:p-6">{children}</div></section>;
 }
 
 export function TableShell({ children, className }: { children: React.ReactNode; className?: string }) { return <div className={clsx("overflow-auto rounded-xl border border-border bg-surface shadow-panel", className)}>{children}</div>; }
@@ -93,6 +93,10 @@ export function ActionLink({ children, href, variant = "secondary", target }: { 
 }
 
 export function Field({ label, className, ...inputProps }: { label: string } & React.InputHTMLAttributes<HTMLInputElement>) { return <label className="grid gap-1.5 text-sm"><span className="font-medium text-foreground">{label}</span><input className={clsx("min-h-11 rounded-lg border border-border bg-surface px-3 py-2 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15", className)} {...inputProps}/></label>; }
+
+export function FilterBar({ children }: { children: React.ReactNode }) { return <div className="filter-bar mb-5 rounded-xl border border-border bg-surface p-4 shadow-panel sm:p-5">{children}</div>; }
+
+export function SectionHeading({ title, description, actions }: { title: string; description?: string; actions?: React.ReactNode }) { return <div className="mb-4 flex flex-wrap items-end justify-between gap-3"><div><h2 className="font-display text-xl font-semibold tracking-[-0.02em]">{title}</h2>{description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}</div>{actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}</div>; }
 
 type IconName = "overview" | "device" | "queue" | "alert" | "tenant" | "user" | "shield" | "audit" | "settings" | "help" | "check" | "database" | "archive" | "clock" | "arrow";
 export function Icon({ name, className }: { name: IconName; className?: string }) {

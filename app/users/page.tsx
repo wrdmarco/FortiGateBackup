@@ -3,7 +3,7 @@ import { Modal } from "@/components/modal";
 import { firstQueryValue, normalizePage, parsePageParam, ServerPagination } from "@/components/server-pagination";
 import { TenantUserCreateForm } from "@/components/tenant-user-create-form";
 import { TenantUserEditForm } from "@/components/tenant-user-edit-form";
-import { ActionLink, Badge, Button, PageHeader, Shell, TableShell } from "@/components/ui";
+import { ActionLink, Badge, Button, FilterBar, PageHeader, Shell, TableShell } from "@/components/ui";
 import { requireContextPermission, tenantFilter } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { ensureTenantRbac, hasPermission } from "@/lib/rbac";
@@ -92,7 +92,7 @@ export default async function UsersPage({
         <Metric label="Rollen" value={roles.length} />
       </div>
 
-      <form className="mb-4 flex flex-wrap items-end gap-3" method="get">
+      <FilterBar><form className="flex flex-wrap items-end gap-3" method="get">
         <label className="grid min-w-64 flex-1 gap-1 text-sm">
           <span className="font-medium">Gebruikers zoeken</span>
           <input
@@ -104,7 +104,7 @@ export default async function UsersPage({
         </label>
         <Button variant="secondary">Zoeken</Button>
         {query ? <ActionLink href="/users">Filter wissen</ActionLink> : null}
-      </form>
+      </form></FilterBar>
 
       <TableShell>
         <table className="table-pro w-full min-w-[980px] text-left text-sm">

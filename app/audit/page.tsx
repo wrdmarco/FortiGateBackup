@@ -1,5 +1,5 @@
 import { firstQueryValue, normalizePage, parsePageParam, ServerPagination } from "@/components/server-pagination";
-import { ActionLink, Badge, Button, PageHeader, Shell, TableShell } from "@/components/ui";
+import { ActionLink, Badge, Button, FilterBar, PageHeader, Shell, TableShell } from "@/components/ui";
 import { requireContextPermission } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { mainTenantId } from "@/lib/tenant-main";
@@ -82,7 +82,7 @@ export default async function AuditPage({
         title="Auditlog"
         description={`Auditregels voor ${tenant?.name ?? "de actieve tenant"}. Andere tenants worden hier nooit getoond.`}
       />
-      <form className="mt-6 grid gap-3 rounded-md border border-border bg-surface p-4 md:grid-cols-[minmax(240px,1fr)_minmax(220px,0.6fr)_auto_auto] md:items-end" method="get">
+      <FilterBar><form className="grid gap-3 md:grid-cols-[minmax(240px,1fr)_minmax(220px,0.6fr)_auto_auto] md:items-end" method="get">
         <label className="grid gap-1 text-sm">
           <span className="font-medium">Zoeken</span>
           <input
@@ -101,8 +101,8 @@ export default async function AuditPage({
         </label>
         <Button variant="secondary">Filteren</Button>
         {query || action ? <ActionLink href="/audit">Filters wissen</ActionLink> : <span />}
-      </form>
-      <TableShell className="mt-6">
+      </form></FilterBar>
+      <TableShell>
         <table className="table-pro w-full min-w-[1120px] text-left text-sm">
           <thead className="bg-surface-soft">
             <tr>

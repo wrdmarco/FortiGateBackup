@@ -1,9 +1,9 @@
 import { notFound } from "next/navigation";
-import { deleteCustomer, updateCustomer } from "@/app/actions";
+import { deleteCustomer } from "@/app/actions";
 import { FirmwareStatus } from "@/components/firmware-status";
 import { Modal } from "@/components/modal";
 import { firstQueryValue, normalizePage, parsePageParam, ServerPagination } from "@/components/server-pagination";
-import { ActionLink, Badge, Button, Card, Field, PageHeader, Shell, TableShell } from "@/components/ui";
+import { ActionLink, Badge, Button, Card, Field, FilterBar, PageHeader, SectionHeading, Shell, TableShell } from "@/components/ui";
 import { assertOperationalTenant, assertTenantAccess, requirePermission } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { hasPermission } from "@/lib/rbac";
@@ -110,32 +110,7 @@ export default async function CustomerDetailPage({
         actions={
           <>
             <ActionLink href="/customers">Klanten</ActionLink>
-            {canUpdateCustomer ? (
-              <Modal
-                title="Klant bewerken"
-                description="Werk klantgegevens en integratiekoppelingen bij."
-                trigger={<Button variant="secondary">Klant bewerken</Button>}
-              >
-                <form action={updateCustomer} className="grid gap-4">
-                  <input type="hidden" name="id" value={customer.id} />
-                  <Field label="Naam" name="name" defaultValue={customer.name} required />
-                  <Field label="Contactpersoon" name="contact" defaultValue={customer.contact ?? ""} />
-                  <Field label="E-mail" name="email" type="email" defaultValue={customer.email ?? ""} />
-                  <Field label="Telefoon" name="phone" defaultValue={customer.phone ?? ""} />
-                  <Field label="IT Glue organization ID" name="itGlueOrganizationId" defaultValue={customer.itGlueOrganizationId ?? ""} />
-                  <Field label="Autotask Company ID" name="autotaskCompanyId" defaultValue={customer.autotaskCompanyId ?? ""} />
-                  <label className="grid gap-1 text-sm">
-                    <span className="font-medium">Notities</span>
-                    <textarea
-                      className="min-h-24 rounded-md border border-border bg-surface px-3 py-2 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15"
-                      name="notes"
-                      defaultValue={customer.notes ?? ""}
-                    />
-                  </label>
-                  <Button>Opslaan</Button>
-                </form>
-              </Modal>
-            ) : null}
+            {canUpdateCustomer ? <ActionLink href={`/customers/${customer.id}/edit`} variant="secondary">Klant bewerken</ActionLink> : null}
             {canCreateFortiGate ? <ActionLink href={`/customers/${customer.id}/fortigates/new`} variant="primary">FortiGate toevoegen</ActionLink> : null}
             {canDeleteCustomer ? (
               <Modal
@@ -174,8 +149,8 @@ export default async function CustomerDetailPage({
       </div>
 
       {canReadFortiGates ? <section className="mt-8">
-        <h2 className="text-xl font-semibold">FortiGates</h2>
-        <form className="mt-4 flex flex-wrap items-end gap-3" method="get">
+        <SectionHeading title="FortiGates" description="Beheer apparaten, firmwarestatus en de laatste operationele meldingen." />
+        <FilterBar><form className="flex flex-wrap items-end gap-3" method="get">
           <label className="grid min-w-64 flex-1 gap-1 text-sm">
             <span className="font-medium">Zoeken</span>
             <input
@@ -187,8 +162,8 @@ export default async function CustomerDetailPage({
           </label>
           <Button variant="secondary">Zoeken</Button>
           {query ? <ActionLink href={`/customers/${customer.id}`}>Filter wissen</ActionLink> : null}
-        </form>
-        <TableShell className="mt-4">
+        </form></FilterBar>
+        <TableShell>
           <table className="table-pro w-full min-w-[900px] text-left text-sm">
             <thead className="bg-surface-soft">
               <tr>

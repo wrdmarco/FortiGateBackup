@@ -1,4 +1,4 @@
-import { ActionLink, Badge, PageHeader, Shell, TableShell } from "@/components/ui";
+import { ActionLink, Badge, FilterBar, PageHeader, Shell, TableShell } from "@/components/ui";
 import { firstQueryValue, normalizePage, parsePageParam, ServerPagination } from "@/components/server-pagination";
 import { checkFortiOsFirmware } from "@/lib/firmware-check";
 import { requirePermission, tenantFilter } from "@/lib/authz";
@@ -144,7 +144,7 @@ export default async function AlertsPage({
           Global bevat geen operationele alerts. Wissel naar een tenant om firewallmeldingen te bekijken.
         </div>
       ) : (
-        <form className="mb-4 flex flex-wrap items-end gap-3" method="get">
+        <FilterBar><form className="flex flex-wrap items-end gap-3" method="get">
           <label className="grid min-w-64 flex-1 gap-1 text-sm">
             <span className="font-medium">Zoeken</span>
             <input
@@ -156,7 +156,7 @@ export default async function AlertsPage({
           </label>
           <button className="inline-flex min-h-11 items-center justify-center rounded-md border border-border bg-surface px-4 py-2 text-sm font-medium transition hover:border-primary/50 hover:bg-muted" type="submit">Zoeken</button>
           {query ? <ActionLink href="/alerts">Filter wissen</ActionLink> : null}
-        </form>
+        </form></FilterBar>
       )}
       <div className="mb-4 grid gap-4 md:grid-cols-3">
         <Metric label="Kritiek" value={alerts.filter((item) => item.severity === "danger").length} tone="danger" />

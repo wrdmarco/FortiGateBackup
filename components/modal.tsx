@@ -27,13 +27,15 @@ export function Modal({
   description,
   trigger,
   children,
-  defaultOpen = false
+  defaultOpen = false,
+  size = "default"
 }: {
   title: string;
   description?: string;
   trigger: ReactNode;
   children: ReactNode;
   defaultOpen?: boolean;
+  size?: "default" | "wide";
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -99,7 +101,7 @@ export function Modal({
         aria-describedby={description ? descriptionId : undefined}
         aria-labelledby={titleId}
         aria-modal="true"
-        className="modal-dialog security-panel professional-surface m-auto w-[min(94vw,1040px)] overflow-hidden rounded-md border border-border bg-surface p-0 text-foreground shadow-2xl"
+        className={`modal-dialog security-panel professional-surface m-auto overflow-hidden rounded-2xl border border-border bg-surface p-0 text-foreground shadow-2xl ${size === "wide" ? "w-[min(94vw,1040px)]" : "w-[min(94vw,720px)]"}`}
         id={dialogId}
         onCancel={(event) => {
           event.preventDefault();
@@ -113,10 +115,11 @@ export function Modal({
         ref={dialogRef}
         tabIndex={-1}
       >
-        <div className="border-b border-border bg-surface px-5 py-4 sm:px-6 sm:py-5">
+        <div className="border-b border-border bg-surface-soft/70 px-5 py-4 sm:px-6 sm:py-5">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <h2 className="text-lg font-semibold sm:text-xl" id={titleId}>
+              <p className="mb-1 text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-primary">Forti Backup</p>
+              <h2 className="font-display text-xl font-semibold tracking-[-0.02em] sm:text-2xl" id={titleId}>
                 {title}
               </h2>
               {description ? (
@@ -127,7 +130,7 @@ export function Modal({
             </div>
             <button
               aria-label="Dialoog sluiten"
-              className="grid h-11 w-11 shrink-0 place-items-center rounded-md border border-border bg-surface text-xl leading-none text-muted-foreground transition hover:border-primary/45 hover:bg-muted hover:text-foreground"
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-border bg-surface text-xl leading-none text-muted-foreground transition hover:border-primary/45 hover:bg-muted hover:text-foreground"
               onClick={closeDialog}
               ref={closeButtonRef}
               title="Sluiten"
@@ -137,7 +140,7 @@ export function Modal({
             </button>
           </div>
         </div>
-        <div className="max-h-[min(78dvh,48rem)] overscroll-contain overflow-y-auto p-5 sm:p-6">{children}</div>
+        <div className="modal-content max-h-[min(78dvh,48rem)] overscroll-contain overflow-y-auto p-5 sm:p-7">{children}</div>
       </dialog>
     </>
   );

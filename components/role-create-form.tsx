@@ -26,7 +26,7 @@ export function RoleCreateForm({
   }, [state.ok]);
 
   return (
-    <form ref={formRef} action={formAction} className="mb-5 grid gap-4 rounded-md border border-border bg-surface-soft p-4">
+    <form ref={formRef} action={formAction} className="grid gap-6">
       <input type="hidden" name="tenantId" value={tenantId} />
       <div className="grid gap-4 md:grid-cols-2">
         <label className="grid gap-1 text-sm">
@@ -47,11 +47,11 @@ export function RoleCreateForm({
       </div>
       <div className="grid gap-3">
         {groupedPermissions.map(([category, items]) => (
-          <fieldset key={category} className="rounded-md border border-border bg-surface p-3">
+          <fieldset key={category} className="rounded-xl border border-border bg-surface-soft p-4">
             <legend className="px-1 text-sm font-semibold">{category}</legend>
             <div className="mt-2 grid gap-2 md:grid-cols-2">
               {items.map((permission) => (
-                <label key={permission.key} className="flex gap-2 rounded-md border border-border bg-surface-soft p-2 text-xs">
+                <label key={permission.key} className="flex gap-3 rounded-lg border border-border bg-surface p-3 text-xs transition hover:border-primary/40">
                   <input className="mt-0.5" name="permissionKeys" type="checkbox" value={permission.key} />
                   <span>
                     <span className="block font-mono">{permission.key}</span>

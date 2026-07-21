@@ -3,7 +3,7 @@ import { DeleteConfirmInput } from "@/components/delete-confirm-input";
 import { Modal } from "@/components/modal";
 import { firstQueryValue, normalizePage, parsePageParam, ServerPagination } from "@/components/server-pagination";
 import { TenantCreateForm } from "@/components/tenant-create-form";
-import { ActionLink, Badge, Button, Field, PageHeader, Shell, TableShell } from "@/components/ui";
+import { ActionLink, Badge, Button, Field, FilterBar, PageHeader, Shell, TableShell } from "@/components/ui";
 import { requirePermission } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { hasPermission } from "@/lib/rbac";
@@ -85,7 +85,7 @@ export default async function TenantsPage({
         }
       />
 
-      <form className="mb-4 flex flex-wrap items-end gap-3" method="get">
+      <FilterBar><form className="flex flex-wrap items-end gap-3" method="get">
         <label className="grid min-w-64 flex-1 gap-1 text-sm">
           <span className="font-medium">Tenants zoeken</span>
           <input
@@ -97,7 +97,7 @@ export default async function TenantsPage({
         </label>
         <Button variant="secondary">Zoeken</Button>
         {query ? <ActionLink href="/tenants">Filter wissen</ActionLink> : null}
-      </form>
+      </form></FilterBar>
 
       <div className="grid gap-6">
         <TableShell>

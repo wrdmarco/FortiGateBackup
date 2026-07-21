@@ -1,15 +1,12 @@
 import { Fragment } from "react";
 import type { Prisma } from "@prisma/client";
 import { deleteAccessRole } from "@/app/actions";
-import { Modal } from "@/components/modal";
-import { RoleCreateForm } from "@/components/role-create-form";
-import { RoleEditForm } from "@/components/role-edit-form";
 import { firstQueryValue, normalizePage, parsePageParam, ServerPagination } from "@/components/server-pagination";
 import { requireContextPermission, tenantFilter } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { ensureTenantRbac, hasPermission, permissions } from "@/lib/rbac";
 import { isGlobalTenantId } from "@/lib/tenant-main";
-import { Button, PageHeader, Panel, Shell } from "@/components/ui";
+import { ActionLink, Button, FilterBar, PageHeader, Panel, Shell } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 const PAGE_SIZE = 8;
@@ -112,15 +109,7 @@ export default async function RolesPage({
         title="Rollen"
         description="Tenant-scoped RBAC rollen met een centrale permission catalogus voor tenant- en platformrechten."
         actions={
-          selectedTenantId && !rolesError && canCreate ? (
-            <Modal
-              title="Custom rol aanmaken"
-              description={selectedTenant ? `Maak een tenantrol voor ${selectedTenant.name} en kies exact welke rechten erbij horen.` : "Maak een tenantrol en kies exact welke rechten erbij horen."}
-              trigger={<Button>Custom rol toevoegen</Button>}
-            >
-              <RoleCreateForm tenantId={selectedTenantId} groupedPermissions={groupedPermissionEntries} />
-            </Modal>
-          ) : null
+          selectedTenantId && !rolesError && canCreate ? <ActionLink href="/roles/new">Custom rol toevoegen</ActionLink> : null
         }
       />
 
@@ -129,7 +118,7 @@ export default async function RolesPage({
           title={selectedTenant ? `Rollenmatrix voor ${selectedTenant.name}` : "Rollenmatrix"}
           description="Vergelijk permissies per rol."
         >
-          <form className="mb-4 flex flex-wrap items-end gap-3" method="get">
+          <FilterBar><form className="flex flex-wrap items-end gap-3" method="get">
             <label className="grid min-w-64 flex-1 gap-1 text-sm">
               <span className="font-medium">Rollen zoeken</span>
               <input
@@ -141,7 +130,7 @@ export default async function RolesPage({
             </label>
             <Button variant="secondary">Zoeken</Button>
             {query ? <a className="inline-flex min-h-11 items-center justify-center rounded-md border border-border bg-surface px-4 py-2 text-sm font-medium" href="/roles">Filter wissen</a> : null}
-          </form>
+          </form></FilterBar>
           {rolesError ? (
             <div className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
               {rolesError}
@@ -218,21 +207,7 @@ export default async function RolesPage({
                       <span className="text-xs text-muted-foreground">
                         {role._count.users} gebruiker{role._count.users === 1 ? "" : "s"}
                       </span>
-                      {canUpdate ? <Modal
-                        title={`Rol ${role.name} aanpassen`}
-                        description="Wijzig de naam, omschrijving en permissies van deze custom rol."
-                        trigger={<Button variant="secondary">Aanpassen</Button>}
-                      >
-                        <RoleEditForm
-                          groupedPermissions={groupedPermissionEntries}
-                          role={{
-                            id: role.id,
-                            name: role.name,
-                            description: role.description,
-                            permissionKeys: role.permissions.map(({ permission }) => permission.key)
-                          }}
-                        />
-                      </Modal> : null}
+                      {canUpdate ? <ActionLink href={`/roles/${role.id}/edit`} variant="secondary">Aanpassen</ActionLink> : null}
                       {canDelete && role._count.users === 0 ? (
                         <form action={deleteAccessRole}>
                           <input type="hidden" name="roleId" value={role.id} />
