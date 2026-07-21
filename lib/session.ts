@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { UserRole } from "@prisma/client";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { cache } from "react";
 import { prisma } from "@/lib/db";
 import { hasPermission } from "@/lib/rbac";
 import {
@@ -72,7 +73,7 @@ export async function destroySession() {
   cookieStore.delete(breakGlassCookieName);
 }
 
-export async function currentUser() {
+export const currentUser = cache(async function currentUser() {
   const cookieStore = await cookies();
   const token = cookieStore.get(sessionCookieName)?.value;
   if (!token) return null;
@@ -116,7 +117,7 @@ export async function currentUser() {
     });
   }
   return { ...session.user, activeTenantId, activeTenant, breakGlassSettingsOnly: session.breakGlassSettingsOnly };
-}
+});
 
 export async function requireUser(options: { allowPasswordChange?: boolean; allowBreakGlassSettingsOnly?: boolean } = {}) {
   const user = await currentUser();

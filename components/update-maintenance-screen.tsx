@@ -173,27 +173,25 @@ function UpdateView({ snapshot, overlay = false }: { snapshot: UpdateSnapshot; o
       className={`${overlay ? "fixed inset-0 z-[200] overflow-y-auto" : "min-h-dvh"} bg-background text-foreground`}
       aria-busy={!isDone}
     >
-      <header className="border-b border-border bg-surface">
+      <header className="border-b border-border bg-[hsl(var(--header))] text-[hsl(var(--header-foreground))]">
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4 sm:px-6">
-          <span className="grid h-9 w-9 place-items-center rounded-md bg-red-700 text-xs font-bold text-white dark:bg-red-600" aria-hidden="true">
-            FG
-          </span>
-          <span className="text-sm font-semibold">FortiGate Backup Portal</span>
+          <span className="brand-sigil brand-sigil-small !border-white/25 !text-white" aria-hidden="true"><span /></span>
+          <span className="text-xs font-bold tracking-[0.18em]">FORTI BACKUP</span>
         </div>
       </header>
 
       <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6 sm:py-16">
-        <p className="text-xs font-semibold uppercase text-red-700 dark:text-red-400">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
           {isError ? "Herstelstatus" : "Gepland onderhoud"}
         </p>
-        <h1 className="mt-3 max-w-4xl text-3xl font-semibold leading-tight sm:text-5xl">{title}</h1>
+        <h1 className="font-display mt-3 max-w-4xl text-3xl font-semibold leading-tight tracking-[-0.035em] sm:text-5xl">{title}</h1>
         <p className="mt-5 max-w-3xl text-base leading-7 text-muted-foreground">{description}</p>
 
         <section className="mt-10 grid gap-6 border-t border-border pt-7 md:grid-cols-[minmax(0,1fr)_300px]" aria-live="polite">
           <div>
             <div className="h-2 overflow-hidden rounded bg-muted" role="progressbar" aria-label="Onderhoudsstatus">
               <span
-                className={`block h-full rounded ${isError ? "w-full bg-red-700 dark:bg-red-500" : isDone ? "w-full bg-emerald-600" : "w-2/5 animate-pulse bg-red-700 dark:bg-red-500"}`}
+                className={`block h-full rounded ${isError ? "w-full bg-danger" : isDone ? "w-full bg-success" : "w-2/5 animate-pulse bg-primary"}`}
               />
             </div>
             <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-xs text-muted-foreground">
@@ -202,7 +200,7 @@ function UpdateView({ snapshot, overlay = false }: { snapshot: UpdateSnapshot; o
             </div>
           </div>
 
-          <div className="border-l-2 border-red-700 pl-4 dark:border-red-500">
+          <div className={`border-l-2 pl-4 ${isError ? "border-danger" : isDone ? "border-success" : "border-primary"}`}>
             <p className="text-sm font-semibold">{isError ? "Herstel wordt afgewacht" : isDone ? "Onderhoud afgerond" : "Onderhoud in uitvoering"}</p>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
               {isError
@@ -213,10 +211,10 @@ function UpdateView({ snapshot, overlay = false }: { snapshot: UpdateSnapshot; o
         </section>
 
         {snapshot.isStarter ? (
-          <section className="mt-8 overflow-hidden rounded-md border border-slate-700 bg-slate-950 text-slate-100" aria-label="Live update log">
-            <div className="flex items-center justify-between gap-4 border-b border-slate-700 px-4 py-3">
+          <section className="mt-8 overflow-hidden rounded-xl border border-border bg-[hsl(var(--header))] text-slate-100 shadow-panel" aria-label="Live update log">
+            <div className="flex items-center justify-between gap-4 border-b border-white/15 px-4 py-3">
               <h2 className="text-sm font-semibold">Live update log</h2>
-              <span className={`text-xs font-medium ${isError ? "text-red-300" : isDone ? "text-emerald-300" : "text-emerald-300"}`}>
+              <span className={`text-xs font-medium ${isError ? "text-red-300" : isDone ? "text-emerald-300" : "text-cyan-300"}`}>
                 {isError ? "Onderbroken" : isDone ? "Afgerond" : "Live"}
               </span>
             </div>

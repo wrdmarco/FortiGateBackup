@@ -3,39 +3,39 @@
 @tailwind utilities;
 
 :root {
-  --background: 120 8% 97%;
-  --foreground: 198 29% 13%;
+  --background: 220 54% 97%;
+  --foreground: 220 43% 16%;
   --surface: 0 0% 100%;
-  --surface-soft: 160 9% 95%;
-  --muted: 165 9% 92%;
-  --muted-foreground: 195 10% 40%;
-  --border: 170 10% 84%;
-  --primary: 5 76% 58%;
+  --surface-soft: 220 38% 96%;
+  --muted: 220 30% 92%;
+  --muted-foreground: 220 19% 43%;
+  --border: 220 30% 88%;
+  --primary: 229 67% 53%;
   --primary-foreground: 0 0% 100%;
-  --danger: 0 78% 42%;
-  --success: 165 61% 34%;
-  --warning: 38 68% 52%;
-  --header: 195 55% 18%;
-  --header-foreground: 210 28% 96%;
-  --accent: 198 86% 35%;
+  --danger: 0 66% 57%;
+  --success: 160 70% 31%;
+  --warning: 38 79% 55%;
+  --header: 224 52% 14%;
+  --header-foreground: 220 60% 97%;
+  --accent: 196 65% 53%;
 }
 
 .dark {
-  --background: 198 30% 8%;
-  --foreground: 210 26% 96%;
-  --surface: 198 25% 12%;
-  --surface-soft: 196 21% 16%;
-  --muted: 196 18% 19%;
-  --muted-foreground: 216 14% 69%;
-  --border: 193 14% 26%;
-  --primary: 5 80% 62%;
-  --primary-foreground: 0 0% 100%;
-  --danger: 0 86% 62%;
-  --success: 165 57% 47%;
-  --warning: 42 93% 58%;
-  --header: 198 36% 7%;
-  --header-foreground: 210 28% 97%;
-  --accent: 197 88% 56%;
+  --background: 220 55% 8%;
+  --foreground: 225 100% 98%;
+  --surface: 220 48% 13%;
+  --surface-soft: 219 43% 16%;
+  --muted: 219 42% 19%;
+  --muted-foreground: 220 28% 68%;
+  --border: 219 36% 23%;
+  --primary: 229 100% 71%;
+  --primary-foreground: 222 50% 10%;
+  --danger: 1 100% 70%;
+  --success: 160 58% 52%;
+  --warning: 40 85% 62%;
+  --header: 220 59% 7%;
+  --header-foreground: 225 100% 98%;
+  --accent: 196 76% 58%;
 }
 
 html {
@@ -145,14 +145,6 @@ textarea {
     box-shadow: inset 3px 0 0 hsl(var(--accent));
   }
 
-  .app-nav-summary {
-    list-style: none;
-  }
-
-  .app-nav-summary::-webkit-details-marker {
-    display: none;
-  }
-
   .app-header select {
     min-height: 2.75rem;
     text-overflow: ellipsis;
@@ -206,7 +198,7 @@ textarea {
 
   .status-pulse { width: 0.55rem; height: 0.55rem; flex: 0 0 auto; border-radius: 999px; background: hsl(var(--success)); box-shadow: 0 0 0 4px hsl(var(--success) / 0.16); }
 
-  .shadow-panel { box-shadow: 0 1px 2px hsl(198 30% 8% / 0.04), 0 8px 28px hsl(198 30% 8% / 0.035); }
+  .shadow-panel { box-shadow: 0 1px 2px hsl(220 55% 8% / 0.05), 0 8px 28px hsl(220 55% 8% / 0.045); }
 
   .chain-grid { background-image: linear-gradient(hsl(var(--border) / .25) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--border) / .25) 1px, transparent 1px); background-size: 24px 24px; }
 

@@ -1,39 +1,20 @@
 export default function Loading() {
   return (
-    <div className="min-h-dvh bg-background">
-      <header className="border-b border-black/30 bg-[hsl(var(--header))] text-[hsl(var(--header-foreground))] shadow-md shadow-slate-950/10">
-        <div className="mx-auto flex min-h-[4.25rem] max-w-[1440px] items-center gap-3 px-4 lg:px-6">
-          <span className="grid h-11 w-11 place-items-center rounded-md bg-primary text-sm font-black text-primary-foreground">FB</span>
-          <div>
-            <p className="text-sm font-semibold">FortiGate Backup</p>
-            <p className="text-xs text-white/60">Security operations portal</p>
-          </div>
-        </div>
-      </header>
-      <main
-        aria-busy="true"
-        aria-label="Pagina wordt geladen"
-        className="mx-auto max-w-[1440px] px-4 py-6 lg:px-6 lg:py-8"
-      >
-        <span className="sr-only" role="status">Pagina wordt geladen</span>
-        <div className="border-b border-border pb-5">
-          <div className="h-7 w-52 animate-pulse rounded bg-muted" />
-          <div className="mt-3 h-4 w-full max-w-xl animate-pulse rounded bg-muted" />
-        </div>
-        <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {[0, 1, 2, 3].map((item) => (
-            <div className="h-28 animate-pulse rounded-md border border-border bg-surface" key={item} />
-          ))}
-        </div>
-        <div className="mt-6 overflow-hidden rounded-md border border-border bg-surface">
-          <div className="h-12 animate-pulse border-b border-border bg-muted/70" />
-          <div className="grid gap-px bg-border">
-            {[0, 1, 2, 3].map((item) => (
-              <div className="h-14 animate-pulse bg-surface" key={item} />
-            ))}
-          </div>
-        </div>
-      </main>
+    <div className="min-h-dvh bg-background lg:grid lg:grid-cols-[15.5rem_minmax(0,1fr)]" aria-busy="true" aria-label="Pagina wordt geladen">
+      <aside className="hidden min-h-dvh bg-[hsl(var(--header))] lg:block">
+        <div className="mx-5 my-6 flex items-center gap-3 text-[hsl(var(--header-foreground))]"><span className="brand-sigil"><span /></span><span><span className="block text-[0.78rem] font-bold tracking-[0.28em]">FORTI</span><span className="block text-[0.78rem] font-bold tracking-[0.2em]">BACKUP</span></span></div>
+        <div className="space-y-2 px-3">{[0, 1, 2, 3, 4, 5].map((item) => <div className="h-11 rounded-lg bg-white/[0.055]" key={item}/>)}</div>
+      </aside>
+      <div className="min-w-0">
+        <div className="h-1 overflow-hidden bg-muted"><span className="block h-full w-1/3 animate-pulse rounded-r-full bg-primary"/></div>
+        <header className="h-[4.5rem] border-b border-border bg-surface"/>
+        <main className="mx-auto max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+          <span className="sr-only" role="status">Pagina wordt geladen</span>
+          <div className="h-10 w-64 animate-pulse rounded-lg bg-muted"/><div className="mt-3 h-5 w-full max-w-md animate-pulse rounded bg-muted"/>
+          <div className="mt-8 grid gap-5 xl:grid-cols-[minmax(0,1.65fr)_minmax(19rem,.75fr)]"><div className="h-80 animate-pulse rounded-xl border border-border bg-surface"/><div className="h-80 animate-pulse rounded-xl border border-border bg-surface"/></div>
+          <div className="mt-5 h-64 animate-pulse rounded-xl border border-border bg-surface"/>
+        </main>
+      </div>
     </div>
   );
 }

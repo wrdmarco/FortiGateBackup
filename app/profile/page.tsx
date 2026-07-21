@@ -14,7 +14,7 @@ export default async function ProfilePage() {
     <Shell>
       <PageHeader
         title="Profiel"
-        description="Je actuele account- en tenantcontext binnen de FortiGate Backup Portal."
+        description="Je actuele account- en tenantcontext binnen het Forti Backup Portal."
         actions={<Badge tone={user.active ? "success" : "danger"}>{user.active ? "Actief" : "Inactief"}</Badge>}
       />
 

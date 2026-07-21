@@ -12,7 +12,7 @@ export default function ErrorPage({
   return (
     <main className="grid min-h-dvh place-items-center bg-background px-4 py-10">
       <section aria-labelledby="page-error-title" className="w-full max-w-xl rounded-md border border-border bg-surface px-6 py-7 shadow-lg shadow-slate-950/10 sm:px-8">
-        <p className="text-sm font-semibold text-primary">FortiGate Backup</p>
+        <p className="text-sm font-semibold tracking-[0.14em] text-primary">FORTI BACKUP</p>
         <h1 className="mt-3 text-2xl font-semibold" id="page-error-title">Pagina kon niet worden geladen</h1>
         <p className="mt-3 max-w-lg text-sm leading-6 text-muted-foreground">
           De aanvraag is niet voltooid. Probeer de pagina opnieuw te laden. Blijft het probleem bestaan, gebruik dan de referentie bij een supportmelding.

@@ -71,7 +71,7 @@ function GlobalIntro() {
           <p>Wil je klantdata beheren, wissel dan eerst naar de juiste tenant met de tenant switcher.</p>
         </div>
         <Screenshot title="Global bovenbalk">
-          <ScreenshotBar items={["FortiGate Backup", "Global", "Tenant switcher", "Gebruiker"]} />
+          <ScreenshotBar items={["Forti Backup", "Global", "Tenant switcher", "Gebruiker"]} />
           <Callout x="right-5" y="top-16" label="Global toont platformbeheer, geen klantbeheer." />
         </Screenshot>
       </div>
@@ -109,7 +109,7 @@ function GlobalTenantSwitchManual() {
       ]}
       screenshot={
         <Screenshot title="Tenant switcher">
-          <ScreenshotBar items={["FortiGate Backup", "Global", "Gebruiker"]} />
+          <ScreenshotBar items={["Forti Backup", "Global", "Gebruiker"]} />
           <div className="mt-4 w-64 rounded-md border border-border bg-surface p-2 shadow-sm">
             <div className="rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground">Global</div>
             <div className="mt-1 rounded px-3 py-2 text-sm">Klant A</div>

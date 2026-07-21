@@ -1,4 +1,5 @@
 import { User, UserRole } from "@prisma/client";
+import { cache } from "react";
 import { prisma } from "@/lib/db";
 import { mainTenantId } from "@/lib/tenant-main";
 
@@ -204,7 +205,7 @@ export async function assignDefaultTenantRole(userId: string, tenantId: string, 
   });
 }
 
-export async function userPermissionKeys(
+export const userPermissionKeys = cache(async function userPermissionKeys(
   user: Pick<User, "id" | "role" | "tenantId"> & { activeTenantId?: string | null }
 ): Promise<Set<string>> {
   const globalTenantId = await mainTenantId();
@@ -231,7 +232,7 @@ export async function userPermissionKeys(
   const contextualKeys = assignedKeys.filter((key) => !key.startsWith("platform."));
   if (assignedKeys.includes("platform.tenants.switch")) contextualKeys.push("platform.tenants.switch");
   return new Set(contextualKeys);
-}
+});
 
 export async function hasPermission(user: Pick<User, "id" | "role" | "tenantId"> & { activeTenantId?: string | null }, permission: PermissionKey) {
   return (await userPermissionKeys(user)).has(permission);

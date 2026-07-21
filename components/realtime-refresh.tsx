@@ -47,7 +47,7 @@ export function RealtimeRefresh() {
   return (
     <div className="fixed inset-0 z-[100] grid place-items-center bg-background/95 px-4 backdrop-blur-sm">
       <section className="w-full max-w-lg rounded-md border border-border bg-surface p-6 text-center shadow-2xl shadow-slate-950/20">
-        <p className="text-sm font-semibold text-primary">FortiGate Backup Portal</p>
+        <p className="text-sm font-semibold tracking-[0.14em] text-primary">FORTI BACKUP</p>
         <h2 className="mt-3 text-2xl font-semibold tracking-tight text-foreground">Update wordt uitgevoerd</h2>
         <p className="mt-3 text-sm leading-6 text-muted-foreground">
           De interface is tijdelijk geblokkeerd terwijl de applicatie wordt bijgewerkt. Je wordt niet naar de updatepagina gestuurd.

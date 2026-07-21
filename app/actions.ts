@@ -1,7 +1,7 @@
 "use server";
 
 import { createHash, randomBytes } from "node:crypto";
-import type { Prisma } from "@prisma/client";
+import { BackupJobStatus, type Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -992,6 +992,19 @@ export async function setTenantActive(formData: FormData) {
   });
   revalidatePath("/tenants");
 }
+
+export async function updateTenant(formData: FormData) {
+  const user = await requirePermission("platform.tenants.update");
+  const id = String(formData.get("id") ?? "").trim();
+  const name = String(formData.get("name") ?? "").trim();
+  if (name.length < 2 || name.length > 120) throw new Error("De tenantnaam moet tussen 2 en 120 tekens lang zijn.");
+  const before = await prisma.tenant.findUniqueOrThrow({ where: { id }, select: { id: true, name: true } });
+  const tenant = await prisma.tenant.update({ where: { id }, data: { name } });
+  await auditLog({ action: "tenant.updated", tenantId: tenant.id, userId: user.id, entity: "Tenant", entityId: tenant.id, metadata: { beforeName: before.name, afterName: tenant.name } });
+  revalidatePath("/tenants");
+  revalidatePath("/");
+}
+
 export async function deleteTenant(formData: FormData) {
   const user = await requirePermission("platform.tenants.delete");
   const id = String(formData.get("id"));
@@ -1560,6 +1573,48 @@ export async function runBackupAction(formData: FormData) {
   revalidatePath(`/customers/${device.customerId}/fortigates/${device.id}`);
   revalidatePath(`/customers/${device.customerId}/fortigates/${device.id}/backups`);
   redirect(safeReturnTo(formData.get("returnTo"), `/customers/${device.customerId}/fortigates/${device.id}`));
+}
+
+export async function runQueuedBackupNowAction(formData: FormData) {
+  const user = await requireTenantUser();
+  const id = String(formData.get("id") ?? "").trim();
+  const job = await prisma.backupJob.findUnique({ where: { id }, select: { id: true, tenantId: true, fortigateId: true, status: true } });
+  if (!job) throw new Error("De backuptaak bestaat niet meer.");
+  await assertOperationalTenant(user, job.tenantId);
+  await assertPermission(user, "fortigates.backup.run");
+  if (job.status !== BackupJobStatus.PENDING) throw new Error("Alleen wachtende backuptaken kunnen direct worden gestart.");
+
+  const result = await prisma.backupJob.updateMany({
+    where: { id: job.id, tenantId: job.tenantId, status: BackupJobStatus.PENDING },
+    data: { availableAt: new Date(), error: null }
+  });
+  if (result.count !== 1) throw new Error("De taakstatus is ondertussen gewijzigd. Vernieuw de queue.");
+
+  await auditLog({
+    action: "backup.job.expedited",
+    tenantId: job.tenantId,
+    userId: user.id,
+    entity: "BackupJob",
+    entityId: job.id,
+    metadata: { fortigateId: job.fortigateId }
+  });
+  revalidatePath("/queue");
+  redirect("/queue");
+}
+
+export async function cancelQueuedBackupAction(formData: FormData) {
+  const user = await requireTenantUser();
+  const id = String(formData.get("id") ?? "").trim();
+  const job = await prisma.backupJob.findUnique({ where: { id }, select: { id: true, tenantId: true, fortigateId: true, status: true } });
+  if (!job) throw new Error("De backuptaak bestaat niet meer.");
+  await assertOperationalTenant(user, job.tenantId);
+  await assertPermission(user, "fortigates.backup.run");
+  if (job.status !== BackupJobStatus.PENDING) throw new Error("Alleen wachtende backuptaken kunnen worden geannuleerd.");
+  const result = await prisma.backupJob.deleteMany({ where: { id: job.id, tenantId: job.tenantId, status: BackupJobStatus.PENDING } });
+  if (result.count !== 1) throw new Error("De taakstatus is ondertussen gewijzigd. Vernieuw de queue.");
+  await auditLog({ action: "backup.job.cancelled", tenantId: job.tenantId, userId: user.id, entity: "BackupJob", entityId: job.id, metadata: { fortigateId: job.fortigateId } });
+  revalidatePath("/queue");
+  redirect("/queue");
 }
 
 async function settingsTenantFromForm(

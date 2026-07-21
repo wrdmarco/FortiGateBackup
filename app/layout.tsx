@@ -5,7 +5,7 @@ import { currentUser } from "@/lib/session";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "FortiGate Backup Portal",
+  title: "Forti Backup Portal",
   description: "Productieportaal voor FortiGate configuratiebackups"
 };
 

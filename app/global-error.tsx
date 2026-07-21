@@ -12,7 +12,7 @@ export default function GlobalError({
       <body className="min-h-dvh bg-background text-foreground antialiased">
         <main className="grid min-h-dvh place-items-center px-4 py-10">
           <section aria-labelledby="global-error-title" className="w-full max-w-xl rounded-md border border-border bg-surface px-6 py-7 shadow-lg shadow-slate-950/10 sm:px-8">
-            <p className="text-sm font-semibold text-primary">FortiGate Backup</p>
+            <p className="text-sm font-semibold tracking-[0.14em] text-primary">FORTI BACKUP</p>
             <h1 className="mt-3 text-2xl font-semibold" id="global-error-title">Applicatie kon niet starten</h1>
             <p className="mt-3 max-w-lg text-sm leading-6 text-muted-foreground">
               Een essentieel onderdeel is niet geladen. Probeer de applicatie opnieuw te openen. De actieve sessie blijft behouden wanneer herstel mogelijk is.

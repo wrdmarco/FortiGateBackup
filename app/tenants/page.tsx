@@ -1,4 +1,4 @@
-import { deleteTenant, setTenantActive } from "@/app/actions";
+import { deleteTenant, setTenantActive, updateTenant } from "@/app/actions";
 import { DeleteConfirmInput } from "@/components/delete-confirm-input";
 import { Modal } from "@/components/modal";
 import { firstQueryValue, normalizePage, parsePageParam, ServerPagination } from "@/components/server-pagination";
@@ -130,6 +130,11 @@ export default async function TenantsPage({
                       <div className="flex flex-wrap gap-2">
                         {canReadUsers && tenant.id === currentUser.activeTenantId ? (
                           <ActionLink href="/users" variant="secondary">Gebruikers</ActionLink>
+                        ) : null}
+                        {canUpdate ? (
+                          <Modal title={`Tenant bewerken - ${tenant.name}`} description="Wijzig de zichtbare tenantnaam. De technische slug blijft ongewijzigd." trigger={<Button variant="secondary">Bewerken</Button>}>
+                            <form action={updateTenant} className="grid gap-4"><input type="hidden" name="id" value={tenant.id}/><Field label="Tenantnaam" name="name" defaultValue={tenant.name} minLength={2} maxLength={120} required/><Button>Wijzigingen opslaan</Button></form>
+                          </Modal>
                         ) : null}
                         {!isMainTenant && canUpdate ? (
                           <form action={setTenantActive}>
