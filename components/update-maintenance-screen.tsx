@@ -176,7 +176,7 @@ function UpdateView({ snapshot, overlay = false }: { snapshot: UpdateSnapshot; o
       <header className="border-b border-border bg-[hsl(var(--header))] text-[hsl(var(--header-foreground))]">
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4 sm:px-6">
           <span className="brand-sigil brand-sigil-small !border-white/25 !text-white" aria-hidden="true"><span /></span>
-          <span className="text-xs font-bold tracking-[0.18em]">FORTI BACKUP</span>
+          <span className="text-sm font-bold uppercase tracking-[0.06em]">Forti <span className="font-semibold tracking-[0.1em]">Backup</span></span>
         </div>
       </header>
 

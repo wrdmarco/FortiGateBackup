@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
+import { BrandWordmark } from "@/components/brand-wordmark";
 import { clsx } from "clsx";
 import { logoutAction, switchTenantContextAction } from "@/app/actions";
 import { AppNavLink, HeaderUserMenu } from "@/components/modal";
@@ -46,7 +47,7 @@ export async function Shell({ children }: { children: React.ReactNode }) {
 }
 
 function BrandLink({ href, compact = false }: { href: string; compact?: boolean }) {
-  return <Link href={href} aria-label="Forti Backup - overzicht" className={clsx("brand-mark inline-flex min-h-11 items-center gap-2.5 rounded-lg font-mono font-bold", compact ? "px-0 text-xs tracking-[0.12em]" : "mx-4 my-4 px-1 text-[0.72rem] tracking-[0.14em]")}><Image alt="" aria-hidden height={compact ? 30 : 38} src={compact ? "/brand/forti-backup-mark-light.svg" : "/brand/forti-backup-mark-dark.svg"} width={compact ? 30 : 38}/><span><span className="text-[#ef2935]">FORTI</span><span className={compact ? "text-foreground" : "text-white"}> BACKUP</span></span></Link>;
+  return <Link href={href} aria-label="Forti Backup - overzicht" className={clsx("brand-mark inline-flex min-h-11 items-center gap-2.5 rounded-lg", compact ? "px-0" : "mx-4 my-4 px-1")}><Image alt="" aria-hidden height={compact ? 30 : 38} src={compact ? "/brand/forti-backup-mark-light.svg" : "/brand/forti-backup-mark-dark.svg"} width={compact ? 30 : 38}/><BrandWordmark inverse={!compact} size={compact ? "compact" : "default"}/></Link>;
 }
 
 function NavigationLinks({ isBreakGlassSettingsOnly, isGlobalContext, canManageTenants, canReadUsers, canReadAudit }: { isBreakGlassSettingsOnly: boolean; isGlobalContext: boolean; canManageTenants: boolean; canReadUsers: boolean; canReadAudit: boolean }) {

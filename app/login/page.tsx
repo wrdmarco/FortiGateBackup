@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import Image from "next/image";
 import { LoginForm } from "@/components/login-form";
+import { BrandWordmark } from "@/components/brand-wordmark";
 import { prisma } from "@/lib/db";
 import { hasAvailableEntraSso } from "@/lib/entra-auth";
 
@@ -21,7 +22,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         <div className="mb-7 flex flex-col items-center text-center">
           <Image className="dark:hidden" alt="" aria-hidden height={68} src="/brand/forti-backup-mark-light.svg" width={68}/>
           <Image className="hidden dark:block" alt="" aria-hidden height={68} src="/brand/forti-backup-mark-dark.svg" width={68}/>
-          <div className="mt-3 font-mono text-sm font-bold tracking-[0.14em]"><span className="text-[#d91f2a] dark:text-[#ef2935]">FORTI</span><span className="text-foreground"> BACKUP</span></div>
+          <div className="mt-4"><BrandWordmark size="large" /></div>
         </div>
         <div className="border-t border-border pt-6">
           <h1 className="mb-6 text-center font-display text-2xl font-semibold tracking-[-0.01em]">Inloggen</h1>
