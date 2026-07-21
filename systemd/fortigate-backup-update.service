@@ -16,6 +16,8 @@ TimeoutStopSec=30
 KillMode=control-group
 UMask=0077
 PrivateTmp=true
-NoNewPrivileges=true
+# The runner uses the tightly scoped sudoers rule installed by setup.sh to
+# stop/start only the FortiGate Backup systemd units during an update.
+NoNewPrivileges=false
 StandardOutput=append:@APP_DIR@/data/logs/update.log
 StandardError=append:@APP_DIR@/data/logs/update.log
