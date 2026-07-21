@@ -1617,6 +1617,44 @@ export async function cancelQueuedBackupAction(formData: FormData) {
   redirect("/queue");
 }
 
+export async function retryFailedBackupAction(formData: FormData) {
+  const user = await requireTenantUser();
+  const id = String(formData.get("id") ?? "").trim();
+  const job = await prisma.backupJob.findUnique({
+    where: { id },
+    select: { id: true, tenantId: true, fortigateId: true, status: true, attempts: true }
+  });
+  if (!job) throw new Error("De backuptaak bestaat niet meer.");
+  await assertOperationalTenant(user, job.tenantId);
+  await assertPermission(user, "fortigates.backup.run");
+  if (job.status !== BackupJobStatus.FAILED) throw new Error("Alleen definitief mislukte backuptaken kunnen opnieuw worden geprobeerd.");
+
+  const result = await prisma.backupJob.updateMany({
+    where: { id: job.id, tenantId: job.tenantId, status: BackupJobStatus.FAILED },
+    data: {
+      status: BackupJobStatus.PENDING,
+      attempts: 0,
+      availableAt: new Date(),
+      startedAt: null,
+      finishedAt: null,
+      error: null,
+      requestedByUserId: user.id
+    }
+  });
+  if (result.count !== 1) throw new Error("De taakstatus is ondertussen gewijzigd. Vernieuw de queue.");
+
+  await auditLog({
+    action: "backup.job.retried",
+    tenantId: job.tenantId,
+    userId: user.id,
+    entity: "BackupJob",
+    entityId: job.id,
+    metadata: { fortigateId: job.fortigateId, previousAttempts: job.attempts }
+  });
+  revalidatePath("/queue");
+  redirect("/queue");
+}
+
 async function settingsTenantFromForm(
   user: Awaited<ReturnType<typeof requireTenantUser>>,
   formData: FormData

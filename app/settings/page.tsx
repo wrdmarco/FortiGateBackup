@@ -297,7 +297,7 @@ export default async function SettingsPage({
             href: settingsHref("portal"),
             description: "Beheer de publieke URL per tenant voor links, notificaties en portalverwijzingen.",
             content: (
-              <Panel className="max-w-4xl">
+              <Panel>
                 <SettingsForm key={`${selectedTenantId}:portal`} {...formProps} canUpdate={canUpdateBaseSettings} visibleTabs={["portal"]} initialTab="portal" />
               </Panel>
             )
@@ -308,7 +308,7 @@ export default async function SettingsPage({
             href: settingsHref("itglue"),
             description: "Koppel FortiGate backups aan IT Glue organizations en configurations.",
             content: (
-              <Panel className="max-w-4xl">
+              <Panel>
                 <SettingsForm key={`${selectedTenantId}:itglue`} {...formProps} canUpdate={canUpdateItGlue} visibleTabs={["itglue"]} initialTab="itglue" />
               </Panel>
             )
@@ -319,7 +319,7 @@ export default async function SettingsPage({
             href: settingsHref("autotask"),
             description: "Maak Autotask tickets voor backupreports onder de juiste klant.",
             content: (
-              <Panel className="max-w-4xl">
+              <Panel>
                 <SettingsForm key={`${selectedTenantId}:autotask`} {...formProps} canUpdate={canUpdateAutotask} visibleTabs={["autotask"]} initialTab="autotask" />
               </Panel>
             )
@@ -330,7 +330,7 @@ export default async function SettingsPage({
             href: settingsHref("mail"),
             description: isGlobalScope ? "Beheer de globale maildefaults voor onboarding en notificaties." : "Beheer SMTP of Microsoft Graph mailconfiguratie voor deze tenant.",
             content: (
-              <Panel className="max-w-4xl">
+              <Panel>
                 <SettingsForm
                   key={`${selectedTenantId}:mail`}
                   {...formProps}
@@ -348,7 +348,7 @@ export default async function SettingsPage({
             href: settingsHref("scheduler"),
             description: isGlobalScope ? "Beheer scheduler-engine en globale veiligheidslimieten." : "Beheer automatische backupinstellingen voor deze tenant.",
             content: (
-              <Panel className="max-w-4xl">
+              <Panel>
                 <SettingsForm key={`${selectedTenantId}:scheduler`} {...formProps} canUpdate={canUpdateBaseSettings} visibleTabs={["scheduler"]} initialTab="scheduler" />
               </Panel>
             )
@@ -359,7 +359,7 @@ export default async function SettingsPage({
             href: settingsHref("sso"),
             description: isGlobalScope ? "Beheer Microsoft Entra ID login voor platformbeheerders." : "Beheer Microsoft Entra ID login voor deze tenant.",
             content: (
-              <Panel className="max-w-4xl">
+              <Panel>
                 <SettingsForm key={`${selectedTenantId}:sso`} {...formProps} canUpdate={canUpdateSso} visibleTabs={["sso"]} initialTab="sso" />
               </Panel>
             )
@@ -372,9 +372,10 @@ export default async function SettingsPage({
                   href: settingsHref("updates"),
                   description: "Controleer GitHub op een nieuwe versie en start de serverupdate direct vanaf het portaal.",
                   content: (
-                    <Panel title="Applicatie update" className="max-w-4xl">
-                      <div className="grid gap-4">
-                        <div className="grid gap-3 text-sm md:grid-cols-2">
+                    <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(30rem,1.1fr)]">
+                    <Panel title="Update-status" description="Versie en broncontrole van deze installatie.">
+                      <div className="grid gap-5">
+                        <div className="grid gap-3 text-sm sm:grid-cols-2">
                           <Info label="Huidige versie" value={updateStatus.currentVersion} />
                           <Info label="Branch" value={updateStatus.branch ?? "Onbekend"} />
                           <Info label="Lokale commit" value={shortSha(updateStatus.localCommit)} mono />
@@ -386,11 +387,6 @@ export default async function SettingsPage({
                           </Badge>
                           {updateStatus.error ? <span className="text-sm text-red-600 dark:text-red-300">{updateStatus.error}</span> : null}
                         </div>
-                        {updateStatus.lastLog ? (
-                          <pre className="max-h-48 overflow-auto rounded-md border border-border bg-muted p-3 text-xs text-muted-foreground">
-                            {updateStatus.lastLog}
-                          </pre>
-                        ) : null}
                         {canRunUpdates ? (
                           <UpdateStartForm
                             action={startAppUpdateAction}
@@ -400,6 +396,14 @@ export default async function SettingsPage({
                         ) : null}
                       </div>
                     </Panel>
+                    <Panel title="Uitvoer" description="Laatste resultaat van de updatecontrole of installatie.">
+                      {updateStatus.lastLog ? (
+                        <pre className="min-h-64 max-h-[32rem] overflow-auto rounded-md border border-border bg-[hsl(var(--header))] p-4 font-mono text-xs leading-5 text-white/75">
+                          {updateStatus.lastLog}
+                        </pre>
+                      ) : <div className="grid min-h-64 place-items-center rounded-md border border-dashed border-border bg-surface-soft text-sm text-muted-foreground">Nog geen update-uitvoer beschikbaar.</div>}
+                    </Panel>
+                    </div>
                   )
                 }
               ]

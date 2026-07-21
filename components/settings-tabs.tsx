@@ -13,19 +13,19 @@ export function SettingsTabs({ tabs, activeTab }: { tabs: SettingsTab[]; activeT
   const active = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
 
   return (
-    <div className="grid gap-5">
-      <div className="overflow-x-auto rounded-md border border-border bg-surface p-1 shadow-sm shadow-slate-900/5">
-        <div className="flex min-w-max gap-1" role="tablist" aria-label="Instellingen tabs">
+    <div className="grid gap-4">
+      <div className="overflow-x-auto border-b border-border">
+        <div className="flex min-w-max gap-6" role="tablist" aria-label="Instellingen tabs">
           {tabs.map((tab) => (
             <Link
               key={tab.id}
               role="tab"
               aria-selected={active?.id === tab.id}
               className={clsx(
-                "rounded px-4 py-2 text-sm font-medium transition",
+                "relative min-h-11 px-0 py-3 text-sm font-semibold transition after:absolute after:inset-x-0 after:bottom-[-1px] after:h-0.5 after:transition",
                 active?.id === tab.id
-                  ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  ? "text-foreground after:bg-primary"
+                  : "text-muted-foreground after:bg-transparent hover:text-foreground"
               )}
               href={tab.href}
             >
@@ -35,7 +35,7 @@ export function SettingsTabs({ tabs, activeTab }: { tabs: SettingsTab[]; activeT
         </div>
       </div>
 
-      {active?.description ? <p className="max-w-3xl text-sm text-muted-foreground">{active.description}</p> : null}
+      {active?.description ? <p className="max-w-5xl text-sm text-muted-foreground">{active.description}</p> : null}
 
       <div role="tabpanel">{active?.content}</div>
     </div>

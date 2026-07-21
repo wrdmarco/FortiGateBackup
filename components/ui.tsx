@@ -24,7 +24,7 @@ export async function Shell({ children }: { children: React.ReactNode }) {
   const navigation = <NavigationLinks canManageTenants={canReadTenants} canReadAudit={canReadAudit} canReadUsers={canReadUsers} isBreakGlassSettingsOnly={isBreakGlassSettingsOnly} isGlobalContext={isGlobalContext} />;
 
   return (
-    <div className="min-h-screen bg-background lg:grid lg:grid-cols-[15.5rem_minmax(0,1fr)]">
+    <div className="min-h-screen bg-background lg:grid lg:grid-cols-[14.5rem_minmax(0,1fr)]">
       <a className="skip-link" href="#main-content">Naar hoofdinhoud</a>
       <aside className="app-sidebar hidden min-h-screen flex-col bg-[hsl(var(--header))] text-[hsl(var(--header-foreground))] lg:sticky lg:top-0 lg:flex lg:h-screen">
         <BrandLink href={user ? "/" : "/login"} />
@@ -42,14 +42,14 @@ export async function Shell({ children }: { children: React.ReactNode }) {
             {user ? <div className="ml-auto flex min-w-0 items-center gap-2"><Link href="/help" aria-label="Help" className="topbar-icon"><Icon name="help" /></Link><HeaderUserMenu email={user.email} isBreakGlassSettingsOnly={isBreakGlassSettingsOnly} logoutAction={logoutAction} name={user.name} /></div> : <Link className="ml-auto inline-flex min-h-11 items-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground" href="/login">Inloggen</Link>}
           </div>
         </header>
-        <main className="mx-auto max-w-[1500px] px-4 py-6 outline-none sm:px-6 lg:px-8 lg:py-8" id="main-content" tabIndex={-1}>{children}</main>
+        <main className="mx-auto w-full max-w-[1680px] px-4 py-5 outline-none sm:px-6 lg:px-8 lg:py-6 xl:px-10" id="main-content" tabIndex={-1}>{children}</main>
       </div>
     </div>
   );
 }
 
 function BrandLink({ href, compact = false }: { href: string; compact?: boolean }) {
-  return <Link href={href} className={clsx("brand-mark inline-flex min-h-11 items-center gap-3 rounded-lg", compact ? "px-0" : "mx-5 my-6 px-1")}><span className={clsx("brand-sigil", compact && "brand-sigil-small")} aria-hidden="true"><span /></span><span className={compact ? "text-xs font-bold tracking-[0.16em]" : ""}>{compact ? "FORTI BACKUP" : <><span className="block text-[0.78rem] font-bold tracking-[0.28em]">FORTI</span><span className="block text-[0.78rem] font-bold tracking-[0.2em]">BACKUP</span></>}</span></Link>;
+  return <Link href={href} className={clsx("brand-mark inline-flex min-h-11 items-center rounded-lg font-mono font-bold text-white", compact ? "px-0 text-xs tracking-[0.16em]" : "mx-5 my-5 px-1 text-[0.78rem] tracking-[0.22em]")}>FORTI BACKUP</Link>;
 }
 
 function NavigationLinks({ isBreakGlassSettingsOnly, isGlobalContext, canManageTenants, canReadUsers, canReadAudit }: { isBreakGlassSettingsOnly: boolean; isGlobalContext: boolean; canManageTenants: boolean; canReadUsers: boolean; canReadAudit: boolean }) {
@@ -66,16 +66,16 @@ function NavigationLinks({ isBreakGlassSettingsOnly, isGlobalContext, canManageT
 }
 
 export function PageHeader({ title, description, actions }: { title: string; description?: string; actions?: React.ReactNode }) {
-  return <div className="page-header mb-7 flex flex-wrap items-end justify-between gap-5 border-b border-border pb-6"><div className="min-w-0"><p className="mb-2 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-primary">Werkruimte</p><h1 className="font-display text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">{title}</h1>{description ? <p className="mt-2 max-w-3xl text-base leading-6 text-muted-foreground">{description}</p> : null}</div>{actions ? <div className="page-actions flex flex-wrap gap-2">{actions}</div> : null}</div>;
+  return <header className="page-header mb-6 flex flex-wrap items-center justify-between gap-4"><div className="min-w-0"><h1 className="font-display text-[1.75rem] font-semibold leading-tight tracking-[-0.03em] sm:text-[2rem]">{title}</h1>{description ? <p className="mt-1 max-w-4xl text-sm leading-6 text-muted-foreground">{description}</p> : null}</div>{actions ? <div className="page-actions flex flex-wrap gap-2">{actions}</div> : null}</header>;
 }
 
 export function Panel({ title, description, children, className }: { title?: string; description?: string; children: React.ReactNode; className?: string }) {
-  return <section className={clsx("security-panel professional-surface overflow-hidden rounded-xl border border-border shadow-panel", className)}>{title || description ? <div className="border-b border-border bg-surface-soft/55 px-5 py-4 sm:px-6 sm:py-5">{title ? <h2 className="font-display text-lg font-semibold tracking-[-0.015em]">{title}</h2> : null}{description ? <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p> : null}</div> : null}<div className="p-5 sm:p-6">{children}</div></section>;
+  return <section className={clsx("security-panel overflow-hidden rounded-[0.625rem] border border-border bg-surface shadow-panel", className)}>{title || description ? <div className="border-b border-border px-5 py-4">{title ? <h2 className="font-display text-base font-semibold tracking-[-0.01em]">{title}</h2> : null}{description ? <p className="mt-1 max-w-4xl text-sm leading-5 text-muted-foreground">{description}</p> : null}</div> : null}<div className="p-5">{children}</div></section>;
 }
 
-export function TableShell({ children, className }: { children: React.ReactNode; className?: string }) { return <div className={clsx("overflow-auto rounded-xl border border-border bg-surface shadow-panel", className)}>{children}</div>; }
+export function TableShell({ children, className }: { children: React.ReactNode; className?: string }) { return <div className={clsx("overflow-auto rounded-[0.625rem] border border-border bg-surface shadow-panel", className)}>{children}</div>; }
 
-export function Card({ title, value, detail, className }: { title: string; value: string | number; detail?: string; className?: string }) { return <section className={clsx("security-panel professional-surface overflow-hidden rounded-xl border border-border p-5 pt-6 shadow-panel", className)}><p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">{title}</p><p className="mt-3 font-display text-2xl font-semibold tracking-tight text-foreground">{value}</p>{detail ? <p className="mt-1 text-sm text-muted-foreground">{detail}</p> : null}</section>; }
+export function Card({ title, value, detail, className }: { title: string; value: string | number; detail?: string; className?: string }) { return <section className={clsx("security-panel overflow-hidden rounded-[0.625rem] border border-border bg-surface p-4 shadow-panel", className)}><p className="text-[0.7rem] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{title}</p><p className="mt-2 font-display text-2xl font-semibold tracking-tight text-foreground">{value}</p>{detail ? <p className="mt-1 text-sm text-muted-foreground">{detail}</p> : null}</section>; }
 
 export function Badge({ children, tone = "neutral" }: { children: React.ReactNode; tone?: "neutral" | "success" | "warning" | "danger" }) {
   const tones = { neutral: "border-border bg-muted text-muted-foreground", success: "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300", warning: "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300", danger: "border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300" };
@@ -94,7 +94,7 @@ export function ActionLink({ children, href, variant = "secondary", target }: { 
 
 export function Field({ label, className, ...inputProps }: { label: string } & React.InputHTMLAttributes<HTMLInputElement>) { return <label className="grid gap-1.5 text-sm"><span className="font-medium text-foreground">{label}</span><input className={clsx("min-h-11 rounded-lg border border-border bg-surface px-3 py-2 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15", className)} {...inputProps}/></label>; }
 
-export function FilterBar({ children }: { children: React.ReactNode }) { return <div className="filter-bar mb-5 rounded-xl border border-border bg-surface p-4 shadow-panel sm:p-5">{children}</div>; }
+export function FilterBar({ children }: { children: React.ReactNode }) { return <div className="filter-bar mb-4 rounded-[0.625rem] border border-border bg-surface-soft/55 p-3 sm:p-4">{children}</div>; }
 
 export function SectionHeading({ title, description, actions }: { title: string; description?: string; actions?: React.ReactNode }) { return <div className="mb-4 flex flex-wrap items-end justify-between gap-3"><div><h2 className="font-display text-xl font-semibold tracking-[-0.02em]">{title}</h2>{description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}</div>{actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}</div>; }
 

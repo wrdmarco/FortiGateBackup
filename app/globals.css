@@ -178,24 +178,6 @@ textarea {
 
   .topbar-icon:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
 
-  .brand-sigil {
-    position: relative;
-    display: grid;
-    width: 2.65rem;
-    height: 2.65rem;
-    place-items: center;
-    border: 1px solid hsl(var(--header-foreground) / 0.28);
-    border-radius: 0.7rem;
-  }
-
-  .brand-sigil::before,
-  .brand-sigil::after,
-  .brand-sigil span { content: ""; position: absolute; width: 1.35rem; height: 2px; border-radius: 2px; background: currentColor; }
-  .brand-sigil::before { transform: translateY(-0.36rem); }
-  .brand-sigil::after { transform: translateY(0.36rem); }
-  .brand-sigil-small { width: 2rem; height: 2rem; border-color: hsl(var(--border)); color: hsl(var(--foreground)); }
-  .brand-sigil-small::before, .brand-sigil-small::after, .brand-sigil-small span { width: 1rem; }
-
   .status-pulse { width: 0.55rem; height: 0.55rem; flex: 0 0 auto; border-radius: 999px; background: hsl(var(--success)); box-shadow: 0 0 0 4px hsl(var(--success) / 0.16); }
 
   .shadow-panel { box-shadow: 0 1px 2px hsl(220 55% 8% / 0.05), 0 8px 28px hsl(220 55% 8% / 0.045); }
