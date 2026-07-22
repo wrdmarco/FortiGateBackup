@@ -3,17 +3,17 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient as LegacyPrismaClient } from "../generated/legacy-sqlite-client/index.js";
 
 const migrationPath = path.resolve(
   process.cwd(),
-  "prisma/migrations/20260713120000_security_hardening/migration.sql"
+  "prisma/legacy-sqlite/migrations/20260713120000_security_hardening/migration.sql"
 );
 
 test("auditmigratie bewaart actor- en tenantsnapshots na verwijdering", async () => {
   const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "audit-migration-"));
   const databasePath = path.join(temporaryRoot, "legacy.db").replace(/\\/g, "/");
-  const prisma = new PrismaClient({ datasources: { db: { url: `file:${databasePath}` } } });
+  const prisma = new LegacyPrismaClient({ datasources: { db: { url: `file:${databasePath}` } } });
 
   try {
     await executeStatements(prisma, LEGACY_SCHEMA);
@@ -62,7 +62,7 @@ type AuditSnapshot = {
   actorEmail: string | null;
 };
 
-async function executeStatements(prisma: PrismaClient, sql: string) {
+async function executeStatements(prisma: LegacyPrismaClient, sql: string) {
   const statements = sql
     .split(/;\s*(?:\r?\n|$)/)
     .map((statement) => statement.trim())

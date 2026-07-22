@@ -42,6 +42,9 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: pnpm prisma generate
+      - run: pnpm prisma:generate:legacy
+        env:
+          DATABASE_URL: "file:/tmp/fortibackup-legacy-client.db"
       - run: pnpm run lint
       - run: pnpm run typecheck
       - run: pnpm test

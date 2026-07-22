@@ -73,7 +73,7 @@ export async function auditLog(input: AuditInput) {
 
   await prisma.$transaction(async (tx) => {
     const scopeKey = input.tenantId ? `tenant:${input.tenantId}` : "global";
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${scopeKey}, 0))`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${scopeKey}, 0))`;
     await tx.auditHead.upsert({ where: { scopeKey }, create: { scopeKey, tenantId: input.tenantId ?? null }, update: {} });
     const heads = await tx.$queryRaw<Array<{ lastHash: string | null }>>`SELECT "lastHash" FROM "AuditHead" WHERE "scopeKey" = ${scopeKey} FOR UPDATE`;
     const previousHash = heads[0]?.lastHash ?? null;

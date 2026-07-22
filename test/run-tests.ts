@@ -29,6 +29,10 @@ const testEnvironment: NodeJS.ProcessEnv = {
 
 try {
   await run(process.execPath, [prismaCli, "generate"], testEnvironment);
+  await run(process.execPath, [prismaCli, "generate", "--schema", "prisma/legacy-sqlite/schema.prisma"], {
+    ...testEnvironment,
+    DATABASE_URL: `file:${path.join(temporaryRoot, "legacy-client.db").replace(/\\/g, "/")}`
+  });
   await run(process.execPath, [prismaCli, "migrate", "reset", "--force", "--skip-seed"], testEnvironment);
 
   const testFiles = (
