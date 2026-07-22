@@ -350,6 +350,12 @@ case "${DATABASE_URL:-}" in
   *) fail "Unsupported DATABASE_URL scheme; no changes were made." ;;
 esac
 
+POSTGRES_MIGRATION_URL="$(awk -F= '/^POSTGRES_MIGRATION_URL=/{sub(/^[^=]*=/,""); print}' /etc/fortigate-backup/postgres.env)"
+eval "POSTGRES_MIGRATION_URL=$POSTGRES_MIGRATION_URL"
+[[ "$POSTGRES_MIGRATION_URL" =~ ^postgres(ql)?:// ]] || fail "PostgreSQL migrator credentials are invalid."
+MIGRATOR_BYPASSRLS="$(run_as_service_user psql "$POSTGRES_MIGRATION_URL" --tuples-only --no-align --command="SELECT rolbypassrls FROM pg_roles WHERE rolname=current_user" 2>/dev/null || true)"
+[ "$MIGRATOR_BYPASSRLS" = "t" ] || fail "PostgreSQL migrator role requires BYPASSRLS for complete pre-migration backups. For a local installation run: sudo -u postgres psql -v ON_ERROR_STOP=1 -c 'ALTER ROLE fortibackup_migrator BYPASSRLS;' External database administrators must grant the equivalent capability to the configured migrator role."
+
 if [ "${FORTIGATE_UPDATE_REEXECED:-0}" != "1" ]; then
   run_with_lock_heartbeat run_as_service_user git -c core.filemode=false fetch --all --prune
   LOCAL_REV="$(run_as_service_user git rev-parse HEAD)"
@@ -387,9 +393,6 @@ else
 fi
 
 run_with_lock_heartbeat run_as_service_user pnpm install --frozen-lockfile
-POSTGRES_MIGRATION_URL="$(awk -F= '/^POSTGRES_MIGRATION_URL=/{sub(/^[^=]*=/,""); print}' /etc/fortigate-backup/postgres.env)"
-eval "POSTGRES_MIGRATION_URL=$POSTGRES_MIGRATION_URL"
-[[ "$POSTGRES_MIGRATION_URL" =~ ^postgres(ql)?:// ]] || fail "PostgreSQL migrator credentials are invalid."
 if [[ "${DATABASE_URL:-}" == file:* ]]; then
   run_with_lock_heartbeat run_as_service_user env DATABASE_URL="$POSTGRES_MIGRATION_URL" CHECKPOINT_DISABLE=1 pnpm prisma migrate deploy
   run_with_lock_heartbeat run_as_service_user env POSTGRES_MIGRATION_URL="$POSTGRES_MIGRATION_URL" DATABASE_URL="$DATABASE_URL" NEXT_TELEMETRY_DISABLED=1 CHECKPOINT_DISABLE=1 pnpm exec tsx scripts/migrate-sqlite-to-postgres.ts

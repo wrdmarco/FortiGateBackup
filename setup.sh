@@ -98,8 +98,9 @@ provision_postgresql() {
   run_root systemctl enable --now postgresql
   run_as_postgres psql --set=ON_ERROR_STOP=1 --quiet \
     --set=app_password="$app_password" --set=migrator_password="$migrator_password" <<'SQL'
-SELECT format('CREATE ROLE fortibackup_migrator LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS', :'migrator_password') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname='fortibackup_migrator') \gexec
+SELECT format('CREATE ROLE fortibackup_migrator LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT BYPASSRLS', :'migrator_password') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname='fortibackup_migrator') \gexec
 SELECT format('CREATE ROLE fortibackup_app LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS', :'app_password') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname='fortibackup_app') \gexec
+ALTER ROLE fortibackup_migrator BYPASSRLS;
 SELECT 'CREATE DATABASE fortibackup OWNER fortibackup_migrator' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname='fortibackup') \gexec
 REVOKE ALL ON DATABASE fortibackup FROM PUBLIC;
 GRANT CONNECT ON DATABASE fortibackup TO fortibackup_app;

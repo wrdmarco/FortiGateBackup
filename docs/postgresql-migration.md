@@ -11,6 +11,8 @@ FortiBackup gebruikt in productie, development, CI en integratietests uitsluiten
 
 De credentials staan root-owned in `/etc/fortigate-backup/postgres.env`, zijn niet zichtbaar in terminaloutput en worden niet in Git opgeslagen. De applicatie-`.env` bevat de runtime-URL. Voor een externe database moeten `EXTERNAL_DATABASE_URL` en `EXTERNAL_MIGRATION_URL` vooraf worden opgegeven; beide moeten een PostgreSQL-URL zijn en de runtime-URL moet `sslmode=verify-full` gebruiken. De installer verwijdert of wijzigt nooit een externe database buiten de FortiBackup-migraties.
 
+De runtime-applicatierol heeft altijd `NOBYPASSRLS`. De afzonderlijke migratorrol heeft `BYPASSRLS` nodig om vóór schemawijzigingen een volledige `pg_dump -Fc` van de geforceerd-RLS-beveiligde tabellen te maken. Deze rol is geen superuser en krijgt geen role- of databasebeheerrechten. Bij een externe database moet de beheerder deze eigenschap vooraf aan de opgegeven migratorrol toekennen.
+
 ## Eenmalige voorbereiding bestaande installaties
 
 De beperkte web-updater mag geen packages installeren en geen PostgreSQL-rollen maken. Voer daarom vóór de eerste PostgreSQL-update uit:
