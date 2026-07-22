@@ -342,7 +342,11 @@ case "${DATABASE_URL:-}" in
       fail "PostgreSQL migration preparation is missing. Keep the current application running and execute exactly: cd $APP_DIR && sudo ./setup.sh --prepare-postgres-migration ; then start the update again."
     fi
     ;;
-  postgres://*|postgresql://*) ;;
+  postgres://*|postgresql://*)
+    if [ ! -r /etc/fortigate-backup/postgres.env ]; then
+      fail "PostgreSQL migrator credentials are missing. Run setup.sh once as root before updating."
+    fi
+    ;;
   *) fail "Unsupported DATABASE_URL scheme; no changes were made." ;;
 esac
 
@@ -383,9 +387,10 @@ else
 fi
 
 run_with_lock_heartbeat run_as_service_user pnpm install --frozen-lockfile
+POSTGRES_MIGRATION_URL="$(awk -F= '/^POSTGRES_MIGRATION_URL=/{sub(/^[^=]*=/,""); print}' /etc/fortigate-backup/postgres.env)"
+eval "POSTGRES_MIGRATION_URL=$POSTGRES_MIGRATION_URL"
+[[ "$POSTGRES_MIGRATION_URL" =~ ^postgres(ql)?:// ]] || fail "PostgreSQL migrator credentials are invalid."
 if [[ "${DATABASE_URL:-}" == file:* ]]; then
-  POSTGRES_MIGRATION_URL="$(awk -F= '/^POSTGRES_MIGRATION_URL=/{sub(/^[^=]*=/,""); print}' /etc/fortigate-backup/postgres.env)"
-  eval "POSTGRES_MIGRATION_URL=$POSTGRES_MIGRATION_URL"
   run_with_lock_heartbeat run_as_service_user env DATABASE_URL="$POSTGRES_MIGRATION_URL" CHECKPOINT_DISABLE=1 pnpm prisma migrate deploy
   run_with_lock_heartbeat run_as_service_user env POSTGRES_MIGRATION_URL="$POSTGRES_MIGRATION_URL" DATABASE_URL="$DATABASE_URL" NEXT_TELEMETRY_DISABLED=1 CHECKPOINT_DISABLE=1 pnpm exec tsx scripts/migrate-sqlite-to-postgres.ts
   DATABASE_URL="$(awk -F= '/^DATABASE_URL=/{sub(/^[^=]*=/,""); print}' "$APP_DIR/.env")"
@@ -394,10 +399,10 @@ else
   dump_dir="$APP_DIR/data/self-backups/postgres"
   run_as_service_user mkdir -p "$dump_dir"
   dump_file="$dump_dir/pre-migration-$(date -u +%Y%m%dT%H%M%SZ).dump"
-  run_with_lock_heartbeat run_as_service_user pg_dump -Fc --file="$dump_file" "$DATABASE_URL"
+  run_with_lock_heartbeat run_as_service_user pg_dump -Fc --file="$dump_file" "$POSTGRES_MIGRATION_URL"
   run_as_service_user sha256sum "$dump_file" > "$dump_file.sha256"
   run_as_service_user pg_restore --list "$dump_file" >/dev/null
-  run_with_lock_heartbeat run_as_service_user env DATABASE_URL="$DATABASE_URL" CHECKPOINT_DISABLE=1 pnpm prisma migrate deploy
+  run_with_lock_heartbeat run_as_service_user env DATABASE_URL="$POSTGRES_MIGRATION_URL" CHECKPOINT_DISABLE=1 pnpm prisma migrate deploy
 fi
 run_as_service_user env NEXT_TELEMETRY_DISABLED=1 pnpm exec next telemetry disable >/dev/null
 run_with_lock_heartbeat run_as_service_user pnpm run build
