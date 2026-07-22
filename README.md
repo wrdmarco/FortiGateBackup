@@ -150,7 +150,7 @@ cd /opt/fortigate-backup
 sudo APP_DIR=/opt/fortigate-backup ./setup.sh
 ```
 
-De installer plaatst een met `visudo` gevalideerde, beperkte sudoers-regel voor alleen de benodigde serviceacties.
+De installer plaatst een met `visudo` gevalideerde, beperkte sudoers-regel voor alleen de benodigde serviceacties. De webunit gebruikt daarom `NoNewPrivileges=false`; zonder die expliciete uitzondering blokkeert Linux ook deze beperkte sudo-overgang. De worker behoudt `NoNewPrivileges=true`.
 
 ## Break-glass toegang voor SSO herstel
 

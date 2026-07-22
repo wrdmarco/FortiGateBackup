@@ -20,7 +20,10 @@ RestartSec=5
 TimeoutStopSec=30
 UMask=0077
 PrivateTmp=true
-NoNewPrivileges=true
+# The portal may invoke only the narrowly scoped systemctl commands from
+# /etc/sudoers.d/fortigate-backup-update. sudo cannot perform that transition
+# when systemd sets NoNewPrivileges for this process.
+NoNewPrivileges=false
 
 [Install]
 WantedBy=multi-user.target

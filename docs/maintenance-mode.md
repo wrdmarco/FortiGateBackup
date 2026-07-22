@@ -33,6 +33,8 @@ sudo ./setup.sh
 
 Dit installeert de systemd-unit en de minimaal benodigde sudoers-regels. Latere portalupdates gebruiken dezelfde geisoleerde serviceflow.
 
+De webunit heeft doelbewust `NoNewPrivileges=false`, uitsluitend omdat het portaal via de met `visudo` gevalideerde command allowlist de update-unit moet kunnen starten. De worker en overige niet-privileged processen behouden `NoNewPrivileges=true`; de applicatie krijgt geen algemene sudo-, shell-, package-manager- of databasebeheerrechten.
+
 ## Controle en herstel
 
 ```bash
