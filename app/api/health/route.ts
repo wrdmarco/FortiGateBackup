@@ -4,11 +4,14 @@ import { prisma } from "@/lib/db";
 export async function GET() {
   const started = Date.now();
   try {
-    await prisma.$queryRaw`SELECT 1`;
+    const [database]=await prisma.$queryRaw<Array<{version:number;role:string;superuser:boolean;bypassrls:boolean}>>`SELECT current_setting('server_version_num')::int version,current_user role,r.rolsuper superuser,r.rolbypassrls bypassrls FROM pg_roles r WHERE r.rolname=current_user`;
+    if(!database||database.version<160000||database.superuser||database.bypassrls)throw new Error("PostgreSQL runtime role voldoet niet aan de beveiligingseisen.");
     return NextResponse.json({
       status: "ok",
-      version: "0.1.18",
+      version: "0.2.0",
       database: "ok",
+      databaseEngine: "postgresql",
+      databaseVersion: database.version,
       latencyMs: Date.now() - started,
       time: new Date().toISOString()
     });

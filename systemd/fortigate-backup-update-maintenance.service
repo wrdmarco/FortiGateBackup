@@ -10,6 +10,8 @@ User=@SERVICE_USER@
 Group=@SERVICE_GROUP@
 WorkingDirectory=@APP_DIR@
 Environment=NODE_ENV=production
+Environment=NEXT_TELEMETRY_DISABLED=1
+Environment=CHECKPOINT_DISABLE=1
 Environment=HOST=0.0.0.0
 Environment=PORT=3000
 ExecStart=/usr/bin/env node "@APP_DIR@/data/update-runtime/maintenance-server.mjs" serve --app-dir "@APP_DIR@"

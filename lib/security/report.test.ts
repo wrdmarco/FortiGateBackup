@@ -1,0 +1,47 @@
+import assert from "node:assert/strict";
+import { rm } from "node:fs/promises";
+import path from "node:path";
+import test from "node:test";
+import { generateSecurityReport } from "./report";
+import type { LocalFinding } from "./rules";
+
+test("genereert een geldig meerpagina-PDF zonder ruwe configuratie of secrets", async () => {
+  const testRoot = path.join(process.cwd(), "data", "backups", "tenant_test");
+  await rm(testRoot, { recursive: true, force: true });
+  const findings: LocalFinding[] = Array.from({ length: 30 }, (_, index) => ({
+    ruleId: `FG-POL-${String(index + 1).padStart(3, "0")}`,
+    category: "Firewallbeleid",
+    severity: index < 2 ? "CRITICAL" : index < 8 ? "HIGH" : "MEDIUM",
+    penalty: 1,
+    title: `Bevinding ${index + 1}`,
+    explanation: "Een synthetische semantische constatering zonder configuratieregels. ".repeat(4),
+    evidence: `POLICY_${index + 1}: bronclassificatie ANY, bestemming ANY`,
+    remediation: "Beperk het beleid tot de aantoonbaar noodzakelijke verkeersstroom. ".repeat(3),
+  }));
+  const { buffer: pdf } = await generateSecurityReport({
+    reportId: "report_test",
+    tenantId: "tenant_test",
+    tenantName: "Synthetische tenant",
+    customerName: "Synthetische klant",
+    fortigateId: "fortigate_test",
+    hostname: "FG-TEST",
+    model: "FortiGate testmodel",
+    fortiOsVersion: "7.4.x",
+    configDate: new Date("2026-01-01T12:00:00.000Z"),
+    analysisDate: new Date("2026-01-02T12:00:00.000Z"),
+    score: 72,
+    scoreDelta: 4,
+    hash: "a".repeat(64),
+    parserVersion: "1.0.0",
+    rulesetVersion: "1.0.0",
+    summary: "Veilige, synthetische managementsamenvatting.",
+    findings,
+    newFindingIds: ["FG-POL-001"],
+    resolvedFindingIds: ["FG-OLD-001"],
+  });
+  assert.equal(pdf.subarray(0, 5).toString("ascii"), "%PDF-");
+  assert.ok(pdf.length > 10_000);
+  assert.match(pdf.toString("latin1"), /\/Type\s*\/Page\b/);
+  assert.doesNotMatch(pdf.toString("latin1"), /synthetic-secret|config firewall policy|set password/i);
+  if (process.env.KEEP_PDF_FIXTURE !== "1") await rm(testRoot, { recursive: true, force: true });
+});

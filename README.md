@@ -45,6 +45,8 @@ Per tenant kan een eigen publieke portal-URL in de database worden ingesteld via
 
 ## Installatie
 
+FortiBackup vereist PostgreSQL 16 of nieuwer. Nieuwe installaties provisioneren automatisch een lokale database met gescheiden migrator- en runtimerollen. Zie [docs/postgresql-migration.md](docs/postgresql-migration.md) voor externe databases en de eenmalige SQLite-conversie.
+
 ```bash
 git clone https://github.com/wrdmarco/FortiGateBackup.git
 cd FortiGateBackup
@@ -213,6 +215,10 @@ GET /api/health
 ```
 
 Retourneert database- en applicatiestatus voor monitoring.
+
+## Beveiligingsanalyse
+
+Tenantgebonden FortiGate/FortiOS-analyse, Azure AI Foundry-configuratie, immutable PDF-rapportage, KPI's en scorehistorie zijn beschreven in [docs/security-analysis.md](docs/security-analysis.md).
 
 De CLI-healthcheck ondersteunt een initiële wachttijd, retries, vertraging en een timeout zonder extra `.env`-sleutels:
 

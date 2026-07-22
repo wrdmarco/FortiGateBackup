@@ -1,29 +1,35 @@
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
-import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "fortigate-backup-tests-"));
-const databasePath = path.join(temporaryRoot, "regression.db").replace(/\\/g, "/");
+const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
+if (!databaseUrl || !/^postgres(?:ql)?:/.test(databaseUrl)) throw new Error("Tests vereisen een echte tijdelijke PostgreSQL-database.");
+const parsedDatabaseUrl = new URL(databaseUrl);
+if (!["localhost", "127.0.0.1"].includes(parsedDatabaseUrl.hostname) || !/(?:test|ci)/i.test(parsedDatabaseUrl.pathname)) {
+  throw new Error("Weigert tests tegen een niet-lokale of niet als test/ci herkenbare database.");
+}
 const require = createRequire(import.meta.url);
 const prismaCli = path.join(path.dirname(require.resolve("prisma/package.json")), "build", "index.js");
 const tsxCli = path.join(path.dirname(require.resolve("tsx/package.json")), "dist", "cli.mjs");
 const testEnvironment: NodeJS.ProcessEnv = {
   ...process.env,
-  DATABASE_URL: `file:${databasePath}`,
+  DATABASE_URL: databaseUrl,
   NEXTAUTH_SECRET: "regression-nextauth-secret-000000000000000000000000",
   ENCRYPTION_KEY: "regression-encryption-key-00000000000000000000000",
   NODE_ENV: "test",
-  TENANT_ARCHIVE_INTEGRATION: "1"
+  TENANT_ARCHIVE_INTEGRATION: "1",
+  NEXT_TELEMETRY_DISABLED: "1",
+  CHECKPOINT_DISABLE: "1"
 };
 
 try {
-  await writeFile(databasePath, "", { flag: "wx" });
   await run(process.execPath, [prismaCli, "generate"], testEnvironment);
-  await run(process.execPath, [prismaCli, "migrate", "deploy"], testEnvironment);
+  await run(process.execPath, [prismaCli, "migrate", "reset", "--force", "--skip-seed"], testEnvironment);
 
   const testFiles = (
     await Promise.all(["app", "lib", "test"].map((directory) => collectTests(path.join(projectRoot, directory))))

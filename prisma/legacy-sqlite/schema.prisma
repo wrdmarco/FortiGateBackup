@@ -1,0 +1,361 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../generated/legacy-sqlite-client"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  VIEWER
+}
+
+enum AuthProvider {
+  LOCAL
+  ENTRA
+}
+
+enum TenantKind {
+  GLOBAL
+  CUSTOMER
+}
+
+enum BackupStatus {
+  CHANGED
+  UNCHANGED
+  FAILED
+}
+
+enum BackupJobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum BackupJobTrigger {
+  MANUAL
+  SCHEDULED
+}
+
+enum ScheduleType {
+  HOURLY
+  DAILY
+  WEEKLY
+  MONTHLY
+  CRON
+}
+
+enum MailProvider {
+  SMTP
+  MICROSOFT_GRAPH
+}
+
+enum FortiGateLogLevel {
+  INFO
+  WARN
+  ERROR
+}
+
+model Tenant {
+  id        String          @id @default(cuid())
+  name      String
+  slug      String          @unique
+  kind      TenantKind      @default(CUSTOMER)
+  active    Boolean         @default(true)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  customers Customer[]
+  users     User[]
+  accessRoles AccessRole[]
+  settings  SystemSetting[]
+
+  @@index([kind, active])
+}
+
+model User {
+  id            String       @id @default(cuid())
+  tenantId      String?
+  name          String?
+  email         String       @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String?
+  mustChangePassword Boolean @default(false)
+  role          UserRole     @default(VIEWER)
+  provider      AuthProvider @default(LOCAL)
+  active        Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  tenant        Tenant?      @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  accounts      Account[]
+  sessions      Session[]
+  auditLogs     AuditLog[]
+  accessRoles   UserAccessRole[]
+}
+
+model AccessPermission {
+  id          String                 @id @default(cuid())
+  key         String                 @unique
+  category    String
+  description String
+  createdAt   DateTime               @default(now())
+  roles       AccessRolePermission[]
+}
+
+model AccessRole {
+  id          String                 @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  system      Boolean                @default(false)
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+  tenant      Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  permissions AccessRolePermission[]
+  users       UserAccessRole[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+model AccessRolePermission {
+  roleId       String
+  permissionId String
+  role         AccessRole       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   AccessPermission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model UserAccessRole {
+  userId     String
+  roleId     String
+  assignedAt DateTime   @default(now())
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       AccessRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  activeTenantId String?
+  breakGlassSettingsOnly Boolean @default(false)
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model SetupToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  expires   DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([expires, usedAt])
+}
+
+model LoginThrottle {
+  key         String    @id
+  failures    Int       @default(0)
+  lockedUntil DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  @@index([lockedUntil])
+  @@index([updatedAt])
+}
+
+model Customer {
+  id        String      @id @default(cuid())
+  tenantId  String
+  name      String
+  contact   String?
+  email     String?
+  phone     String?
+  notes     String?
+  itGlueOrganizationId String?
+  autotaskCompanyId String?
+  active    Boolean     @default(true)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  tenant    Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  devices   FortiGate[]
+
+  @@index([tenantId, active])
+}
+
+model FortiGate {
+  id                String           @id @default(cuid())
+  customerId        String
+  hostname          String?
+  serialNumber      String?
+  model             String?
+  firmwareVersion   String?
+  firmwareBuild     String?
+  uptime            String?
+  externalIpAddresses String?
+  licenseInfo       String?
+  itGlueConfigurationId String?
+  managementUrl     String
+  httpsPort         Int              @default(443)
+  apiTokenEncrypted String
+  tlsVerify         Boolean          @default(true)
+  tlsCertificateFingerprint String?
+  tlsCertificateSubject String?
+  tlsCertificateIssuer String?
+  tlsCertificateValidFrom DateTime?
+  tlsCertificateValidTo DateTime?
+  tlsCertificateAcceptedAt DateTime?
+  vdom              String?
+  scheduleType      ScheduleType     @default(DAILY)
+  cronExpression    String?
+  nextRunAt         DateTime?
+  lastCheckedAt     DateTime?
+  active            Boolean          @default(true)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  customer          Customer         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  backups           Backup[]
+  logs              FortiGateLog[]
+  versionHistory    VersionHistory[]
+  jobs              BackupJob[]
+
+  @@index([customerId, active])
+  @@index([nextRunAt])
+}
+
+model BackupJob {
+  id                String           @id @default(cuid())
+  fortigateId       String
+  tenantId          String
+  requestedByUserId String?
+  trigger           BackupJobTrigger
+  status            BackupJobStatus  @default(PENDING)
+  attempts          Int              @default(0)
+  availableAt       DateTime         @default(now())
+  startedAt         DateTime?
+  finishedAt        DateTime?
+  error             String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  fortigate         FortiGate        @relation(fields: [fortigateId], references: [id], onDelete: Cascade)
+
+  @@index([status, availableAt, createdAt])
+  @@index([fortigateId, status])
+  @@index([tenantId, createdAt])
+}
+
+model Backup {
+  id          String       @id @default(cuid())
+  fortigateId String
+  filename    String?
+  sha256      String?
+  filesize    Int          @default(0)
+  status      BackupStatus
+  error       String?
+  itGlueAttachmentId String?
+  itGlueUploadedAt DateTime?
+  itGlueError String?
+  autotaskTicketId String?
+  autotaskTicketCreatedAt DateTime?
+  autotaskError String?
+  createdAt   DateTime     @default(now())
+  fortigate   FortiGate    @relation(fields: [fortigateId], references: [id], onDelete: Cascade)
+
+  @@index([fortigateId, createdAt])
+}
+
+model FortiGateLog {
+  id          String            @id @default(cuid())
+  fortigateId String
+  level       FortiGateLogLevel @default(INFO)
+  event       String
+  message     String
+  metadata    String?
+  createdAt   DateTime          @default(now())
+  fortigate   FortiGate         @relation(fields: [fortigateId], references: [id], onDelete: Cascade)
+
+  @@index([fortigateId, createdAt])
+}
+
+model VersionHistory {
+  id              String    @id @default(cuid())
+  fortigateId     String
+  firmwareVersion String
+  firmwareBuild   String?
+  detectedAt      DateTime  @default(now())
+  fortigate       FortiGate @relation(fields: [fortigateId], references: [id], onDelete: Cascade)
+
+  @@index([fortigateId, detectedAt])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  tenantId  String?
+  tenantName String?
+  userId    String?
+  actorId   String?
+  actorName String?
+  actorEmail String?
+  action    String
+  outcome   String   @default("success")
+  entity    String?
+  entityId  String?
+  metadata  String?
+  ipAddress String?
+  requestId String?
+  previousHash String?
+  integrityHash String?
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([requestId])
+}
+
+model SystemSetting {
+  id        String   @id @default(cuid())
+  tenantId  String?
+  key       String
+  value     String
+  encrypted Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, key])
+}

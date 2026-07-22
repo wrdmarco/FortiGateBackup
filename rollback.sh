@@ -2,6 +2,8 @@
 set -Eeuo pipefail
 
 umask 077
+export NEXT_TELEMETRY_DISABLED=1
+export CHECKPOINT_DISABLE=1
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="${APP_DIR:-$SCRIPT_DIR}"
@@ -155,6 +157,12 @@ esac
 if run_systemctl is-active --quiet fortigate-backup-update.service 2>/dev/null; then
   fail "an application update is currently running."
 fi
+
+if [ -f "$APP_DIR/data/postgres-migration-state.json" ] && grep -q '"phase"[[:space:]]*:[[:space:]]*"COMPLETE"' "$APP_DIR/data/postgres-migration-state.json"; then
+  if ! tar -xOf "$ARCHIVE" ./prisma/schema.prisma 2>/dev/null | grep -q 'provider[[:space:]]*=[[:space:]]*"postgresql"'; then
+    fail "rollback to a SQLite release is forbidden after successful PostgreSQL cutover. Choose a PostgreSQL-compatible release archive."
+  fi
+fi
 validate_archive_entries
 test -f "/etc/systemd/system/$MAINTENANCE_SERVICE" || fail "maintenance service is not installed; run setup.sh once before rollback."
 prepare_maintenance_runtime
@@ -191,7 +199,7 @@ run_as_service_user rsync -a --delete --delete-delay \
 
 cd "$APP_DIR"
 run_as_service_user pnpm install --frozen-lockfile
-run_as_service_user pnpm prisma migrate deploy
+run_as_service_user env CHECKPOINT_DISABLE=1 pnpm prisma migrate deploy
 run_as_service_user pnpm run build
 BUILD_COMPLETED=1
 

@@ -5,10 +5,12 @@ import { prisma } from "@/lib/db";
 import { BackupAlreadyRunningError, runBackup } from "@/lib/fortigate";
 import { getSetting } from "@/lib/settings";
 import { mainTenantId } from "@/lib/tenant-main";
+import { randomUUID } from "node:crypto";
 
 const staleJobMs = 30 * 60 * 1000;
 const DEFAULT_BACKUP_CONCURRENCY = 2;
 const MAXIMUM_BACKUP_CONCURRENCY = 4;
+const BACKUP_WORKER_ID = `backup-${process.pid}-${randomUUID()}`;
 let processing: Promise<void> | null = null;
 
 export function backupConcurrencyFromSetting(value: string | null | undefined) {
@@ -79,8 +81,8 @@ export function processBackupJobs() {
 async function processBackupJobsInternal() {
   const now = new Date();
   await prisma.backupJob.updateMany({
-    where: { status: BackupJobStatus.RUNNING, startedAt: { lt: new Date(now.getTime() - staleJobMs) } },
-    data: { status: BackupJobStatus.PENDING, startedAt: null, availableAt: now, error: "Worker is opnieuw gestart; job opnieuw ingepland." }
+    where: { status: BackupJobStatus.RUNNING, leaseExpiresAt: { lt: now } },
+    data: { status: BackupJobStatus.PENDING, startedAt: null, workerId: null, leaseExpiresAt: null, availableAt: now, error: "Workerlease verlopen; job opnieuw ingepland." }
   });
   await prisma.backupJob.deleteMany({
     where: {
@@ -91,23 +93,13 @@ async function processBackupJobsInternal() {
 
   const globalTenantId = await mainTenantId();
   const maximum = backupConcurrencyFromSetting(await getSetting("scheduler.maxParallelJobs", globalTenantId));
-  const candidates = await prisma.backupJob.findMany({
-    where: { status: BackupJobStatus.PENDING, availableAt: { lte: now } },
-    orderBy: [{ availableAt: "asc" }, { createdAt: "asc" }],
-    take: maximum
-  });
-  const claimed = [];
-  for (const candidate of candidates) {
-    const claim = await prisma.backupJob.updateMany({
-      where: { id: candidate.id, status: BackupJobStatus.PENDING, availableAt: { lte: now } },
-      data: { status: BackupJobStatus.RUNNING, startedAt: now, attempts: { increment: 1 }, error: null }
-    });
-    if (claim.count === 1) claimed.push({ ...candidate, attempts: candidate.attempts + 1 });
-  }
+  const claimed = await prisma.$transaction((tx)=>tx.$queryRaw<Array<{id:string;fortigateId:string;tenantId:string;requestedByUserId:string|null;attempts:number}>>`WITH candidates AS (SELECT id FROM "BackupJob" WHERE status='PENDING' AND "availableAt"<=now() ORDER BY "availableAt","createdAt" FOR UPDATE SKIP LOCKED LIMIT ${maximum}) UPDATE "BackupJob" j SET status='RUNNING',"startedAt"=now(),attempts=attempts+1,error=NULL,"workerId"=${BACKUP_WORKER_ID},"leaseExpiresAt"=now()+interval '30 minutes',"heartbeatAt"=now(),"updatedAt"=now() FROM candidates WHERE j.id=candidates.id RETURNING j.id,j."fortigateId",j."tenantId",j."requestedByUserId",j.attempts`);
   await Promise.all(claimed.map(executeBackupJob));
 }
 
 async function executeBackupJob(job: { id: string; fortigateId: string; tenantId: string; requestedByUserId: string | null; attempts: number }) {
+  const heartbeat=setInterval(()=>void prisma.backupJob.updateMany({where:{id:job.id,status:BackupJobStatus.RUNNING,workerId:BACKUP_WORKER_ID},data:{heartbeatAt:new Date(),leaseExpiresAt:new Date(Date.now()+staleJobMs)}}).catch(()=>undefined),60_000);heartbeat.unref();
+  try {
   const device = await prisma.fortiGate.findUnique({
     where: { id: job.fortigateId },
     select: { active: true, customer: { select: { active: true, tenant: { select: { active: true } } } } }
@@ -125,7 +117,7 @@ async function executeBackupJob(job: { id: string; fortigateId: string; tenantId
     }
     await prisma.backupJob.update({
       where: { id: job.id },
-      data: { status: BackupJobStatus.COMPLETED, finishedAt: new Date(), error: null }
+      data: { status: BackupJobStatus.COMPLETED, finishedAt: new Date(), error: null, workerId: null, leaseExpiresAt: null }
     });
     await auditLog({
       action: "backup.job.completed",
@@ -143,6 +135,8 @@ async function executeBackupJob(job: { id: string; fortigateId: string; tenantId
         data: {
           status: BackupJobStatus.PENDING,
           startedAt: null,
+          workerId: null,
+          leaseExpiresAt: null,
           attempts: { decrement: 1 },
           availableAt: new Date(Date.now() + 30_000),
           error: "Een andere backup draait; job opnieuw ingepland."
@@ -152,6 +146,7 @@ async function executeBackupJob(job: { id: string; fortigateId: string; tenantId
     }
     await retryOrFail(job, error instanceof Error ? error.message : "Onbekende backupfout.");
   }
+  } finally { clearInterval(heartbeat); }
 }
 
 async function retryOrFail(
@@ -164,7 +159,7 @@ async function retryOrFail(
     const delayMs = Math.min(60_000 * 2 ** Math.max(0, job.attempts - 1), 15 * 60_000);
     await prisma.backupJob.update({
       where: { id: job.id },
-      data: { status: BackupJobStatus.PENDING, startedAt: null, availableAt: new Date(Date.now() + delayMs), error }
+      data: { status: BackupJobStatus.PENDING, startedAt: null, workerId: null, leaseExpiresAt: null, availableAt: new Date(Date.now() + delayMs), error }
     });
     return;
   }
@@ -178,7 +173,7 @@ async function finishFailed(
 ) {
   await prisma.backupJob.update({
     where: { id: job.id },
-    data: { status: BackupJobStatus.FAILED, finishedAt: new Date(), error }
+    data: { status: BackupJobStatus.FAILED, finishedAt: new Date(), error, workerId: null, leaseExpiresAt: null }
   });
   await auditLog({
     action: "backup.job.failed",

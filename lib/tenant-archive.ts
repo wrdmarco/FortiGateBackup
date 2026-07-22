@@ -620,7 +620,7 @@ export async function createTenantArchive(tenantId: string) {
       });
       return { tenant, auditLogs };
     },
-    { maxWait: 30_000, timeout: 60_000 }
+    { maxWait: 30_000, timeout: 60_000, isolationLevel: "RepeatableRead" }
   );
   if (!snapshot) throw new TenantArchiveError("Tenant bestaat niet.", 404);
   const { tenant, auditLogs } = snapshot;
@@ -1181,6 +1181,7 @@ export async function restoreTenantArchive({
           await tx.backup.createMany({
             data: backups.map(({ deviceId, backup }) => ({
               id: backup.id,
+              tenantId,
               fortigateId: deviceId,
               filename: stagedByBackupId.get(backup.id)?.relativeFilename ?? null,
               sha256: backup.sha256,
@@ -1254,7 +1255,7 @@ export async function restoreTenantArchive({
 
         await publishStagedFiles(stagedFiles, publishedPaths);
       },
-      { maxWait: 30_000, timeout: 10 * 60_000 }
+      { maxWait: 30_000, timeout: 10 * 60_000, isolationLevel: "Serializable" }
     );
   } catch (error) {
     const cleanupFailures = await removePaths(publishedPaths);

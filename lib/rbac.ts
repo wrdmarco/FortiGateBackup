@@ -53,6 +53,11 @@ export const permissions = [
   { key: "backups.read", category: "Backups", description: "Backupoverzicht bekijken" },
   { key: "backups.download", category: "Backups", description: "Backupbestand downloaden" },
   { key: "backups.diff.read", category: "Backups", description: "Diff bekijken" },
+  { key: "security.analyses.read", category: "Beveiligingsanalyse", description: "Analyses en scorehistorie bekijken" },
+  { key: "security.analyses.run", category: "Beveiligingsanalyse", description: "Analyse starten of opnieuw proberen" },
+  { key: "security.findings.review", category: "Beveiligingsanalyse", description: "Bevindingen beoordelen" },
+  { key: "security.reports.download", category: "Beveiligingsanalyse", description: "Immutable PDF-rapporten downloaden" },
+  { key: "security.foundry.manage", category: "Beveiligingsanalyse", description: "Azure AI Foundry voor de tenant beheren" },
   { key: "alerts.read", category: "Alerts", description: "Alerts bekijken" },
   { key: "audit.read", category: "Audit", description: "Auditlogs binnen tenant bekijken" },
   { key: "integrations.mail.read", category: "Integraties", description: "Mailconfiguratie bekijken" },
@@ -86,6 +91,11 @@ const operatorPermissionKeys = [
   "backups.read",
   "backups.download",
   "backups.diff.read",
+  "security.analyses.read",
+  "security.analyses.run",
+  "security.findings.review",
+  "security.reports.download",
+  "security.foundry.manage",
   "alerts.read"
 ] satisfies PermissionKey[];
 

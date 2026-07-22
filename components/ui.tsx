@@ -23,7 +23,7 @@ export async function Shell({ children }: { children: React.ReactNode }) {
   const canReadAudit = permissionKeys.has(isGlobalContext ? "platform.audit.read" : "audit.read");
   const tenantName = user?.activeTenant?.name ?? user?.tenant?.name ?? "Geen tenant";
 
-  const navigation = <NavigationLinks canManageTenants={canReadTenants} canReadAudit={canReadAudit} canReadUsers={canReadUsers} isBreakGlassSettingsOnly={isBreakGlassSettingsOnly} isGlobalContext={isGlobalContext} />;
+  const navigation = <NavigationLinks canManageTenants={canReadTenants} canReadAudit={canReadAudit} canReadUsers={canReadUsers} canReadSecurity={permissionKeys.has("security.analyses.read")} isBreakGlassSettingsOnly={isBreakGlassSettingsOnly} isGlobalContext={isGlobalContext} />;
 
   return (
     <div className="min-h-screen bg-background lg:grid lg:grid-cols-[14.5rem_minmax(0,1fr)]">
@@ -50,11 +50,11 @@ function BrandLink({ href, compact = false }: { href: string; compact?: boolean 
   return <Link href={href} aria-label="Forti Backup - overzicht" className={clsx("brand-mark inline-flex min-h-11 items-center gap-2.5 rounded-lg", compact ? "px-0" : "mx-4 my-4 px-1")}><Image alt="" aria-hidden height={compact ? 30 : 38} src={compact ? "/brand/forti-backup-mark-light.svg" : "/brand/forti-backup-mark-dark.svg"} width={compact ? 30 : 38}/><BrandWordmark inverse={!compact} size={compact ? "compact" : "default"}/></Link>;
 }
 
-function NavigationLinks({ isBreakGlassSettingsOnly, isGlobalContext, canManageTenants, canReadUsers, canReadAudit }: { isBreakGlassSettingsOnly: boolean; isGlobalContext: boolean; canManageTenants: boolean; canReadUsers: boolean; canReadAudit: boolean }) {
+function NavigationLinks({ isBreakGlassSettingsOnly, isGlobalContext, canManageTenants, canReadUsers, canReadAudit, canReadSecurity }: { isBreakGlassSettingsOnly: boolean; isGlobalContext: boolean; canManageTenants: boolean; canReadUsers: boolean; canReadAudit: boolean; canReadSecurity:boolean }) {
   if (isBreakGlassSettingsOnly) return <><span className="flex min-h-11 items-center rounded-lg bg-amber-400/15 px-3 py-2 text-sm font-medium text-amber-200">Break-glass toegang</span><AppNavLink href="/settings?tab=sso"><Icon name="settings"/>SSO instellingen</AppNavLink></>;
   return <>
     <AppNavLink href="/"><Icon name="overview"/>Overzicht</AppNavLink>
-    {!isGlobalContext ? <><AppNavLink href="/customers"><Icon name="device"/>Klanten & FortiGates</AppNavLink><AppNavLink href="/queue"><Icon name="queue"/>Queue</AppNavLink><AppNavLink href="/alerts"><Icon name="alert"/>Alerts</AppNavLink></> : null}
+    {!isGlobalContext ? <><AppNavLink href="/customers"><Icon name="device"/>Klanten & FortiGates</AppNavLink>{canReadSecurity?<AppNavLink href="/security"><Icon name="shield"/>Beveiligingsanalyse</AppNavLink>:null}<AppNavLink href="/queue"><Icon name="queue"/>Queue</AppNavLink><AppNavLink href="/alerts"><Icon name="alert"/>Alerts</AppNavLink></> : null}
     {canManageTenants && isGlobalContext ? <AppNavLink href="/tenants"><Icon name="tenant"/>Tenants</AppNavLink> : null}
     {canReadUsers ? <AppNavLink href="/users"><Icon name="user"/>Gebruikers</AppNavLink> : null}
     <AppNavLink href="/roles"><Icon name="shield"/>Rollen</AppNavLink>

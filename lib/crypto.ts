@@ -31,6 +31,23 @@ export function decryptSecret(value: string) {
   ]).toString("utf8");
 }
 
+export function encryptSecretWithAad(value: string, aad: string) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv(algorithm, key(), iv);
+  cipher.setAAD(Buffer.from(aad, "utf8"));
+  const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
+  return `v1.${iv.toString("base64")}.${cipher.getAuthTag().toString("base64")}.${encrypted.toString("base64")}`;
+}
+
+export function decryptSecretWithAad(value: string, aad: string) {
+  const [version, iv, tag, encrypted] = value.split(".");
+  if (version !== "v1" || !iv || !tag || !encrypted) throw new Error("Encrypted value has an invalid format.");
+  const decipher = crypto.createDecipheriv(algorithm, key(), Buffer.from(iv, "base64"));
+  decipher.setAAD(Buffer.from(aad, "utf8"));
+  decipher.setAuthTag(Buffer.from(tag, "base64"));
+  return Buffer.concat([decipher.update(Buffer.from(encrypted, "base64")), decipher.final()]).toString("utf8");
+}
+
 export function sha256(content: string | Buffer) {
   return crypto.createHash("sha256").update(content).digest("hex");
 }

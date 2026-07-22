@@ -2,6 +2,8 @@
 set -Eeuo pipefail
 
 umask 077
+export NEXT_TELEMETRY_DISABLED=1
+export CHECKPOINT_DISABLE=1
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="${APP_DIR:-/opt/fortigate-backup}"
@@ -28,6 +30,8 @@ run_root() {
     sudo "$@"
   fi
 }
+
+run_as_postgres() { run_root runuser -u postgres -- "$@"; }
 
 run_as_service_user() {
   if [ "$(id -un)" = "$SERVICE_USER" ]; then
@@ -60,9 +64,60 @@ install_system_dependencies() {
     git \
     gnupg \
     openssl \
+    postgresql \
+    postgresql-client \
+    python3 \
     rsync \
     sudo \
     tar
+}
+
+urlencode() { python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.stdin.read().strip(), safe=""))'; }
+
+provision_postgresql() {
+  local credentials_dir="/etc/fortigate-backup"
+  local credentials_file="$credentials_dir/postgres.env"
+  if [ -n "${EXTERNAL_DATABASE_URL:-}" ]; then
+    [[ "$EXTERNAL_DATABASE_URL" =~ ^postgres(ql)?:// ]] || fail "EXTERNAL_DATABASE_URL must be a PostgreSQL URL."
+    [[ "$EXTERNAL_DATABASE_URL" == *"sslmode=verify-full"* ]] || fail "External PostgreSQL requires sslmode=verify-full."
+    [ -n "${EXTERNAL_MIGRATION_URL:-}" ] || fail "EXTERNAL_MIGRATION_URL is required for an external PostgreSQL database."
+    run_root install -d -o root -g "$SERVICE_GROUP" -m 0750 "$credentials_dir"
+    local external_temp
+    external_temp="$(mktemp)"
+    printf 'POSTGRES_RUNTIME_URL=%q\nPOSTGRES_MIGRATION_URL=%q\n' "$EXTERNAL_DATABASE_URL" "$EXTERNAL_MIGRATION_URL" > "$external_temp"
+    run_root install -o root -g "$SERVICE_GROUP" -m 0640 "$external_temp" "$credentials_file"
+    rm -f "$external_temp"
+    return
+  fi
+  if run_root test -s "$credentials_file"; then return; fi
+  local app_password migrator_password app_encoded migrator_encoded temp_file
+  app_password="$(generate_secret)"
+  migrator_password="$(generate_secret)"
+  app_encoded="$(printf '%s' "$app_password" | urlencode)"
+  migrator_encoded="$(printf '%s' "$migrator_password" | urlencode)"
+  run_root systemctl enable --now postgresql
+  run_as_postgres psql --set=ON_ERROR_STOP=1 --quiet \
+    --set=app_password="$app_password" --set=migrator_password="$migrator_password" <<'SQL'
+SELECT format('CREATE ROLE fortibackup_migrator LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS', :'migrator_password') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname='fortibackup_migrator') \gexec
+SELECT format('CREATE ROLE fortibackup_app LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS', :'app_password') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname='fortibackup_app') \gexec
+SELECT 'CREATE DATABASE fortibackup OWNER fortibackup_migrator' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname='fortibackup') \gexec
+REVOKE ALL ON DATABASE fortibackup FROM PUBLIC;
+GRANT CONNECT ON DATABASE fortibackup TO fortibackup_app;
+SQL
+  run_as_postgres psql --set=ON_ERROR_STOP=1 --quiet --dbname=fortibackup <<'SQL'
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+GRANT USAGE ON SCHEMA public TO fortibackup_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE fortibackup_migrator IN SCHEMA public GRANT SELECT,INSERT,UPDATE,DELETE ON TABLES TO fortibackup_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE fortibackup_migrator IN SCHEMA public GRANT USAGE,SELECT ON SEQUENCES TO fortibackup_app;
+SQL
+  temp_file="$(mktemp)"
+  printf 'POSTGRES_RUNTIME_URL=%q\nPOSTGRES_MIGRATION_URL=%q\n' \
+    "postgresql://fortibackup_app:${app_encoded}@127.0.0.1:5432/fortibackup?sslmode=disable" \
+    "postgresql://fortibackup_migrator:${migrator_encoded}@127.0.0.1:5432/fortibackup?sslmode=disable" > "$temp_file"
+  run_root install -d -o root -g "$SERVICE_GROUP" -m 0750 "$credentials_dir"
+  run_root install -o root -g "$SERVICE_GROUP" -m 0640 "$temp_file" "$credentials_file"
+  rm -f "$temp_file"
+  unset app_password migrator_password app_encoded migrator_encoded
 }
 
 node_major_version() {
@@ -164,12 +219,14 @@ normalize_env_file() {
       if (database != "") print database
       if (nextauth != "") print nextauth
       if (encryption != "") print encryption
+      print "NEXT_TELEMETRY_DISABLED=1"
+      print "CHECKPOINT_DISABLE=1"
     }
   ' "$env_file" > "$temp_file"
   run_root install -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0600 "$temp_file" "$env_file"
   rm -f "$temp_file"
 
-  set_env_if_blank "DATABASE_URL" "file:../data/app.db"
+  set_env_if_blank "DATABASE_URL" "$POSTGRES_RUNTIME_URL"
   set_env_if_blank "NEXTAUTH_SECRET" "$(generate_secret)"
   set_env_if_blank "ENCRYPTION_KEY" "$(generate_secret)"
   run_root chown "$SERVICE_USER:$SERVICE_GROUP" "$env_file"
@@ -243,6 +300,16 @@ if [ "${EUID:-$(id -u)}" -ne 0 ]; then
 fi
 require_command apt-get
 validate_operating_system
+if [ "${1:-}" = "--prepare-postgres-migration" ]; then
+  validate_inputs
+  getent passwd "$SERVICE_USER" >/dev/null 2>&1 || fail "service user $SERVICE_USER does not exist; this preparation command is only for an existing installation."
+  SERVICE_GROUP="$(id -gn "$SERVICE_USER")"
+  run_root apt-get update
+  run_root env DEBIAN_FRONTEND=noninteractive apt-get install -y openssl postgresql postgresql-client python3
+  provision_postgresql
+  echo "PostgreSQL migration preparation completed. Run the normal FortiBackup update again."
+  exit 0
+fi
 install_system_dependencies
 install_nodejs
 install_package_manager
@@ -278,6 +345,11 @@ if ! getent passwd "$SERVICE_USER" >/dev/null 2>&1; then
   run_root useradd --system --create-home --gid "$SERVICE_USER" --shell /usr/sbin/nologin "$SERVICE_USER"
 fi
 SERVICE_GROUP="$(id -gn "$SERVICE_USER")"
+provision_postgresql
+POSTGRES_RUNTIME_URL="$(run_root awk -F= '/^POSTGRES_RUNTIME_URL=/{sub(/^[^=]*=/,""); print}' /etc/fortigate-backup/postgres.env)"
+POSTGRES_MIGRATION_URL="$(run_root awk -F= '/^POSTGRES_MIGRATION_URL=/{sub(/^[^=]*=/,""); print}' /etc/fortigate-backup/postgres.env)"
+eval "POSTGRES_RUNTIME_URL=$POSTGRES_RUNTIME_URL"
+eval "POSTGRES_MIGRATION_URL=$POSTGRES_MIGRATION_URL"
 
 if run_root "$SYSTEMCTL" is-active --quiet fortigate-backup-update.service 2>/dev/null; then
   fail "an application update is currently running."
@@ -323,7 +395,9 @@ echo "Validated .env; only DATABASE_URL, NEXTAUTH_SECRET and ENCRYPTION_KEY are 
 
 cd "$APP_DIR"
 run_as_service_user pnpm install --frozen-lockfile
-run_as_service_user pnpm prisma migrate deploy
+run_as_service_user env DATABASE_URL="$POSTGRES_MIGRATION_URL" CHECKPOINT_DISABLE=1 pnpm prisma migrate deploy
+run_as_service_user psql "$POSTGRES_MIGRATION_URL" --set=ON_ERROR_STOP=1 --quiet --command='GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public TO fortibackup_app; GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA public TO fortibackup_app;'
+run_as_service_user env NEXT_TELEMETRY_DISABLED=1 pnpm exec next telemetry disable >/dev/null
 run_as_service_user pnpm run build
 
 render_systemd_unit fortigate-backup.service

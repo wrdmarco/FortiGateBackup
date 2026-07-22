@@ -1,13 +1,17 @@
 import { request as httpsRequest } from "node:https";
 import { isIP } from "node:net";
 import { connect as tlsConnect, type DetailedPeerCertificate, type TLSSocket } from "node:tls";
-import { mkdir, open, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, open, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 import { Backup, BackupStatus, FortiGate, FortiGateLogLevel } from "@prisma/client";
 import { auditLog } from "@/lib/audit";
 import { notifyBackupResult } from "@/lib/backup-notifications";
 import { applyBackupRetention } from "@/lib/backup-retention";
 import { decryptSecret, sha256 } from "@/lib/crypto";
+import { artifactRelativePath, writeImmutableArtifact } from "@/lib/security/artifact-storage";
+import { FORTIOS_PARSER_VERSION } from "@/lib/security/fortios-parser";
+import { SECURITY_RULESET_VERSION } from "@/lib/security/rules";
+import { tenantTransaction } from "@/lib/tenant-db";
 import { prisma } from "@/lib/db";
 import { uploadBackupToItGlue } from "@/lib/itglue";
 import {
@@ -725,6 +729,8 @@ async function runBackupInternal(deviceId: string, options: { notifyResult?: boo
       const backup = await prisma.backup.create({
         data: {
           fortigateId: device.id,
+          tenantId: device.customer.tenantId,
+          configArtifactId: latest.configArtifactId,
           sha256: digest,
           filesize: config.byteLength,
           status: BackupStatus.UNCHANGED
@@ -742,32 +748,20 @@ async function runBackupInternal(deviceId: string, options: { notifyResult?: boo
       return backup;
     }
 
-    const directory = path.resolve(
-      process.cwd(),
-      "data",
-      "backups",
-      safeFilenameSegment(device.id, "fortigate")
-    );
-    await mkdir(directory, { recursive: true });
-    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const identity = safeFilenameSegment(backupSource.hostname ?? device.serialNumber, device.id);
-    const filename = `${stamp}-${identity}-${digest.slice(0, 12)}.conf`;
-    const fullPath = path.resolve(directory, filename);
-    if (path.dirname(fullPath) !== directory) throw new Error("Backupbestandsnaam valt buiten de toegestane opslagmap.");
-    await writeFile(fullPath, config, { flag: "wx", mode: 0o600 });
+    const tenantId=device.customer.tenantId;
+    const filename=artifactRelativePath(tenantId,device.id,digest);
+    const fullPath=await writeImmutableArtifact(filename,config);
     let backup: Backup;
     try {
-      backup = await prisma.backup.create({
-        data: {
-          fortigateId: device.id,
-          filename: path.relative(process.cwd(), fullPath),
-          sha256: digest,
-          filesize: config.byteLength,
-          status: BackupStatus.CHANGED
-        }
+      backup = await tenantTransaction(tenantId,async(tx)=>{
+        const artifact=await tx.configArtifact.upsert({where:{tenantId_fortigateId_sha256:{tenantId,fortigateId:device.id,sha256:digest}},create:{tenantId,fortigateId:device.id,sha256:digest,path:filename,filesize:config.byteLength},update:{}});
+        const created=await tx.backup.create({data:{tenantId,fortigateId:device.id,configArtifactId:artifact.id,filename:path.relative(process.cwd(),fullPath),sha256:digest,filesize:config.byteLength,status:BackupStatus.CHANGED}});
+        const existing=await tx.securityAnalysis.findUnique({where:{tenantId_fortigateId_configSha256:{tenantId,fortigateId:device.id,configSha256:digest}},select:{id:true}});
+        const foundry=await tx.tenantFoundryConfig.findUnique({where:{tenantId},select:{enabled:true,endpoint:true,deployment:true,apiKeyEncrypted:true}});
+        if(!existing&&foundry?.enabled&&foundry.endpoint&&foundry.deployment&&foundry.apiKeyEncrypted){const analysis=await tx.securityAnalysis.create({data:{tenantId,fortigateId:device.id,configArtifactId:artifact.id,configSha256:digest,sourceBackupId:created.id,parserVersion:FORTIOS_PARSER_VERSION,rulesetVersion:SECURITY_RULESET_VERSION,promptVersion:"1.0.0",foundryDeployment:foundry.deployment}});await tx.securityAnalysisJob.create({data:{tenantId,fortigateId:device.id,analysisId:analysis.id}});}
+        return created;
       });
     } catch (error) {
-      await unlink(fullPath).catch(() => undefined);
       throw error;
     }
 
@@ -801,6 +795,7 @@ async function runBackupInternal(deviceId: string, options: { notifyResult?: boo
     const backup = await prisma.backup.create({
       data: {
         fortigateId: device.id,
+        tenantId: device.customer.tenantId,
         status: BackupStatus.FAILED,
         error: message
       }

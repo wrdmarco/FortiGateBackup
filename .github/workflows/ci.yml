@@ -2,6 +2,8 @@ name: CI
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  NEXT_TELEMETRY_DISABLED: "1"
+  CHECKPOINT_DISABLE: "1"
 
 on:
   push:
@@ -12,8 +14,20 @@ on:
 jobs:
   validate:
     runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: fortibackup_ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
-      DATABASE_URL: "file:../data/ci.db"
+      DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/fortibackup_ci"
       NEXTAUTH_SECRET: "ci-secret-ci-secret-ci-secret-ci-secret"
       ENCRYPTION_KEY: "ci-encryption-key-ci-encryption-key-32"
     steps:

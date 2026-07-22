@@ -2,6 +2,8 @@
 set -Eeuo pipefail
 
 umask 077
+export NEXT_TELEMETRY_DISABLED=1
+export CHECKPOINT_DISABLE=1
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="${APP_DIR:-$SCRIPT_DIR}"
@@ -32,6 +34,7 @@ SERVICES_STOPPED="${FORTIGATE_SERVICES_STOPPED:-0}"
 BUILD_COMPLETED=0
 RELEASE_MUTATED="${FORTIGATE_RELEASE_MUTATED:-0}"
 WEB_HEALTHY="${FORTIGATE_WEB_HEALTHY:-0}"
+RELEASE_BACKUP="${FORTIGATE_RELEASE_BACKUP:-}"
 ACTIVE_COMMAND_PID=""
 ACTIVE_HEARTBEAT_PID=""
 
@@ -164,6 +167,24 @@ cleanup_runner() {
   fi
 
   echo "Update runner stopped with exit code $status." >&2
+  if [ "$RELEASE_MUTATED" -eq 1 ] && [ -n "$RELEASE_BACKUP" ] && [ -f "$RELEASE_BACKUP" ] && [ "$WEB_HEALTHY" -ne 1 ]; then
+    echo "Restoring the previous release after failed update validation." >&2
+    recovery_stage="$(mktemp -d /tmp/fortigate-update-recovery.XXXXXX)"
+    run_as_service_user tar -xzf "$RELEASE_BACKUP" -C "$recovery_stage"
+    run_as_service_user rsync -a --delete --delete-delay \
+      --exclude='.env' --exclude='data/' --exclude='uploads/' --exclude='secrets/' --exclude='keys/' \
+      "$recovery_stage/" "$APP_DIR/"
+    rm -rf -- "$recovery_stage"
+    if [ -f "$APP_DIR/data/postgres-migration-state.json" ]; then
+      recovery_env="$($NODE_BIN -e 'const fs=require("fs");const s=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(s.phase!=="COMPLETE")process.stdout.write(String(s.recoveryPath||"")+"/legacy.env")' "$APP_DIR/data/postgres-migration-state.json")"
+      if [ -n "$recovery_env" ] && [ -f "$recovery_env" ]; then
+        run_as_service_user install -m 0600 "$recovery_env" "$APP_DIR/.env.recovery"
+        run_as_service_user mv "$APP_DIR/.env.recovery" "$APP_DIR/.env"
+        run_as_service_user touch "$APP_DIR/data/postgres-migration-state.failed"
+      fi
+    fi
+    RELEASE_MUTATED=0
+  fi
   if [ "$SERVICES_STOPPED" -eq 1 ]; then
     if [ "$WEB_HEALTHY" -eq 1 ]; then
       echo "The verified web service remains available; the worker stays stopped." >&2
@@ -233,6 +254,8 @@ create_release_backup() {
     -C "$APP_DIR" .
   run_as_service_user chmod 0600 "$temporary_backup"
   run_as_service_user mv "$temporary_backup" "$backup_dir/$backup_name"
+  RELEASE_BACKUP="$backup_dir/$backup_name"
+  export FORTIGATE_RELEASE_BACKUP="$RELEASE_BACKUP"
   echo "Created release backup $backup_dir/$backup_name."
 }
 
@@ -313,6 +336,16 @@ touch_update_lock
 check_free_space
 check_repository_writable
 
+case "${DATABASE_URL:-}" in
+  file:*)
+    if [ ! -r /etc/fortigate-backup/postgres.env ]; then
+      fail "PostgreSQL migration preparation is missing. Keep the current application running and execute exactly: cd $APP_DIR && sudo ./setup.sh --prepare-postgres-migration ; then start the update again."
+    fi
+    ;;
+  postgres://*|postgresql://*) ;;
+  *) fail "Unsupported DATABASE_URL scheme; no changes were made." ;;
+esac
+
 if [ "${FORTIGATE_UPDATE_REEXECED:-0}" != "1" ]; then
   run_with_lock_heartbeat run_as_service_user git -c core.filemode=false fetch --all --prune
   LOCAL_REV="$(run_as_service_user git rev-parse HEAD)"
@@ -336,7 +369,7 @@ if [ "${FORTIGATE_UPDATE_REEXECED:-0}" != "1" ]; then
   if [ "$UPDATE_SCRIPT_SUM_BEFORE" != "$UPDATE_SCRIPT_SUM_AFTER" ]; then
     echo "update.sh changed during pull. Continuing with the new script at the post-pull phase."
     export FORTIGATE_UPDATE_REEXECED=1
-    export APP_DIR SERVICE_USER SYSTEMCTL NODE_BIN MIN_FREE_KB FORTIGATE_RELEASE_MUTATED FORTIGATE_WEB_HEALTHY
+    export APP_DIR SERVICE_USER SYSTEMCTL NODE_BIN MIN_FREE_KB FORTIGATE_RELEASE_MUTATED FORTIGATE_RELEASE_BACKUP FORTIGATE_WEB_HEALTHY
     export HEALTH_INITIAL_DELAY_MS HEALTH_RETRIES HEALTH_RETRY_DELAY_MS HEALTH_TIMEOUT_MS LOCK_HEARTBEAT_SECONDS
     exec bash "$APP_DIR/update.sh" --runner
   fi
@@ -348,8 +381,27 @@ else
 fi
 
 run_with_lock_heartbeat run_as_service_user pnpm install --frozen-lockfile
-run_with_lock_heartbeat run_as_service_user pnpm prisma migrate deploy
+if [[ "${DATABASE_URL:-}" == file:* ]]; then
+  POSTGRES_MIGRATION_URL="$(awk -F= '/^POSTGRES_MIGRATION_URL=/{sub(/^[^=]*=/,""); print}' /etc/fortigate-backup/postgres.env)"
+  eval "POSTGRES_MIGRATION_URL=$POSTGRES_MIGRATION_URL"
+  run_with_lock_heartbeat run_as_service_user env DATABASE_URL="$POSTGRES_MIGRATION_URL" CHECKPOINT_DISABLE=1 pnpm prisma migrate deploy
+  run_with_lock_heartbeat run_as_service_user env POSTGRES_MIGRATION_URL="$POSTGRES_MIGRATION_URL" DATABASE_URL="$DATABASE_URL" NEXT_TELEMETRY_DISABLED=1 CHECKPOINT_DISABLE=1 pnpm exec tsx scripts/migrate-sqlite-to-postgres.ts
+  DATABASE_URL="$(awk -F= '/^DATABASE_URL=/{sub(/^[^=]*=/,""); print}' "$APP_DIR/.env")"
+  eval "DATABASE_URL=$DATABASE_URL"
+else
+  dump_dir="$APP_DIR/data/self-backups/postgres"
+  run_as_service_user mkdir -p "$dump_dir"
+  dump_file="$dump_dir/pre-migration-$(date -u +%Y%m%dT%H%M%SZ).dump"
+  run_with_lock_heartbeat run_as_service_user pg_dump -Fc --file="$dump_file" "$DATABASE_URL"
+  run_as_service_user sha256sum "$dump_file" > "$dump_file.sha256"
+  run_as_service_user pg_restore --list "$dump_file" >/dev/null
+  run_with_lock_heartbeat run_as_service_user env DATABASE_URL="$DATABASE_URL" CHECKPOINT_DISABLE=1 pnpm prisma migrate deploy
+fi
+run_as_service_user env NEXT_TELEMETRY_DISABLED=1 pnpm exec next telemetry disable >/dev/null
 run_with_lock_heartbeat run_as_service_user pnpm run build
 BUILD_COMPLETED=1
 start_and_verify_services
+if [ -f "$APP_DIR/data/postgres-migration-state.json" ]; then
+  run_as_service_user env DATABASE_URL="$DATABASE_URL" pnpm exec tsx scripts/finalize-postgres-migration.ts
+fi
 echo "Update complete."

@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { hasPermission } from "@/lib/rbac";
 import { formatDateTime } from "@/lib/time";
 import { getTenantTimeZone } from "@/lib/tenant-timezone";
+import { tenantTransaction } from "@/lib/tenant-db";
 
 export const dynamic = "force-dynamic";
 const PAGE_SIZE = 50;
@@ -39,12 +40,13 @@ export default async function CustomerFortiGateBackupsPage({
   const backupWhere = { fortigateId: device.id, ...(status ? { status } : {}) };
   const totalBackups = await prisma.backup.count({ where: backupWhere });
   const page = normalizePage(requestedPage, totalBackups, PAGE_SIZE);
-  const backups = await prisma.backup.findMany({
+  const backups = await tenantTransaction(device.customer.tenantId,(tx)=>tx.backup.findMany({
     where: backupWhere,
     orderBy: { createdAt: "desc" },
     skip: (page - 1) * PAGE_SIZE,
-    take: PAGE_SIZE
-  });
+    take: PAGE_SIZE,
+    include:{configArtifact:{select:{analysis:{select:{id:true,status:true,report:{select:{id:true}}}}}}}
+  }));
   const timeZone = await getTenantTimeZone(device.customer.tenantId);
   const detailHref = `/customers/${device.customerId}/fortigates/${device.id}`;
 
@@ -80,6 +82,7 @@ export default async function CustomerFortiGateBackupsPage({
               <th className="px-3 py-2">Grootte</th>
               <th className="px-3 py-2">IT Glue</th>
               <th className="px-3 py-2">Autotask</th>
+              <th className="px-3 py-2">Analyse</th>
               <th className="px-3 py-2">Acties</th>
             </tr>
           </thead>
@@ -98,6 +101,7 @@ export default async function CustomerFortiGateBackupsPage({
                 <td className="px-3 py-2">
                   {backup.autotaskTicketId ? <Badge tone="success">Ticket {backup.autotaskTicketId}</Badge> : backup.autotaskError ? <Badge tone="warning">Fout</Badge> : <Badge>-</Badge>}
                 </td>
+                <td className="px-3 py-2">{backup.status==="UNCHANGED"?<Badge>Geen nieuwe analyse</Badge>:backup.status==="FAILED"?<Badge tone="danger">Niet analyseerbaar</Badge>:!backup.configArtifact?.analysis?<Badge>Rapportage niet geconfigureerd</Badge>:backup.configArtifact.analysis.status==="COMPLETED"?<div className="flex gap-2"><ActionLink href={`/security/analyses/${backup.configArtifact.analysis.id}`}>Open analyse</ActionLink>{backup.configArtifact.analysis.report?<ActionLink href={`/api/security/reports/${backup.configArtifact.analysis.report.id}`}>PDF</ActionLink>:null}</div>:<Badge tone={backup.configArtifact.analysis.status==="FAILED"||backup.configArtifact.analysis.status==="BLOCKED"?"danger":"warning"}>{backup.configArtifact.analysis.status==="RUNNING"||backup.configArtifact.analysis.status==="PENDING"?"Analyse in behandeling":"Analyse mislukt"}</Badge>}</td>
                 <td className="flex flex-wrap gap-2 px-3 py-2">
                   {backup.filename && (canDownloadBackup || canReadDiff) ? (
                     <>
@@ -109,7 +113,7 @@ export default async function CustomerFortiGateBackupsPage({
               </tr>
             )) : (
               <tr className="border-t border-border">
-                <td className="px-3 py-8 text-center text-muted-foreground" colSpan={7}>Nog geen backups voor deze FortiGate.</td>
+                <td className="px-3 py-8 text-center text-muted-foreground" colSpan={8}>Nog geen backups voor deze FortiGate.</td>
               </tr>
             )}
           </tbody>

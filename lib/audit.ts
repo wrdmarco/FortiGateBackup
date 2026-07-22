@@ -72,12 +72,11 @@ export async function auditLog(input: AuditInput) {
   const metadataJson = metadata ? JSON.stringify(metadata) : null;
 
   await prisma.$transaction(async (tx) => {
-    const previous = await tx.auditLog.findFirst({
-      where: { tenantId: input.tenantId ?? null },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      select: { integrityHash: true }
-    });
-    const previousHash = previous?.integrityHash ?? null;
+    const scopeKey = input.tenantId ? `tenant:${input.tenantId}` : "global";
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${scopeKey}, 0))`;
+    await tx.auditHead.upsert({ where: { scopeKey }, create: { scopeKey, tenantId: input.tenantId ?? null }, update: {} });
+    const heads = await tx.$queryRaw<Array<{ lastHash: string | null }>>`SELECT "lastHash" FROM "AuditHead" WHERE "scopeKey" = ${scopeKey} FOR UPDATE`;
+    const previousHash = heads[0]?.lastHash ?? null;
     const integrityHash = signAuditEntry({
       id,
       tenantId: input.tenantId ?? null,
@@ -117,6 +116,7 @@ export async function auditLog(input: AuditInput) {
         createdAt
       }
     });
+    await tx.auditHead.update({ where: { scopeKey }, data: { lastAuditId: id, lastHash: integrityHash } });
   });
 }
 
