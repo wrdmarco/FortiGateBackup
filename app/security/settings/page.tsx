@@ -1,8 +1,5 @@
-import { deleteFoundryConfigAction, saveFoundryConfigAction } from "../actions";
-import { Button, Field, PageHeader, Panel, Shell } from "@/components/ui";
-import { requirePermission, tenantFilter } from "@/lib/authz";
-import { maskedFoundryConfig } from "@/lib/security/foundry-config";
-import { isGlobalTenantId } from "@/lib/tenant-main";
+import { redirect } from "next/navigation";
 
-export const dynamic="force-dynamic";
-export default async function FoundrySettingsPage(){const user=await requirePermission("security.foundry.manage");const tenantId=tenantFilter(user);if(!tenantId||await isGlobalTenantId(tenantId))throw new Error("Azure Foundry kan uitsluitend binnen een geselecteerde klanttenant worden geconfigureerd.");const config=await maskedFoundryConfig(tenantId);return <Shell><PageHeader title="Azure AI Foundry" description="Tenantgebonden AI-verrijking. De API-key wordt versleuteld opgeslagen en nooit teruggestuurd naar de browser."/><Panel title="Foundry v1-configuratie" description="Alleen ondersteunde Azure-hostnamen en HTTPS worden geaccepteerd."><form action={saveFoundryConfigAction} className="grid max-w-3xl gap-4"><input type="hidden" name="tenantId" value={tenantId}/><label className="flex min-h-11 items-center gap-3"><input type="hidden" name="enabled" value="false"/><input type="checkbox" name="enabled" value="true" defaultChecked={config?.enabled}/>Rapportage actief</label><Field label="Azure Foundry endpoint" name="endpoint" type="url" required defaultValue={config?.endpoint??""}/><Field label="Deploymentnaam" name="deployment" required defaultValue={config?.deployment??""}/><Field label={config?.hasApiKey?"Nieuwe API-key (leeg laten om te behouden)":"API-key"} name="apiKey" type="password" required={!config?.hasApiKey} autoComplete="new-password"/><p className="text-sm text-muted-foreground">Opgeslagen key: {config?.hasApiKey?"••••••••":"geen"}</p><Button>Configuratie opslaan</Button></form>{config?<form action={deleteFoundryConfigAction} className="mt-6"><input type="hidden" name="tenantId" value={tenantId}/><Button variant="danger">Configuratie en key verwijderen</Button></form>:null}</Panel></Shell>}
+export default function LegacyFoundrySettingsPage() {
+  redirect("/settings?tab=foundry");
+}

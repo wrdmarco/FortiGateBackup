@@ -1,6 +1,7 @@
 import { saveSettings, startAppUpdateAction, testMailSettings } from "@/app/actions";
 import { SettingsForm } from "@/components/settings-form";
 import { SettingsTabs } from "@/components/settings-tabs";
+import { FoundrySettingsPanel } from "@/components/foundry-settings-panel";
 import { UpdateStartForm } from "@/components/update-start-form";
 import { Badge, PageHeader, Panel, Shell } from "@/components/ui";
 import { getAppUpdateStatus } from "@/lib/app-update";
@@ -8,6 +9,7 @@ import { prisma } from "@/lib/db";
 import { getMailProviderMode } from "@/lib/mail";
 import { hasPermission } from "@/lib/rbac";
 import { getSetting } from "@/lib/settings";
+import { maskedFoundryConfig } from "@/lib/security/foundry-config";
 import { requireUser } from "@/lib/session";
 import { isGlobalTenantId, mainTenantId } from "@/lib/tenant-main";
 import { defaultTimeZone } from "@/lib/time";
@@ -27,7 +29,7 @@ const settingKeys = [
 export default async function SettingsPage({
   searchParams
 }: {
-  searchParams?: Promise<{ tab?: string }>;
+  searchParams?: Promise<{ tab?: string; error?: string; saved?: string }>;
 }) {
   const user = await requireUser({ allowBreakGlassSettingsOnly: true });
   const canManagePlatform = Boolean(user.tenantId && (await isGlobalTenantId(user.tenantId)));
@@ -36,6 +38,7 @@ export default async function SettingsPage({
   const selectedTenantId = canManagePlatform ? user.activeTenantId ?? globalTenantId ?? "" : user.tenantId ?? "";
   const tenantId = selectedTenantId || null;
   const isGlobalScope = Boolean(tenantId && tenantId === globalTenantId);
+  const canManageFoundry = !user.breakGlassSettingsOnly && !isGlobalScope && await hasPermission(user, "security.foundry.manage");
   const [canReadBaseSettings, canReadMail, canReadItGlue, canReadAutotask, canReadSso, canReadUpdates, canRunUpdates] =
     user.breakGlassSettingsOnly
       ? [false, false, false, false, true, false, false]
@@ -268,12 +271,14 @@ export default async function SettingsPage({
     values: safeValues,
     allowSystemMail: !isGlobalScope
   };
+  const foundryConfig = canManageFoundry && selectedTenantId ? await maskedFoundryConfig(selectedTenantId) : null;
   const configTabs = user.breakGlassSettingsOnly
     ? ["sso"]
     : [
         ...(!isGlobalScope && canReadBaseSettings ? ["portal"] : []),
         ...(!isGlobalScope && canReadItGlue ? ["itglue"] : []),
         ...(!isGlobalScope && canReadAutotask ? ["autotask"] : []),
+        ...(canManageFoundry ? ["foundry"] : []),
         ...(canReadMail ? ["mail"] : []),
         ...(canReadSso ? ["sso"] : []),
         ...(canReadBaseSettings ? ["scheduler"] : [])
@@ -323,6 +328,13 @@ export default async function SettingsPage({
                 <SettingsForm key={`${selectedTenantId}:autotask`} {...formProps} canUpdate={canUpdateAutotask} visibleTabs={["autotask"]} initialTab="autotask" />
               </Panel>
             )
+          }] : []),
+          ...(canManageFoundry ? [{
+            id: "foundry",
+            label: "Azure Foundry",
+            href: settingsHref("foundry"),
+            description: "Configureer tenantgebonden AI-verrijking voor FortiGate-configuratieanalyses.",
+            content: <FoundrySettingsPanel tenantId={selectedTenantId} config={foundryConfig} error={params?.error} saved={params?.saved} />
           }] : []),
           ...(canReadMail ? [{
             id: "mail",
