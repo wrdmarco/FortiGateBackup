@@ -41,7 +41,7 @@ export async function Shell({ children }: { children: React.ReactNode }) {
           </div>
           {user ? <div className="border-t border-border/70 px-4 pb-3 pt-2 sm:px-6 lg:hidden"><div className="mb-1 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Actieve tenant</div><TenantSwitcher key={`mobile-${user.activeTenantId ?? "no-tenant"}`} action={switchTenantContextAction} activeTenantId={user.activeTenantId} canSwitch={canSwitchTenants} fullWidth id="tenant-context-mobile" tenantName={tenantName} tenants={tenants} /></div> : null}
         </header>
-        <main className="mx-auto w-full max-w-[1680px] px-4 py-5 outline-none sm:px-6 lg:px-8 lg:py-6 xl:px-10" id="main-content" tabIndex={-1}>{children}</main>
+        <main className="mr-auto w-full max-w-[1680px] px-4 py-5 outline-none sm:px-6 lg:px-8 lg:py-6 xl:px-10" id="main-content" tabIndex={-1}>{children}</main>
       </div>
     </div>
   );

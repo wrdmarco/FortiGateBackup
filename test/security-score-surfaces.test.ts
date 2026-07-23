@@ -27,3 +27,19 @@ test("scorequeries gebruiken uitsluitend CHANGED en voltooide historische analys
   assert.match(queries, /\/ completed\.length/);
   assert.doesNotMatch(queries, /average:.*\/ devices\.length/);
 });
+
+test("scores worden overal als percentage gepresenteerd", async () => {
+  const sources = await Promise.all([
+    readFile("app/security/page.tsx", "utf8"),
+    readFile("app/security/analyses/[analysisId]/page.tsx", "utf8"),
+    readFile("app/customers/[id]/page.tsx", "utf8"),
+    readFile("app/customers/[id]/fortigates/[fortigateId]/page.tsx", "utf8"),
+    readFile("app/customers/[id]/fortigates/[fortigateId]/security/page.tsx", "utf8"),
+    readFile("lib/security/report.ts", "utf8")
+  ]);
+  const combined = sources.join("\n");
+  assert.doesNotMatch(combined, /TECHNISCHE SCORE \/ 100|score\}\s*\/\s*100/);
+  assert.match(combined, /TECHNISCHE SCORE/);
+  assert.match(combined, /score\}%/);
+  assert.match(combined, /procentpunt/);
+});

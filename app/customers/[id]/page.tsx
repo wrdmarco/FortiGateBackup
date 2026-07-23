@@ -152,7 +152,7 @@ export default async function CustomerDetailPage({
           value={latestBackup?.status ?? "-"}
           detail={latestBackup ? formatDateTime(latestBackup.createdAt, timeZone) : "Nog niet uitgevoerd"}
         /> : null}
-        {canReadSecurity ? <Card title="Gemiddelde score" value={securityOverview?.average ?? "Niet beschikbaar"} detail="Eén actuele score per FortiGate" /> : null}
+        {canReadSecurity ? <Card title="Gemiddelde score" value={securityOverview?.average === null || securityOverview?.average === undefined ? "Niet beschikbaar" : `${securityOverview.average}%`} detail="Eén actuele score per FortiGate" /> : null}
         {canReadSecurity ? <Card title="Analysedekking" value={`${securityOverview?.coverage.analysed ?? 0} van ${securityOverview?.coverage.total ?? 0}`} detail="Nieuwste gewijzigde configuraties" /> : null}
         {canReadSecurity ? <Card title="Critical / high" value={`${securityOverview?.critical ?? 0} / ${securityOverview?.high ?? 0}`} detail="Actuele bevindingen" /> : null}
       </div>
@@ -212,7 +212,7 @@ export default async function CustomerDetailPage({
                     </td>
                     {canReadSecurity ? <td className="px-3 py-2">
                       {analysis?.status === "COMPLETED" && analysis.score !== null
-                        ? <div className="grid gap-1"><Badge tone={analysis.score >= 80 ? "success" : analysis.score >= 60 ? "warning" : "danger"}>{analysis.score} / 100</Badge><span className="text-xs text-muted-foreground">{analysis.criticalCount} critical · {analysis.highCount} high</span></div>
+                        ? <div className="grid gap-1"><Badge tone={analysis.score >= 80 ? "success" : analysis.score >= 60 ? "warning" : "danger"}>{analysis.score}%</Badge><span className="text-xs text-muted-foreground">{analysis.criticalCount} critical · {analysis.highCount} high</span></div>
                         : <Badge tone={analysis?.status === "FAILED" || analysis?.status === "BLOCKED" ? "danger" : "warning"}>{securityStatusLabel(analysis?.status, Boolean(security?.backup))}</Badge>}
                     </td> : null}
                     {canReadLogs ? <td className="max-w-[360px] px-3 py-2">

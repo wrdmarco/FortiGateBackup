@@ -136,7 +136,7 @@ export default async function CustomerFortiGatePage({
         <Card title="TLS" value="Altijd aan" detail={device.tlsCertificateFingerprint ? "Geaccepteerde fingerprint" : "PKI-validatie"} />
         {canReadSecurity ? <Card
           title="Beveiligingsscore"
-          value={currentAnalysis?.status === "COMPLETED" && currentAnalysis.score !== null ? currentAnalysis.score : securityStatusLabel(currentAnalysis?.status, Boolean(securitySnapshot?.latestChanged))}
+          value={currentAnalysis?.status === "COMPLETED" && currentAnalysis.score !== null ? `${currentAnalysis.score}%` : securityStatusLabel(currentAnalysis?.status, Boolean(securitySnapshot?.latestChanged))}
           detail={currentAnalysis?.status === "COMPLETED" ? `${currentAnalysis.criticalCount} critical · ${currentAnalysis.highCount} high` : "Nieuwste gewijzigde configuratie"}
         /> : null}
       </div>
@@ -148,7 +148,7 @@ export default async function CustomerFortiGatePage({
             <p className="mt-1 text-sm text-muted-foreground">Actuele score en historie van gewijzigde FortiOS-configuraties.</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {currentAnalysis?.status === "COMPLETED" && currentAnalysis.score !== null ? <Badge tone={currentAnalysis.score >= 80 ? "success" : currentAnalysis.score >= 60 ? "warning" : "danger"}>{currentAnalysis.score} / 100</Badge> : <Badge tone={currentAnalysis?.status === "FAILED" || currentAnalysis?.status === "BLOCKED" ? "danger" : "warning"}>{securityStatusLabel(currentAnalysis?.status, Boolean(securitySnapshot?.latestChanged))}</Badge>}
+            {currentAnalysis?.status === "COMPLETED" && currentAnalysis.score !== null ? <Badge tone={currentAnalysis.score >= 80 ? "success" : currentAnalysis.score >= 60 ? "warning" : "danger"}>{currentAnalysis.score}%</Badge> : <Badge tone={currentAnalysis?.status === "FAILED" || currentAnalysis?.status === "BLOCKED" ? "danger" : "warning"}>{securityStatusLabel(currentAnalysis?.status, Boolean(securitySnapshot?.latestChanged))}</Badge>}
             {currentAnalysis?.status === "COMPLETED" ? <ActionLink href={`/security/analyses/${currentAnalysis.id}`}>Open analyse</ActionLink> : null}
             <ActionLink href={`${returnTo}/security`} variant="secondary">Volledige scorehistorie</ActionLink>
           </div>

@@ -1,6 +1,6 @@
 import type { ParsedFortiOsConfig } from "./fortios-parser";
 
-export const SECURITY_RULESET_VERSION = "1.0.0";
+export const SECURITY_RULESET_VERSION = "1.1.0";
 export type LocalFinding = { ruleId: string; category: string; severity: "CRITICAL"|"HIGH"|"MEDIUM"|"LOW"; penalty: number; title: string; explanation: string; evidence: string; remediation: string };
 
 const definitions = {
@@ -37,8 +37,27 @@ export function evaluateFortiOs(parsed: ParsedFortiOsConfig) {
     if (node.path.endsWith("vpn ipsec phase1-interface") && [...(v.proposal??[]),...(v.dhgrp??[])].some((x)=>/des|md5|(^|\D)[12](\D|$)/i.test(x))) add(findings,"FG-VPN-001",node);
     if ((node.path.endsWith("firewall addrgrp") || node.path.endsWith("firewall service group")) && (v.member?.length??0)>50) add(findings,"FG-GRP-001",node);
   }
-  const score=Math.max(0,100-findings.reduce((sum,item)=>sum+item.penalty,0));
+  const score=calculateSecurityScore(findings);
   return { findings, score };
+}
+
+export function calculateSecurityScore(findings: LocalFinding[]) {
+  const occurrences = new Map<string, { penalty: number; count: number }>();
+  for (const finding of findings) {
+    const current = occurrences.get(finding.ruleId);
+    if (current) current.count += 1;
+    else occurrences.set(finding.ruleId, { penalty: finding.penalty, count: 1 });
+  }
+
+  const effectivePenalty = [...occurrences.values()].reduce((total, finding) => {
+    // De eerste constatering telt volledig. Iedere herhaling telt voor 10% mee,
+    // tot maximaal nog eenmaal de basispenalty. Zo blijft prevalentie relevant
+    // zonder dat een grotere policyset de score uitsluitend door omvang naar nul trekt.
+    const repeatFactor = Math.min(1, Math.max(0, finding.count - 1) * 0.1);
+    return total + finding.penalty * (1 + repeatFactor);
+  }, 0);
+
+  return Math.max(0, Math.min(100, Math.round(100 - effectivePenalty)));
 }
 function add(target:LocalFinding[],id:keyof typeof definitions,node:ParsedFortiOsConfig["nodes"][number]){const [category,severity,penalty,title,explanation,remediation]=definitions[id];target.push({ruleId:id,category,severity,penalty,title,explanation,evidence:`${node.path}; object=${stableToken(node.path,node.edit??"global")}; vdom=${stableToken("vdom",node.vdom)}`,remediation});}
 function stableToken(type:string,value:string){let hash=0;for(const c of `${type}:${value}`)hash=(hash*31+c.charCodeAt(0))>>>0;return `${type.replace(/\W/g,"_").toUpperCase()}_${hash}`;}

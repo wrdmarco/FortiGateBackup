@@ -26,7 +26,7 @@ export default async function SecurityPage() {
         description="Actuele, tenantgebonden analyse van de nieuwste gewijzigde configuratie per FortiGate."
       />
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Card title="Gemiddelde score" value={overview.average ?? "Niet beschikbaar"} />
+        <Card title="Gemiddelde score" value={overview.average === null ? "Niet beschikbaar" : `${overview.average}%`} />
         <Card title="Scoretrend" value={overview.trend === null ? "Niet beschikbaar" : `${overview.trend >= 0 ? "+" : ""}${overview.trend}`} />
         <Card title="Analysedekking" value={`${overview.coverage.analysed} van ${overview.coverage.total}`} />
         <Card title="Critical / high" value={`${overview.critical} / ${overview.high}`} />
@@ -47,7 +47,7 @@ export default async function SecurityPage() {
                     {!analysis ? "Niet geanalyseerd" : analysis.status}
                   </Badge>
                 </td>
-                <td>{analysis?.status === "COMPLETED" ? analysis.score : "-"}</td>
+                <td>{analysis?.status === "COMPLETED" && analysis.score !== null ? `${analysis.score}%` : "-"}</td>
                 <td>
                   <div className="flex flex-wrap gap-2">
                     <ActionLink href={`/customers/${device.customerId}/fortigates/${device.id}/security`}>Historie</ActionLink>
