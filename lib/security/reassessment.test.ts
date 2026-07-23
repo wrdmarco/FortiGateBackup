@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canShowReassessment } from "@/lib/security/reassessment";
+import { canShowReassessment, reassessmentUnavailableReason } from "@/lib/security/reassessment";
 
 const eligible = {
   globalOrigin: true,
@@ -19,4 +19,11 @@ test("verbergt herbeoordeling buiten Global, zonder permission of zonder immutab
   assert.equal(canShowReassessment({ ...eligible, hasPermission: false }), false);
   assert.equal(canShowReassessment({ ...eligible, hasReport: false }), false);
   assert.equal(canShowReassessment({ ...eligible, hasStoredArtifact: false }), false);
+});
+
+test("geeft een concrete reden wanneer een backup niet heranalyseerbaar is", () => {
+  assert.match(reassessmentUnavailableReason({ ...eligible, hasPermission: false }) ?? "", /permission/);
+  assert.match(reassessmentUnavailableReason({ ...eligible, hasStoredArtifact: false }) ?? "", /configuratieartifact/);
+  assert.match(reassessmentUnavailableReason({ ...eligible, analysisStatus: "RUNNING" }) ?? "", /RUNNING/);
+  assert.match(reassessmentUnavailableReason({ ...eligible, hasReport: false }) ?? "", /PDF-rapport/);
 });

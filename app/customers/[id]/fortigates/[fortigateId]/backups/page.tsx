@@ -10,7 +10,7 @@ import { formatDateTime } from "@/lib/time";
 import { getTenantTimeZone } from "@/lib/tenant-timezone";
 import { tenantTransaction } from "@/lib/tenant-db";
 import { isGlobalTenantId } from "@/lib/tenant-main";
-import { canShowReassessment } from "@/lib/security/reassessment";
+import { canShowReassessment, reassessmentUnavailableReason } from "@/lib/security/reassessment";
 
 export const dynamic = "force-dynamic";
 const PAGE_SIZE = 50;
@@ -114,13 +114,20 @@ export default async function CustomerFortiGateBackupsPage({
                       {canReadDiff ? <ActionLink href={`${detailHref}/backups/${backup.id}/diff`}>Diff</ActionLink> : null}
                     </>
                   ) : <span className="text-muted-foreground">{backup.filename ? "Geen actie toegestaan" : "Geen bestand"}</span>}
-                  {canShowReassessment({
-                    globalOrigin,
-                    hasPermission: hasReassessPermission,
-                    hasStoredArtifact: Boolean(backup.configArtifact),
-                    analysisStatus: backup.configArtifact?.analysis?.status,
-                    hasReport: Boolean(backup.configArtifact?.analysis?.report)
-                  }) ? <form action={reassessSecurityAnalysisAction}><input name="backupId" type="hidden" value={backup.id}/><Button type="submit" variant="secondary">Opnieuw beoordelen</Button></form>:null}
+                  {globalOrigin && hasReassessPermission ? (() => {
+                    const reassessment = {
+                      globalOrigin,
+                      hasPermission: hasReassessPermission,
+                      hasStoredArtifact: Boolean(backup.configArtifact),
+                      analysisStatus: backup.configArtifact?.analysis?.status,
+                      hasReport: Boolean(backup.configArtifact?.analysis?.report)
+                    };
+                    if (canShowReassessment(reassessment)) {
+                      return <form action={reassessSecurityAnalysisAction}><input name="backupId" type="hidden" value={backup.id}/><Button type="submit" variant="secondary">Opnieuw beoordelen</Button></form>;
+                    }
+                    const reason = reassessmentUnavailableReason(reassessment);
+                    return <span className="inline-grid gap-1" title={reason ?? undefined}><Button disabled type="button" variant="secondary">Opnieuw beoordelen</Button><span className="max-w-48 text-xs text-muted-foreground">{reason}</span></span>;
+                  })() : null}
                 </td>
               </tr>
             )) : (

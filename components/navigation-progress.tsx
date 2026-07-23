@@ -7,12 +7,13 @@ import { isInternalPageNavigation } from "@/lib/navigation-intent";
 export function NavigationProgress() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const routeKey = `${pathname}?${searchParams.toString()}`;
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
     const settled = setTimeout(() => setPending(false), 0);
     return () => clearTimeout(settled);
-  }, [pathname, searchParams]);
+  }, [routeKey]);
 
   useEffect(() => {
     const start = (event: MouseEvent) => {
