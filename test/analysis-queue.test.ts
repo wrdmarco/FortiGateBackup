@@ -49,6 +49,8 @@ test("queue leest analysejobs binnen een tenanttransactie", async () => {
   assert.match(queue, /Live log/);
   assert.match(queue, /analysisErrorLabel/);
   assert.doesNotMatch(queue, /<details/);
+  assert.doesNotMatch(queue, /recentAnalysisCutoff|finishedAt:\s*\{\s*gte/);
+  assert.match(queue, /SecurityAnalysisJobStatus\.PENDING,\s*SecurityAnalysisJobStatus\.RUNNING,\s*SecurityAnalysisJobStatus\.FAILED,\s*SecurityAnalysisJobStatus\.BLOCKED/);
 });
 
 test("auditdetails gebruiken een brede modal met volledige veilige context", async () => {

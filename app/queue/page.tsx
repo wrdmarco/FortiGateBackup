@@ -17,9 +17,6 @@ export default async function QueuePage() {
   const tenantId = tenantFilter(user);
   await assertOperationalTenant(user, tenantId ?? null);
   if (!tenantId) throw new Error("De actieve tenantcontext ontbreekt.");
-  // eslint-disable-next-line react-hooks/purity -- Server-side database cutoff, not rendered state.
-  const recentAnalysisCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-
   const [timeZone, canRunAnalyses, jobs, analysisJobs] = await Promise.all([
     getTenantTimeZone(tenantId),
     hasPermission(user, "security.analyses.run"),
@@ -32,10 +29,7 @@ export default async function QueuePage() {
     tenantTransaction(tenantId, (tx) => tx.securityAnalysisJob.findMany({
       where: {
         tenantId,
-        OR: [
-          { status: { in: [SecurityAnalysisJobStatus.PENDING, SecurityAnalysisJobStatus.RUNNING, SecurityAnalysisJobStatus.FAILED, SecurityAnalysisJobStatus.BLOCKED] } },
-          { status: SecurityAnalysisJobStatus.COMPLETED, finishedAt: { gte: recentAnalysisCutoff } }
-        ]
+        status: { in: [SecurityAnalysisJobStatus.PENDING, SecurityAnalysisJobStatus.RUNNING, SecurityAnalysisJobStatus.FAILED, SecurityAnalysisJobStatus.BLOCKED] }
       },
       include: {
         fortigate: { include: { customer: { select: { name: true } } } },
@@ -86,7 +80,6 @@ export default async function QueuePage() {
                 <td className="font-mono">{job.attempts}</td>
                 <td>
                   <div className="grid gap-2">
-                    {job.status === SecurityAnalysisJobStatus.COMPLETED ? <a className="text-sm font-semibold text-primary hover:underline" href={`/security/analyses/${job.analysis.id}`}>Open analyse</a> : null}
                     {canRunAnalyses && (job.status === SecurityAnalysisJobStatus.FAILED || job.status === SecurityAnalysisJobStatus.BLOCKED) ? <form action={retryAnalysisAction}><input name="analysisId" type="hidden" value={job.analysis.id}/><Button type="submit">Opnieuw proberen</Button></form> : null}
                     <Modal
                       title={`Analysetaak - ${job.fortigate.hostname ?? "FortiGate"}`}
@@ -110,7 +103,7 @@ export default async function QueuePage() {
                   </div>
                 </td>
               </tr>;
-            }) : <tr className="border-t border-border"><td className="py-10 text-center text-muted-foreground" colSpan={8}>Er zijn geen actieve of recent voltooide analysetaken.</td></tr>}
+            }) : <tr className="border-t border-border"><td className="py-10 text-center text-muted-foreground" colSpan={8}>Er zijn geen wachtende, actieve of mislukte analysetaken.</td></tr>}
           </tbody>
         </table>
       </TableShell>
