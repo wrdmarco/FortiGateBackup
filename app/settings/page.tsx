@@ -385,6 +385,23 @@ export default async function SettingsPage({
                   description: "Controleer GitHub op een nieuwe versie en start de serverupdate direct vanaf het portaal.",
                   content: (
                     <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(30rem,1.1fr)]">
+                    <section className="relative overflow-hidden rounded-xl border border-white/10 bg-[hsl(var(--header))] p-6 text-white shadow-xl shadow-slate-950/10 xl:col-span-2" aria-label="Actuele updatestatus">
+                      <div className="absolute inset-y-0 right-0 w-1/3 bg-[radial-gradient(circle_at_center,rgba(239,41,53,0.24),transparent_70%)]" aria-hidden="true" />
+                      <div className="relative grid gap-6 lg:grid-cols-[1fr_auto] lg:items-end">
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/55">Releasebeheer</p>
+                          <h2 className="mt-2 text-2xl font-semibold tracking-tight">{updateStatus.updateRunning ? "Update wordt veilig uitgevoerd" : updateStatus.updateAvailable ? "Nieuwe versie staat klaar" : "Installatie is actueel"}</h2>
+                          <p className="mt-2 max-w-2xl text-sm leading-6 text-white/65">FortiBackup maakt eerst een herstelpunt en databaseback-up, bouwt daarna de release en start de worker pas na een geslaagde healthcheck.</p>
+                        </div>
+                        <div className="flex items-baseline gap-3 rounded-lg border border-white/10 bg-white/[0.06] px-5 py-4">
+                          <span className="text-xs font-semibold uppercase tracking-wider text-white/50">Versie</span>
+                          <span className="font-mono text-xl font-bold text-white">{updateStatus.currentVersion}</span>
+                        </div>
+                      </div>
+                      <div className="relative mt-6 grid grid-cols-2 gap-2 text-xs font-semibold text-white/60 sm:grid-cols-4">
+                        {['Herstelpunt','Database','Applicatie','Healthcheck'].map((step,index)=><div key={step} className="border-t-2 border-white/20 pt-2"><span className="mr-2 text-[#ef4b58]">0{index+1}</span>{step}</div>)}
+                      </div>
+                    </section>
                     <Panel title="Update-status" description="Versie en broncontrole van deze installatie.">
                       <div className="grid gap-5">
                         <div className="grid gap-3 text-sm sm:grid-cols-2">

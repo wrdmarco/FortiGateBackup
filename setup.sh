@@ -212,12 +212,11 @@ normalize_env_file() {
   local temp_file
   temp_file="$(mktemp)"
 
-  run_root awk '
-    /^DATABASE_URL=/ { database = $0 }
+  run_root awk -v database_url="$POSTGRES_RUNTIME_URL" '
     /^NEXTAUTH_SECRET=/ { nextauth = $0 }
     /^ENCRYPTION_KEY=/ { encryption = $0 }
     END {
-      if (database != "") print database
+      print "DATABASE_URL=\"" database_url "\""
       if (nextauth != "") print nextauth
       if (encryption != "") print encryption
       print "NEXT_TELEMETRY_DISABLED=1"
@@ -227,7 +226,6 @@ normalize_env_file() {
   run_root install -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0600 "$temp_file" "$env_file"
   rm -f "$temp_file"
 
-  set_env_if_blank "DATABASE_URL" "$POSTGRES_RUNTIME_URL"
   set_env_if_blank "NEXTAUTH_SECRET" "$(generate_secret)"
   set_env_if_blank "ENCRYPTION_KEY" "$(generate_secret)"
   run_root chown "$SERVICE_USER:$SERVICE_GROUP" "$env_file"

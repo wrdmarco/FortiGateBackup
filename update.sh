@@ -172,7 +172,7 @@ cleanup_runner() {
     recovery_stage="$(mktemp -d /tmp/fortigate-update-recovery.XXXXXX)"
     run_as_service_user tar -xzf "$RELEASE_BACKUP" -C "$recovery_stage"
     run_as_service_user rsync -a --delete --delete-delay \
-      --exclude='.env' --exclude='data/' --exclude='uploads/' --exclude='secrets/' --exclude='keys/' \
+      --exclude='.env' --exclude='node_modules/' --exclude='.next/' --exclude='data/' --exclude='uploads/' --exclude='secrets/' --exclude='keys/' \
       "$recovery_stage/" "$APP_DIR/"
     rm -rf -- "$recovery_stage"
     if [ -f "$APP_DIR/data/postgres-migration-state.json" ]; then
@@ -351,10 +351,15 @@ case "${DATABASE_URL:-}" in
 esac
 
 POSTGRES_MIGRATION_URL="$(awk -F= '/^POSTGRES_MIGRATION_URL=/{sub(/^[^=]*=/,""); print}' /etc/fortigate-backup/postgres.env)"
+POSTGRES_RUNTIME_URL="$(awk -F= '/^POSTGRES_RUNTIME_URL=/{sub(/^[^=]*=/,""); print}' /etc/fortigate-backup/postgres.env)"
 eval "POSTGRES_MIGRATION_URL=$POSTGRES_MIGRATION_URL"
+eval "POSTGRES_RUNTIME_URL=$POSTGRES_RUNTIME_URL"
 [[ "$POSTGRES_MIGRATION_URL" =~ ^postgres(ql)?:// ]] || fail "PostgreSQL migrator credentials are invalid."
+[[ "$POSTGRES_RUNTIME_URL" =~ ^postgres(ql)?:// ]] || fail "PostgreSQL runtime credentials are invalid."
 MIGRATOR_BYPASSRLS="$(run_as_service_user psql "$POSTGRES_MIGRATION_URL" --tuples-only --no-align --command="SELECT rolbypassrls FROM pg_roles WHERE rolname=current_user" 2>/dev/null || true)"
 [ "$MIGRATOR_BYPASSRLS" = "t" ] || fail "PostgreSQL migrator role requires BYPASSRLS for complete pre-migration backups. For a local installation run: sudo -u postgres psql -v ON_ERROR_STOP=1 -c 'ALTER ROLE fortibackup_migrator BYPASSRLS;' External database administrators must grant the equivalent capability to the configured migrator role."
+RUNTIME_ROLE_FLAGS="$(run_as_service_user psql "$POSTGRES_RUNTIME_URL" --tuples-only --no-align --field-separator='|' --command="SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user" 2>/dev/null || true)"
+[ "$RUNTIME_ROLE_FLAGS" = "f|f" ] || fail "PostgreSQL runtime role must not be superuser and must not have BYPASSRLS."
 
 if [ "${FORTIGATE_UPDATE_REEXECED:-0}" != "1" ]; then
   run_with_lock_heartbeat run_as_service_user git -c core.filemode=false fetch --all --prune
@@ -395,10 +400,20 @@ fi
 run_with_lock_heartbeat run_as_service_user pnpm install --frozen-lockfile
 if [[ "${DATABASE_URL:-}" == file:* ]]; then
   run_with_lock_heartbeat run_as_service_user env DATABASE_URL="$POSTGRES_MIGRATION_URL" CHECKPOINT_DISABLE=1 pnpm prisma migrate deploy
-  run_with_lock_heartbeat run_as_service_user env POSTGRES_MIGRATION_URL="$POSTGRES_MIGRATION_URL" DATABASE_URL="$DATABASE_URL" NEXT_TELEMETRY_DISABLED=1 CHECKPOINT_DISABLE=1 pnpm exec tsx scripts/migrate-sqlite-to-postgres.ts
+  run_with_lock_heartbeat run_as_service_user env POSTGRES_RUNTIME_URL="$POSTGRES_RUNTIME_URL" POSTGRES_MIGRATION_URL="$POSTGRES_MIGRATION_URL" DATABASE_URL="$DATABASE_URL" NEXT_TELEMETRY_DISABLED=1 CHECKPOINT_DISABLE=1 pnpm exec tsx scripts/migrate-sqlite-to-postgres.ts
   DATABASE_URL="$(awk -F= '/^DATABASE_URL=/{sub(/^[^=]*=/,""); print}' "$APP_DIR/.env")"
   eval "DATABASE_URL=$DATABASE_URL"
 else
+  runtime_env_temp="$(run_as_service_user mktemp "$APP_DIR/.env.runtime.XXXXXX")"
+  run_as_service_user awk -v database_url="$POSTGRES_RUNTIME_URL" '
+    /^DATABASE_URL=/ { print "DATABASE_URL=\"" database_url "\""; found=1; next }
+    { print }
+    END { if (!found) print "DATABASE_URL=\"" database_url "\"" }
+  ' "$APP_DIR/.env" > "$runtime_env_temp"
+  run_as_service_user chmod 0600 "$runtime_env_temp"
+  run_as_service_user sync -f "$runtime_env_temp"
+  run_as_service_user mv "$runtime_env_temp" "$APP_DIR/.env"
+  DATABASE_URL="$POSTGRES_RUNTIME_URL"
   dump_dir="$APP_DIR/data/self-backups/postgres"
   run_as_service_user mkdir -p "$dump_dir"
   dump_file="$dump_dir/pre-migration-$(date -u +%Y%m%dT%H%M%SZ).dump"

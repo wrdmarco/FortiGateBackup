@@ -10,4 +10,15 @@ test("PostgreSQL backups en migraties gebruiken uitsluitend de migratorrol", asy
   assert.doesNotMatch(script, /pg_dump -Fc --file="\$dump_file" "\$DATABASE_URL"/);
   assert.match(script, /SELECT rolbypassrls FROM pg_roles WHERE rolname=current_user/);
   assert.match(script, /MIGRATOR_BYPASSRLS.*= "t"/s);
+  assert.match(script, /RUNTIME_ROLE_FLAGS.*= "f\|f"/s);
+  assert.match(script, /POSTGRES_RUNTIME_URL="\$POSTGRES_RUNTIME_URL" POSTGRES_MIGRATION_URL=/);
+  assert.match(script, /DATABASE_URL=\\\"" database_url "\\\"/);
+  assert.match(script, /--exclude='node_modules\/' --exclude='\.next\/'/);
+});
+
+test("SQLite-cutover schrijft uitsluitend de runtimeverbinding", async () => {
+  const script = await readFile(path.join(process.cwd(), "scripts/migrate-sqlite-to-postgres.ts"), "utf8");
+  assert.match(script, /POSTGRES_RUNTIME_URL_REQUIRED/);
+  assert.match(script, /atomicCutover\(runtimeTargetUrl\)/);
+  assert.doesNotMatch(script, /atomicCutover\(targetUrl\)/);
 });
