@@ -23,6 +23,14 @@ test("analyseworker gebruikt twee begrensde lanes naast de zelfstandige backupwo
   assert.match(runner, /const analysisTimer = setInterval/);
 });
 
+test("backupworker herstelt lease-loze jobs en stopt na alle ingestelde retries", async () => {
+  const worker = await readFile(path.join(process.cwd(), "lib/backup-jobs.ts"), "utf8");
+  assert.match(worker, /recoverStaleBackupJobs/);
+  assert.match(worker, /\{ leaseExpiresAt: null \}/);
+  assert.match(worker, /job\.attempts > retryCount/);
+  assert.match(worker, /alle ingestelde pogingen waren verbruikt/);
+});
+
 test("analysejoblogs hebben samengestelde tenant-FK en geforceerde RLS", async () => {
   const migration = await readFile(
     path.join(process.cwd(), "prisma/migrations/20260723130000_analysis_job_events/migration.sql"),

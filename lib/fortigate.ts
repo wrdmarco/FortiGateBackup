@@ -101,6 +101,7 @@ async function requestBuffer(url: URL, options: RequestOptions) {
       {
         method: options.method ?? "GET",
         headers: options.headers,
+        agent: false,
         rejectUnauthorized: !pinnedFingerprint,
         lookup: pinnedLookup(resolvedAddress.address, resolvedAddress.family),
         timeout: FORTIGATE_REQUEST_TIMEOUT_MS

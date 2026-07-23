@@ -1,6 +1,6 @@
 {
   "name": "fortigate-backup-portal",
-  "version": "0.2.16",
+  "version": "0.2.17",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.0.0",
