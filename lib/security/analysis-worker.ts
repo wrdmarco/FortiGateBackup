@@ -15,9 +15,24 @@ import { createSafeFoundryPayload, safePayloadDigest } from "./safe-foundry";
 const WORKER_ID = `analysis-${process.pid}-${randomUUID()}`;
 const LEASE_MS = 60_000;
 const MAX_ATTEMPTS = 4;
+export const ANALYSIS_CONCURRENCY = 2;
 type Claimed = { id: string; tenantId: string; analysisId: string; fortigateId: string; attempts: number };
+let processing: Promise<void> | null = null;
 
-export async function processSecurityAnalysisJobs() {
+export function processSecurityAnalysisJobs() {
+  if (processing) return processing;
+  const run = processSecurityAnalysisJobsInternal().finally(() => {
+    if (processing === run) processing = null;
+  });
+  processing = run;
+  return run;
+}
+
+async function processSecurityAnalysisJobsInternal() {
+  await Promise.all(Array.from({ length: ANALYSIS_CONCURRENCY }, () => processAnalysisLane()));
+}
+
+async function processAnalysisLane() {
   for (;;) {
     const job = await claim();
     if (!job) return;

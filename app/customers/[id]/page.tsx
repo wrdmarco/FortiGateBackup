@@ -7,6 +7,7 @@ import { ActionLink, Badge, Button, Card, Field, FilterBar, PageHeader, SectionH
 import { assertOperationalTenant, assertTenantAccess, requirePermission } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { hasPermission } from "@/lib/rbac";
+import { customerSecurityOverview } from "@/lib/security/queries";
 import { formatDateTime } from "@/lib/time";
 import { getTenantTimeZone } from "@/lib/tenant-timezone";
 
@@ -25,14 +26,15 @@ export default async function CustomerDetailPage({
   const queryParams = await searchParams;
   const query = firstQueryValue(queryParams.q);
   const requestedPage = parsePageParam(queryParams.page);
-  const [canReadFortiGates, canReadBackups, canReadLogs, canReadFirmware, canCreateFortiGate, canUpdateCustomer, canDeleteCustomer] = await Promise.all([
+  const [canReadFortiGates, canReadBackups, canReadLogs, canReadFirmware, canCreateFortiGate, canUpdateCustomer, canDeleteCustomer, canReadSecurity] = await Promise.all([
     hasPermission(user, "fortigates.read"),
     hasPermission(user, "backups.read"),
     hasPermission(user, "fortigates.logs.read"),
     hasPermission(user, "fortigates.firmware.read"),
     hasPermission(user, "fortigates.create"),
     hasPermission(user, "customers.update"),
-    hasPermission(user, "customers.delete")
+    hasPermission(user, "customers.delete"),
+    hasPermission(user, "security.analyses.read")
   ]);
   const customer = await prisma.customer.findUnique({
     where: { id },
@@ -100,7 +102,11 @@ export default async function CustomerDetailPage({
         })
       ])
     : [0, 0, null] as const;
-  const timeZone = await getTenantTimeZone(customer.tenantId);
+  const [timeZone, securityOverview] = await Promise.all([
+    getTenantTimeZone(customer.tenantId),
+    canReadSecurity ? customerSecurityOverview(customer.tenantId, customer.id) : Promise.resolve(null)
+  ]);
+  const deviceSecurity = new Map(securityOverview?.devices.map((item) => [item.fortigateId, item]));
 
   return (
     <Shell>
@@ -146,6 +152,9 @@ export default async function CustomerDetailPage({
           value={latestBackup?.status ?? "-"}
           detail={latestBackup ? formatDateTime(latestBackup.createdAt, timeZone) : "Nog niet uitgevoerd"}
         /> : null}
+        {canReadSecurity ? <Card title="Gemiddelde score" value={securityOverview?.average ?? "Niet beschikbaar"} detail="Eén actuele score per FortiGate" /> : null}
+        {canReadSecurity ? <Card title="Analysedekking" value={`${securityOverview?.coverage.analysed ?? 0} van ${securityOverview?.coverage.total ?? 0}`} detail="Nieuwste gewijzigde configuraties" /> : null}
+        {canReadSecurity ? <Card title="Critical / high" value={`${securityOverview?.critical ?? 0} / ${securityOverview?.high ?? 0}`} detail="Actuele bevindingen" /> : null}
       </div>
 
       {canReadFortiGates ? <section className="mt-8">
@@ -172,6 +181,7 @@ export default async function CustomerDetailPage({
                 {canReadFirmware ? <th className="px-3 py-2">Firmware</th> : null}
                 <th className="px-3 py-2">TLS</th>
                 <th className="px-3 py-2">IT Glue</th>
+                {canReadSecurity ? <th className="px-3 py-2">Beveiligingsscore</th> : null}
                 {canReadLogs ? <th className="px-3 py-2">Laatste log</th> : null}
                 <th className="px-3 py-2">Acties</th>
               </tr>
@@ -179,6 +189,8 @@ export default async function CustomerDetailPage({
             <tbody>
               {devices.map((device) => {
                 const latestLog = latestLogs.get(device.id);
+                const security = deviceSecurity.get(device.id);
+                const analysis = security?.analysis;
                 return (
                   <tr key={device.id} className="border-t border-border align-top">
                     <td className="px-3 py-2">
@@ -198,6 +210,11 @@ export default async function CustomerDetailPage({
                     <td className="px-3 py-2">
                       {device.itGlueConfigurationId ? <Badge tone="success">Config {device.itGlueConfigurationId}</Badge> : <Badge>Niet gekoppeld</Badge>}
                     </td>
+                    {canReadSecurity ? <td className="px-3 py-2">
+                      {analysis?.status === "COMPLETED" && analysis.score !== null
+                        ? <div className="grid gap-1"><Badge tone={analysis.score >= 80 ? "success" : analysis.score >= 60 ? "warning" : "danger"}>{analysis.score} / 100</Badge><span className="text-xs text-muted-foreground">{analysis.criticalCount} critical · {analysis.highCount} high</span></div>
+                        : <Badge tone={analysis?.status === "FAILED" || analysis?.status === "BLOCKED" ? "danger" : "warning"}>{securityStatusLabel(analysis?.status, Boolean(security?.backup))}</Badge>}
+                    </td> : null}
                     {canReadLogs ? <td className="max-w-[360px] px-3 py-2">
                       {latestLog ? (
                         <div>
@@ -219,7 +236,7 @@ export default async function CustomerDetailPage({
               })}
               {!devices.length ? (
                 <tr className="border-t border-border">
-                  <td className="px-3 py-8 text-center text-muted-foreground" colSpan={5 + (canReadFirmware ? 1 : 0) + (canReadLogs ? 1 : 0)}>
+                  <td className="px-3 py-8 text-center text-muted-foreground" colSpan={5 + (canReadFirmware ? 1 : 0) + (canReadLogs ? 1 : 0) + (canReadSecurity ? 1 : 0)}>
                     Geen FortiGates gevonden.
                   </td>
                 </tr>
@@ -239,4 +256,13 @@ export default async function CustomerDetailPage({
       : null}
     </Shell>
   );
+}
+
+function securityStatusLabel(status: string | undefined, hasChangedBackup: boolean) {
+  if (!hasChangedBackup) return "Geen gewijzigde backup";
+  if (!status) return "Niet geanalyseerd";
+  if (status === "PENDING" || status === "RUNNING") return "Wacht op analyse";
+  if (status === "FAILED") return "Analyse mislukt";
+  if (status === "BLOCKED") return "Analyse geblokkeerd";
+  return status;
 }

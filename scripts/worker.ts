@@ -8,9 +8,11 @@ const jobTimer = setInterval(() => {
 }, 5_000);
 jobTimer.unref();
 void processBackupJobs().catch((error) => console.error(error));
-const analysisTimer=setInterval(()=>{void processSecurityAnalysisJobs().catch((error)=>console.error(error));},5_000);
+const analysisTimer = setInterval(() => {
+  void processSecurityAnalysisJobs().catch((error) => console.error(error));
+}, 5_000);
 analysisTimer.unref();
-void processSecurityAnalysisJobs().catch((error)=>console.error(error));
+void processSecurityAnalysisJobs().catch((error) => console.error(error));
 
 cron.schedule("* * * * *", async () => {
   try {

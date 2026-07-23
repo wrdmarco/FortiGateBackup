@@ -4,10 +4,12 @@ import { BackupHistoryModal } from "@/components/backup-history-modal";
 import { FirmwareStatus } from "@/components/firmware-status";
 import { FortiGateSummary } from "@/components/fortigate-summary";
 import { Modal } from "@/components/modal";
-import { ActionLink, Button, Card, PageHeader, Shell } from "@/components/ui";
+import { SecurityScoreChart } from "@/components/security-score-chart";
+import { ActionLink, Badge, Button, Card, PageHeader, Shell } from "@/components/ui";
 import { assertOperationalTenant, assertTenantAccess, requirePermission } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { userPermissionKeys } from "@/lib/rbac";
+import { fortigateSecuritySnapshot } from "@/lib/security/queries";
 import { formatDateTime } from "@/lib/time";
 import { getTenantTimeZone } from "@/lib/tenant-timezone";
 
@@ -37,7 +39,8 @@ export default async function CustomerFortiGatePage({
   const canReadDiff = permissionKeys.has("backups.diff.read");
   const canReadLogs = permissionKeys.has("fortigates.logs.read");
   const canReadFirmware = permissionKeys.has("fortigates.firmware.read");
-  const [timeZone, backupHistory, latestStoredBackup, logs] = await Promise.all([
+  const canReadSecurity = permissionKeys.has("security.analyses.read");
+  const [timeZone, backupHistory, latestStoredBackup, logs, securitySnapshot] = await Promise.all([
     getTenantTimeZone(device.customer.tenantId),
     canReadBackups
       ? prisma.backup.findMany({
@@ -58,7 +61,10 @@ export default async function CustomerFortiGatePage({
           orderBy: { createdAt: "desc" },
           take: 8
         })
-      : Promise.resolve([])
+      : Promise.resolve([]),
+    canReadSecurity
+      ? fortigateSecuritySnapshot(device.customer.tenantId, device.id)
+      : Promise.resolve(null)
   ]);
   const latestBackup = backupHistory[0];
   const returnTo = `/customers/${device.customerId}/fortigates/${device.id}`;
@@ -89,6 +95,13 @@ export default async function CustomerFortiGatePage({
     backups: summaryBackups,
     logs
   };
+  const currentAnalysis = securitySnapshot?.latestChanged?.configArtifact?.analysis ?? null;
+  const scorePoints = securitySnapshot?.history.flatMap((backup) => {
+    const analysis = backup.configArtifact?.analysis;
+    return typeof analysis?.score === "number"
+      ? [{ score: analysis.score, label: formatDateTime(backup.createdAt, timeZone) }]
+      : [];
+  }) ?? [];
 
   return (
     <Shell>
@@ -115,13 +128,33 @@ export default async function CustomerFortiGatePage({
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
         <Card title="Model" value={device.model ?? "-"} detail={device.serialNumber ?? "Geen serienummer"} />
         {canReadFirmware ? <Card title="Firmware" value={device.firmwareVersion ?? "-"} detail={device.firmwareBuild ? `Build ${device.firmwareBuild}` : "Geen build"} /> : null}
         {canReadBackups ? <Card title="Laatste backup" value={latestBackup?.status ?? "-"} detail={latestBackup ? formatDateTime(latestBackup.createdAt, timeZone) : "Nog niet uitgevoerd"} /> : null}
         <Card title="Schema" value={device.scheduleType} detail={device.cronExpression ?? "Standaard schema"} />
         <Card title="TLS" value="Altijd aan" detail={device.tlsCertificateFingerprint ? "Geaccepteerde fingerprint" : "PKI-validatie"} />
+        {canReadSecurity ? <Card
+          title="Beveiligingsscore"
+          value={currentAnalysis?.status === "COMPLETED" && currentAnalysis.score !== null ? currentAnalysis.score : securityStatusLabel(currentAnalysis?.status, Boolean(securitySnapshot?.latestChanged))}
+          detail={currentAnalysis?.status === "COMPLETED" ? `${currentAnalysis.criticalCount} critical · ${currentAnalysis.highCount} high` : "Nieuwste gewijzigde configuratie"}
+        /> : null}
       </div>
+
+      {canReadSecurity ? <section className="mt-6 rounded-md border border-border bg-surface p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-semibold">Beveiligingsscore</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Actuele score en historie van gewijzigde FortiOS-configuraties.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {currentAnalysis?.status === "COMPLETED" && currentAnalysis.score !== null ? <Badge tone={currentAnalysis.score >= 80 ? "success" : currentAnalysis.score >= 60 ? "warning" : "danger"}>{currentAnalysis.score} / 100</Badge> : <Badge tone={currentAnalysis?.status === "FAILED" || currentAnalysis?.status === "BLOCKED" ? "danger" : "warning"}>{securityStatusLabel(currentAnalysis?.status, Boolean(securitySnapshot?.latestChanged))}</Badge>}
+            {currentAnalysis?.status === "COMPLETED" ? <ActionLink href={`/security/analyses/${currentAnalysis.id}`}>Open analyse</ActionLink> : null}
+            <ActionLink href={`${returnTo}/security`} variant="secondary">Volledige scorehistorie</ActionLink>
+          </div>
+        </div>
+        <div className="mt-5"><SecurityScoreChart points={scorePoints}/></div>
+      </section> : null}
 
       <div className={`mt-6 grid gap-4 ${canReadLogs ? "lg:grid-cols-[1.1fr_0.9fr]" : ""}`}>
         <section className="rounded-md border border-border bg-surface p-5 shadow-sm">
@@ -209,4 +242,13 @@ function InfoRow({ label, value }: { label: string; value: string }) {
       <dd className="mt-1 break-words font-medium">{value}</dd>
     </div>
   );
+}
+
+function securityStatusLabel(status: string | undefined, hasChangedBackup: boolean) {
+  if (!hasChangedBackup) return "Niet geanalyseerd";
+  if (!status) return "Niet geanalyseerd";
+  if (status === "PENDING" || status === "RUNNING") return "Wacht op analyse";
+  if (status === "FAILED") return "Analyse mislukt";
+  if (status === "BLOCKED") return "Analyse geblokkeerd";
+  return status;
 }

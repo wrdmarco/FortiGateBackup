@@ -11,6 +11,18 @@ test("analysequeue bewaart uitsluitend vaste veilige voortgangsfases", async () 
   assert.doesNotMatch(worker, /securityAnalysisJobEvent\.create\([^)]*(?:content|payload|apiKey|requestBody|responseBody)/s);
 });
 
+test("analyseworker gebruikt twee begrensde lanes naast de zelfstandige backupworker", async () => {
+  const worker = await readFile(path.join(process.cwd(), "lib/security/analysis-worker.ts"), "utf8");
+  const runner = await readFile(path.join(process.cwd(), "scripts/worker.ts"), "utf8");
+  assert.match(worker, /ANALYSIS_CONCURRENCY = 2/);
+  assert.match(worker, /if \(processing\) return processing/);
+  assert.match(worker, /Promise\.all\(Array\.from\(\{ length: ANALYSIS_CONCURRENCY \}/);
+  assert.match(runner, /processBackupJobs/);
+  assert.match(runner, /processSecurityAnalysisJobs/);
+  assert.match(runner, /const jobTimer = setInterval/);
+  assert.match(runner, /const analysisTimer = setInterval/);
+});
+
 test("analysejoblogs hebben samengestelde tenant-FK en geforceerde RLS", async () => {
   const migration = await readFile(
     path.join(process.cwd(), "prisma/migrations/20260723130000_analysis_job_events/migration.sql"),

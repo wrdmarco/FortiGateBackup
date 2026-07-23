@@ -36,9 +36,10 @@ export async function Shell({ children }: { children: React.ReactNode }) {
         <header className="app-header sticky top-0 z-30 border-b border-border bg-surface/95 backdrop-blur-sm">
           <div className="flex min-h-[4.5rem] items-center gap-3 px-4 sm:px-6 lg:px-8">
             <div className="lg:hidden"><BrandLink href={user ? "/" : "/login"} compact /></div>
-            {user ? <div className="hidden min-w-0 items-center gap-3 lg:flex"><span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Tenant</span><TenantSwitcher key={user.activeTenantId ?? "no-tenant"} action={switchTenantContextAction} activeTenantId={user.activeTenantId} canSwitch={canSwitchTenants} tenantName={tenantName} tenants={tenants} /></div> : null}
+            {user ? <div className="hidden min-w-0 items-center gap-3 lg:flex"><span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Tenant</span><TenantSwitcher key={`desktop-${user.activeTenantId ?? "no-tenant"}`} action={switchTenantContextAction} activeTenantId={user.activeTenantId} canSwitch={canSwitchTenants} tenantName={tenantName} tenants={tenants} /></div> : null}
             {user ? <div className="ml-auto flex min-w-0 items-center gap-2"><Link href="/help" aria-label="Help" className="topbar-icon"><Icon name="help" /></Link><HeaderUserMenu email={user.email} isBreakGlassSettingsOnly={isBreakGlassSettingsOnly} logoutAction={logoutAction} name={user.name} /></div> : <Link className="ml-auto inline-flex min-h-11 items-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground" href="/login">Inloggen</Link>}
           </div>
+          {user ? <div className="border-t border-border/70 px-4 pb-3 pt-2 sm:px-6 lg:hidden"><div className="mb-1 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Actieve tenant</div><TenantSwitcher key={`mobile-${user.activeTenantId ?? "no-tenant"}`} action={switchTenantContextAction} activeTenantId={user.activeTenantId} canSwitch={canSwitchTenants} fullWidth id="tenant-context-mobile" tenantName={tenantName} tenants={tenants} /></div> : null}
         </header>
         <main className="mx-auto w-full max-w-[1680px] px-4 py-5 outline-none sm:px-6 lg:px-8 lg:py-6 xl:px-10" id="main-content" tabIndex={-1}>{children}</main>
       </div>
