@@ -108,11 +108,11 @@ export async function reassessSecurityAnalysisAction(formData:FormData) {
   if(!tenantId||!backupId||!user.tenantId||!(await isGlobalTenantId(user.tenantId))||await isGlobalTenantId(tenantId))throw new Error("Herbeoordeling is uitsluitend toegestaan voor een Global-beheerder binnen een geselecteerde klanttenant.");
   const result=await tenantTransaction(tenantId,async(tx)=>{
     const backup=await tx.backup.findFirstOrThrow({
-      where:{id:backupId,tenantId,status:"CHANGED",configArtifactId:{not:null}},
+      where:{id:backupId,tenantId,configArtifactId:{not:null}},
       include:{configArtifact:{include:{analysis:{include:{report:true,job:true}}}}}
     });
     const analysis=backup.configArtifact?.analysis;
-    if(!analysis||analysis.status!=="COMPLETED"||!analysis.report)throw new Error("Alleen een voltooide analyse van een gewijzigde backup kan opnieuw worden beoordeeld.");
+    if(!analysis||analysis.status!=="COMPLETED"||!analysis.report)throw new Error("Alleen een opgeslagen backup met een voltooide analyse kan opnieuw worden beoordeeld.");
     const foundry=await tx.tenantFoundryConfig.findFirst({where:{tenantId,enabled:true,endpoint:{not:""},deployment:{not:""},apiKeyEncrypted:{not:""}},select:{deployment:true}});
     if(!foundry)throw new Error("REPORTING_NOT_CONFIGURED");
     const ruleset=await tx.securityRuleset.findFirst({where:{status:"ACTIVE"},select:{version:true}});

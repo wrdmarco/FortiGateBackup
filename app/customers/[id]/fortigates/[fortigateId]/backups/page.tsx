@@ -10,6 +10,7 @@ import { formatDateTime } from "@/lib/time";
 import { getTenantTimeZone } from "@/lib/tenant-timezone";
 import { tenantTransaction } from "@/lib/tenant-db";
 import { isGlobalTenantId } from "@/lib/tenant-main";
+import { canShowReassessment } from "@/lib/security/reassessment";
 
 export const dynamic = "force-dynamic";
 const PAGE_SIZE = 50;
@@ -41,7 +42,6 @@ export default async function CustomerFortiGateBackupsPage({
     hasPermission(user, "security.analyses.reassess"),
     isGlobalTenantId(user.tenantId)
   ]);
-  const canReassess=globalOrigin&&hasReassessPermission;
   const backupWhere = { fortigateId: device.id, ...(status ? { status } : {}) };
   const totalBackups = await prisma.backup.count({ where: backupWhere });
   const page = normalizePage(requestedPage, totalBackups, PAGE_SIZE);
@@ -114,7 +114,13 @@ export default async function CustomerFortiGateBackupsPage({
                       {canReadDiff ? <ActionLink href={`${detailHref}/backups/${backup.id}/diff`}>Diff</ActionLink> : null}
                     </>
                   ) : <span className="text-muted-foreground">{backup.filename ? "Geen actie toegestaan" : "Geen bestand"}</span>}
-                  {canReassess&&backup.status==="CHANGED"&&backup.configArtifact?.analysis?.status==="COMPLETED"&&backup.configArtifact.analysis.report?<form action={reassessSecurityAnalysisAction}><input name="backupId" type="hidden" value={backup.id}/><Button type="submit" variant="secondary">Opnieuw beoordelen</Button></form>:null}
+                  {canShowReassessment({
+                    globalOrigin,
+                    hasPermission: hasReassessPermission,
+                    hasStoredArtifact: Boolean(backup.configArtifact),
+                    analysisStatus: backup.configArtifact?.analysis?.status,
+                    hasReport: Boolean(backup.configArtifact?.analysis?.report)
+                  }) ? <form action={reassessSecurityAnalysisAction}><input name="backupId" type="hidden" value={backup.id}/><Button type="submit" variant="secondary">Opnieuw beoordelen</Button></form>:null}
                 </td>
               </tr>
             )) : (
