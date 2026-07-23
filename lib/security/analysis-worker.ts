@@ -7,7 +7,7 @@ import { tenantTransaction } from "@/lib/tenant-db";
 import { verifyImmutableArtifact } from "./artifact-storage";
 import { enrichWithFoundry } from "./foundry";
 import { getUsableFoundryConfig } from "./foundry-config";
-import { parseFortiOsConfig } from "./fortios-parser";
+import { FORTIOS_PARSER_VERSION, parseFortiOsConfig } from "./fortios-parser";
 import { generateSecurityReport } from "./report";
 import { evaluateFortiOs } from "./rules";
 import { createSafeFoundryPayload, safePayloadDigest } from "./safe-foundry";
@@ -59,7 +59,7 @@ async function execute(job: Claimed) {
       if (analysis.status === SecurityAnalysisStatus.COMPLETED) return null;
       await tx.securityAnalysis.update({
         where: { id: analysis.id },
-        data: { status: SecurityAnalysisStatus.RUNNING, startedAt: analysis.startedAt ?? new Date(), errorCode: null }
+        data: { status: SecurityAnalysisStatus.RUNNING, startedAt: analysis.startedAt ?? new Date(), errorCode: null, parserVersion: FORTIOS_PARSER_VERSION }
       });
       return analysis;
     });
@@ -257,7 +257,8 @@ function analysisErrorMessage(code: string) {
     FOUNDRY_AUTH_INVALID: "Azure Foundry heeft de tenantcredentials geweigerd.",
     REPORTING_NOT_CONFIGURED: "Tenantrapportage is niet volledig geconfigureerd.",
     SENSITIVE_DATA_DETECTED: "De veilige egresscontrole heeft de netwerkcall geblokkeerd.",
-    ARTIFACT_INTEGRITY_FAILED: "De configuratie-integriteitscontrole is mislukt."
+    ARTIFACT_INTEGRITY_FAILED: "De configuratie-integriteitscontrole is mislukt.",
+    FORTIOS_UNTERMINATED_QUOTE: "De FortiOS-configuratie bevat een werkelijk onafgesloten quoted waarde."
   };
   return messages[code] ?? "Analyse is gestopt met een gesanitiseerde technische fout.";
 }

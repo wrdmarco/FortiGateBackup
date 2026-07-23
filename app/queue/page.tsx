@@ -147,7 +147,8 @@ function analysisErrorLabel(code: string) {
     FOUNDRY_AUTH_INVALID: "Foundry-authenticatie geweigerd",
     REPORTING_NOT_CONFIGURED: "Rapportage niet geconfigureerd",
     SENSITIVE_DATA_DETECTED: "Geblokkeerd door veilige egresscontrole",
-    ARTIFACT_INTEGRITY_FAILED: "Configuratie-integriteit mislukt"
+    ARTIFACT_INTEGRITY_FAILED: "Configuratie-integriteit mislukt",
+    FORTIOS_UNTERMINATED_QUOTE: "FortiOS-configuratie bevat een onafgesloten quoted waarde"
   };
   return labels[code] ?? "Gesanitiseerde technische fout";
 }

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-export const FORTIOS_PARSER_VERSION = "1.0.0";
+export const FORTIOS_PARSER_VERSION = "1.1.0";
 const MAX_LINE_LENGTH = 256 * 1024;
 const MAX_LINES = 1_000_000;
 
@@ -32,9 +32,21 @@ export function parseFortiOsConfig(input: string): ParsedFortiOsConfig {
   for (let index = 0; index < lines.length; index += 1) {
     const source = lines[index];
     if (source.length > MAX_LINE_LENGTH) throw new Error("CONFIG_LINE_TOO_LONG");
-    const line = source.trim();
+    let line = source.trim();
     if (!line || line.startsWith("#")) continue;
-    const tokens = tokenizeFortiOsLine(line);
+    let tokens: string[];
+    for (;;) {
+      try {
+        tokens = tokenizeFortiOsLine(line);
+        break;
+      } catch (error) {
+        if (!(error instanceof Error) || error.message !== "FORTIOS_UNTERMINATED_QUOTE" || index + 1 >= lines.length) throw error;
+        index += 1;
+        const continuation = lines[index];
+        if (line.length + continuation.length + 1 > MAX_LINE_LENGTH) throw new Error("CONFIG_LINE_TOO_LONG");
+        line += `\n${continuation}`;
+      }
+    }
     const command = tokens[0]?.toLowerCase();
     if (command === "config" && tokens.length > 1) {
       sections.push(tokens.slice(1).join(" ").toLowerCase());

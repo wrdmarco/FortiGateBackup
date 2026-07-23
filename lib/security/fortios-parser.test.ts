@@ -20,5 +20,6 @@ config firewall policy
 end
 `;
 test("parseert FortiOS en ondersteunt quotes",()=>{const parsed=parseFortiOsConfig(valid);assert.equal(parsed.version,"7.4.7");assert.equal(parsed.nodes.length,2);assert.deepEqual(tokenizeFortiOsLine('set comments "regel met \\"quote\\""'),["set","comments",'regel met "quote"']);});
+test("ondersteunt begrensde FortiOS multiline quoted waarden",()=>{const config=valid.replace("  set role wan",'  set role wan\n  set description "eerste regel\ntweede regel"');const parsed=parseFortiOsConfig(config);assert.deepEqual(parsed.nodes[0]?.values.description,["eerste regel\ntweede regel"]);assert.throws(()=>parseFortiOsConfig(config.replace('tweede regel"',"tweede regel")),/FORTIOS_UNTERMINATED_QUOTE/);});
 test("weigert niet-FortiOS en incomplete structuur",()=>{assert.throws(()=>parseFortiOsConfig("hostname router"),/NOT_FORTIOS/);assert.throws(()=>parseFortiOsConfig(valid.replace(/end\nconfig firewall policy[\s\S]*/,"")),/INCOMPLETE/);});
 test("regels en score zijn deterministisch",()=>{const first=evaluateFortiOs(parseFortiOsConfig(valid));const second=evaluateFortiOs(parseFortiOsConfig(valid));assert.deepEqual(first,second);assert.ok(first.score<100);assert.ok(first.findings.some((finding)=>finding.ruleId==="FG-POL-001"));assert.ok(first.findings.some((finding)=>finding.ruleId==="FG-MGT-001"));});
