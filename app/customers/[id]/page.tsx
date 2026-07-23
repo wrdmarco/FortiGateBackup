@@ -110,12 +110,11 @@ export default async function CustomerDetailPage({
 
   return (
     <Shell>
-      <PageHeader
+          <PageHeader
         title={customer.name}
         description={`${customer.tenant.name} - ${customer.email ?? customer.contact ?? "Geen contactgegevens"}`}
         actions={
           <>
-            <ActionLink href="/customers">Klanten</ActionLink>
             {canUpdateCustomer ? <ActionLink href={`/customers/${customer.id}/edit`} variant="secondary">Klant bewerken</ActionLink> : null}
             {canCreateFortiGate ? <ActionLink href={`/customers/${customer.id}/fortigates/new`} variant="primary">FortiGate toevoegen</ActionLink> : null}
             {canDeleteCustomer ? (

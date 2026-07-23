@@ -10,6 +10,7 @@ test("klantpagina toont één actuele scorestatus per FortiGate", async () => {
   assert.match(page, /Analysedekking/);
   assert.match(page, /Beveiligingsscore/);
   assert.match(page, /Wacht op analyse/);
+  assert.doesNotMatch(page, /<ActionLink href="\/customers">Klanten<\/ActionLink>/);
 });
 
 test("FortiGate-detail toont actuele score en lokale historie", async () => {
@@ -18,6 +19,7 @@ test("FortiGate-detail toont actuele score en lokale historie", async () => {
   assert.match(page, /SecurityScoreChart/);
   assert.match(page, /Open analyse/);
   assert.match(page, /Volledige scorehistorie/);
+  assert.doesNotMatch(page, />Klant<\/ActionLink>/);
 });
 
 test("scorequeries gebruiken uitsluitend CHANGED en voltooide historische analyses", async () => {
@@ -44,15 +46,19 @@ test("scores worden overal als percentage gepresenteerd", async () => {
   assert.match(combined, /procentpunt/);
 });
 
-test("geslaagde controles staan veilig in de online analyse en PDF", async () => {
+test("geslaagde controles verschijnen als veilige INFO-regels online en in de PDF", async () => {
   const [analysis, report, worker] = await Promise.all([
     readFile("app/security/analyses/[analysisId]/page.tsx", "utf8"),
     readFile("lib/security/report.ts", "utf8"),
     readFile("lib/security/analysis-worker.ts", "utf8")
   ]);
-  assert.match(analysis, /Geslaagde controles/);
+  assert.doesNotMatch(analysis, /<h2[^>]*>Geslaagde controles/);
   assert.match(analysis, /parseStoredScoreComponents/);
-  assert.match(report, /Geslaagde controles/);
+  assert.match(analysis, />INFO</);
+  assert.match(analysis, /severityRank/);
+  assert.ok(analysis.indexOf("analysis.findings") < analysis.indexOf("informationalControls.map"));
+  assert.match(report, /"INFO"/);
+  assert.ok(report.indexOf("for(const finding") < report.indexOf("for(const component"));
   assert.match(report, /component\.passed/);
   assert.match(worker, /scoreComponents: local\.scoreComponents/);
 });

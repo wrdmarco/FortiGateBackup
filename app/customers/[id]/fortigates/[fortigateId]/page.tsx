@@ -110,7 +110,6 @@ export default async function CustomerFortiGatePage({
         description={`${device.customer.name} - ${device.customer.tenant.name}`}
         actions={
           <>
-            <ActionLink href={`/customers/${device.customerId}`}>Klant</ActionLink>
             {canReadBackups ? <Modal size="wide"
               title="Backups"
               description="De laatste 50 backup runs voor deze FortiGate, inclusief unchanged."
