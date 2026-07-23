@@ -1,7 +1,8 @@
 import type { ParsedFortiOsConfig } from "./fortios-parser";
 
-export const SECURITY_RULESET_VERSION = "1.1.0";
+export const SECURITY_RULESET_VERSION = "2.0.0";
 export type LocalFinding = { ruleId: string; category: string; severity: "CRITICAL"|"HIGH"|"MEDIUM"|"LOW"; penalty: number; title: string; explanation: string; evidence: string; remediation: string };
+export type SecurityControlResult = { ruleId: string; weight: number; passed: boolean };
 
 const definitions = {
   "FG-POL-001": ["Firewallbeleid", "CRITICAL", 18, "Any-to-any beleid", "Een accepterend beleid is te breed.", "Beperk bron, bestemming en service tot wat functioneel nodig is."],
@@ -19,46 +20,56 @@ const definitions = {
 
 export function evaluateFortiOs(parsed: ParsedFortiOsConfig) {
   const findings: LocalFinding[] = [];
+  const controls: SecurityControlResult[] = [];
   for (const node of parsed.nodes) {
     const v = node.values;
     if (node.path.endsWith("firewall policy") && first(v.action) === "accept") {
       const srcAll = includes(v.srcaddr, "all"); const dstAll = includes(v.dstaddr, "all"); const svcAll = includes(v.service, "ALL") || includes(v.service, "ANY");
+      control(controls,"FG-POL-001",!(srcAll&&dstAll&&svcAll));
+      control(controls,"FG-POL-002",!srcAll);
+      control(controls,"FG-POL-003",!dstAll);
+      control(controls,"FG-POL-004",!svcAll);
       if (srcAll && dstAll && svcAll) add(findings,"FG-POL-001",node);
       else { if(srcAll)add(findings,"FG-POL-002",node); if(dstAll)add(findings,"FG-POL-003",node); if(svcAll)add(findings,"FG-POL-004",node); }
-      if (!includes(v.logtraffic,"all") && !includes(v.logtraffic,"utm")) add(findings,"FG-LOG-001",node);
-      if (!["av-profile","ips-sensor","webfilter-profile","application-list"].some((key)=>v[key]?.length)) add(findings,"FG-UTM-001",node);
+      const loggingEnabled=includes(v.logtraffic,"all")||includes(v.logtraffic,"utm");
+      control(controls,"FG-LOG-001",loggingEnabled);
+      if (!loggingEnabled) add(findings,"FG-LOG-001",node);
+      const profilesEnabled=["av-profile","ips-sensor","webfilter-profile","application-list"].some((key)=>v[key]?.length);
+      control(controls,"FG-UTM-001",profilesEnabled);
+      if (!profilesEnabled) add(findings,"FG-UTM-001",node);
     }
     if (node.path.endsWith("system interface")) {
       const access=(v.allowaccess??[]).map((x)=>x.toLowerCase());
-      if(access.includes("telnet"))add(findings,"FG-MGT-001",node);
-      if(access.includes("http"))add(findings,"FG-MGT-002",node);
-      if((first(v.role)==="wan" || first(v.mode)==="dhcp") && access.some((x)=>["https","ssh","http","telnet"].includes(x)))add(findings,"FG-MGT-003",node);
+      const telnetEnabled=access.includes("telnet");
+      const httpEnabled=access.includes("http");
+      control(controls,"FG-MGT-001",!telnetEnabled);
+      control(controls,"FG-MGT-002",!httpEnabled);
+      if(telnetEnabled)add(findings,"FG-MGT-001",node);
+      if(httpEnabled)add(findings,"FG-MGT-002",node);
+      const publicInterface=first(v.role)==="wan"||first(v.mode)==="dhcp";
+      if(publicInterface){const publicManagement=access.some((x)=>["https","ssh","http","telnet"].includes(x));control(controls,"FG-MGT-003",!publicManagement);if(publicManagement)add(findings,"FG-MGT-003",node);}
     }
-    if (node.path.endsWith("vpn ipsec phase1-interface") && [...(v.proposal??[]),...(v.dhgrp??[])].some((x)=>/des|md5|(^|\D)[12](\D|$)/i.test(x))) add(findings,"FG-VPN-001",node);
-    if ((node.path.endsWith("firewall addrgrp") || node.path.endsWith("firewall service group")) && (v.member?.length??0)>50) add(findings,"FG-GRP-001",node);
+    if (node.path.endsWith("vpn ipsec phase1-interface")){const weak=[...(v.proposal??[]),...(v.dhgrp??[])].some((x)=>/des|md5|(^|\D)[12](\D|$)/i.test(x));control(controls,"FG-VPN-001",!weak);if(weak)add(findings,"FG-VPN-001",node);}
+    if (node.path.endsWith("firewall addrgrp") || node.path.endsWith("firewall service group")){const broad=(v.member?.length??0)>50;control(controls,"FG-GRP-001",!broad);if(broad)add(findings,"FG-GRP-001",node);}
   }
-  const score=calculateSecurityScore(findings);
-  return { findings, score };
+  const scoring=calculateSecurityScore(controls);
+  return { findings, score:scoring.score, scoreComponents:scoring.components, passedControls:scoring.passed, totalControls:scoring.total };
 }
 
-export function calculateSecurityScore(findings: LocalFinding[]) {
-  const occurrences = new Map<string, { penalty: number; count: number }>();
-  for (const finding of findings) {
-    const current = occurrences.get(finding.ruleId);
-    if (current) current.count += 1;
-    else occurrences.set(finding.ruleId, { penalty: finding.penalty, count: 1 });
+export function calculateSecurityScore(controls: SecurityControlResult[]) {
+  const grouped = new Map<string, { passed: number; failed: number; earned: number; possible: number }>();
+  for (const result of controls) {
+    const current = grouped.get(result.ruleId)??{passed:0,failed:0,earned:0,possible:0};
+    current.possible+=result.weight;
+    if(result.passed){current.passed+=1;current.earned+=result.weight;}else current.failed+=1;
+    grouped.set(result.ruleId,current);
   }
-
-  const effectivePenalty = [...occurrences.values()].reduce((total, finding) => {
-    // De eerste constatering telt volledig. Iedere herhaling telt voor 10% mee,
-    // tot maximaal nog eenmaal de basispenalty. Zo blijft prevalentie relevant
-    // zonder dat een grotere policyset de score uitsluitend door omvang naar nul trekt.
-    const repeatFactor = Math.min(1, Math.max(0, finding.count - 1) * 0.1);
-    return total + finding.penalty * (1 + repeatFactor);
-  }, 0);
-
-  return Math.max(0, Math.min(100, Math.round(100 - effectivePenalty)));
+  const components=[...grouped.entries()].map(([ruleId,value])=>({ruleId,...value}));
+  const earned=components.reduce((sum,item)=>sum+item.earned,0);
+  const possible=components.reduce((sum,item)=>sum+item.possible,0);
+  return {score:possible?Math.round(earned/possible*100):100,passed:controls.filter((item)=>item.passed).length,total:controls.length,components};
 }
+function control(target:SecurityControlResult[],id:keyof typeof definitions,passed:boolean){target.push({ruleId:id,weight:definitions[id][2],passed});}
 function add(target:LocalFinding[],id:keyof typeof definitions,node:ParsedFortiOsConfig["nodes"][number]){const [category,severity,penalty,title,explanation,remediation]=definitions[id];target.push({ruleId:id,category,severity,penalty,title,explanation,evidence:`${node.path}; object=${stableToken(node.path,node.edit??"global")}; vdom=${stableToken("vdom",node.vdom)}`,remediation});}
 function stableToken(type:string,value:string){let hash=0;for(const c of `${type}:${value}`)hash=(hash*31+c.charCodeAt(0))>>>0;return `${type.replace(/\W/g,"_").toUpperCase()}_${hash}`;}
 function first(values:readonly string[]|undefined){return values?.[0]?.toLowerCase();}

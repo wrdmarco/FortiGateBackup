@@ -9,7 +9,7 @@ import { enrichWithFoundry } from "./foundry";
 import { getUsableFoundryConfig } from "./foundry-config";
 import { FORTIOS_PARSER_VERSION, parseFortiOsConfig } from "./fortios-parser";
 import { generateSecurityReport } from "./report";
-import { evaluateFortiOs } from "./rules";
+import { evaluateFortiOs, SECURITY_RULESET_VERSION } from "./rules";
 import { createSafeFoundryPayload, safePayloadDigest } from "./safe-foundry";
 
 const WORKER_ID = `analysis-${process.pid}-${randomUUID()}`;
@@ -136,9 +136,11 @@ async function execute(job: Claimed) {
       analysisDate: new Date(),
       score: local.score,
       scoreDelta: typeof previous?.score === "number" ? local.score - previous.score : null,
+      passedControls: local.passedControls,
+      totalControls: local.totalControls,
       hash: data.configSha256,
       parserVersion: data.parserVersion,
-      rulesetVersion: data.rulesetVersion,
+      rulesetVersion: SECURITY_RULESET_VERSION,
       summary: enrichment.managementSummary,
       findings: local.findings,
       newFindingIds,
@@ -175,7 +177,8 @@ async function execute(job: Claimed) {
           highCount: count("HIGH"),
           mediumCount: count("MEDIUM"),
           lowCount: count("LOW"),
-          scoreComponents: JSON.stringify(local.findings.map((finding) => ({ ruleId: finding.ruleId, penalty: finding.penalty }))),
+          scoreComponents: JSON.stringify({ passedControls: local.passedControls, totalControls: local.totalControls, components: local.scoreComponents }),
+          rulesetVersion: SECURITY_RULESET_VERSION,
           safeSummary: enrichment.managementSummary,
           redactionStats: JSON.stringify({
             payloadSha256: safePayloadDigest(payload),

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { parseFortiOsConfig, tokenizeFortiOsLine } from "./fortios-parser";
-import { calculateSecurityScore, evaluateFortiOs, type LocalFinding } from "./rules";
+import { calculateSecurityScore, evaluateFortiOs, type SecurityControlResult } from "./rules";
 
 const valid=`#config-version=FG100F-7.4.7-FW-build0000-000000:opmode=0:vdom=0:user=admin
 config system interface
@@ -23,13 +23,22 @@ test("parseert FortiOS en ondersteunt quotes",()=>{const parsed=parseFortiOsConf
 test("ondersteunt begrensde FortiOS multiline quoted waarden",()=>{const config=valid.replace("  set role wan",'  set role wan\n  set description "eerste regel\ntweede regel"');const parsed=parseFortiOsConfig(config);assert.deepEqual(parsed.nodes[0]?.values.description,["eerste regel\ntweede regel"]);assert.throws(()=>parseFortiOsConfig(config.replace('tweede regel"',"tweede regel")),/FORTIOS_UNTERMINATED_QUOTE/);});
 test("weigert niet-FortiOS en incomplete structuur",()=>{assert.throws(()=>parseFortiOsConfig("hostname router"),/NOT_FORTIOS/);assert.throws(()=>parseFortiOsConfig(valid.replace(/end\nconfig firewall policy[\s\S]*/,"")),/INCOMPLETE/);});
 test("regels en score zijn deterministisch",()=>{const first=evaluateFortiOs(parseFortiOsConfig(valid));const second=evaluateFortiOs(parseFortiOsConfig(valid));assert.deepEqual(first,second);assert.ok(first.score<100);assert.ok(first.findings.some((finding)=>finding.ruleId==="FG-POL-001"));assert.ok(first.findings.some((finding)=>finding.ruleId==="FG-MGT-001"));});
-test("herhaalde bevindingen verlagen de score begrensd",()=>{
-  const finding:LocalFinding={ruleId:"FG-LOG-001",category:"Logging",severity:"MEDIUM",penalty:5,title:"Logging ontbreekt",explanation:"synthetisch",evidence:"OBJECT_1",remediation:"synthetisch"};
-  assert.equal(calculateSecurityScore([]),100);
-  assert.equal(calculateSecurityScore([finding]),95);
-  assert.equal(calculateSecurityScore(Array.from({length:100},()=>({...finding}))),90);
+test("geslaagde en mislukte controles bepalen samen het percentage",()=>{
+  const controls:SecurityControlResult[]=[
+    {ruleId:"SAFE-A",weight:10,passed:true},
+    {ruleId:"SAFE-B",weight:10,passed:true},
+    {ruleId:"RISK-C",weight:10,passed:false}
+  ];
+  assert.equal(calculateSecurityScore([]).score,100);
+  assert.equal(calculateSecurityScore(controls).score,67);
+  assert.deepEqual(calculateSecurityScore(controls).components.find((item)=>item.ruleId==="SAFE-A"),{ruleId:"SAFE-A",passed:1,failed:0,earned:10,possible:10});
 });
-test("verschillende risicotypen blijven volledig meetellen",()=>{
-  const finding=(ruleId:string,penalty:number):LocalFinding=>({ruleId,category:"Test",severity:"HIGH",penalty,title:"Test",explanation:"synthetisch",evidence:"OBJECT_1",remediation:"synthetisch"});
-  assert.equal(calculateSecurityScore([finding("RULE-A",18),finding("RULE-B",10),finding("RULE-C",8)]),64);
+test("goede configuratieobjecten leveren aantoonbaar punten op",()=>{
+  const result=calculateSecurityScore([
+    {ruleId:"FG-LOG-001",weight:5,passed:false},
+    ...Array.from({length:9},():SecurityControlResult=>({ruleId:"FG-LOG-001",weight:5,passed:true}))
+  ]);
+  assert.equal(result.score,90);
+  assert.equal(result.passed,9);
+  assert.equal(result.total,10);
 });

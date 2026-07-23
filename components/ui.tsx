@@ -26,20 +26,20 @@ export async function Shell({ children }: { children: React.ReactNode }) {
   const navigation = <NavigationLinks canManageTenants={canReadTenants} canReadAudit={canReadAudit} canReadUsers={canReadUsers} canReadSecurity={permissionKeys.has("security.analyses.read")} isBreakGlassSettingsOnly={isBreakGlassSettingsOnly} isGlobalContext={isGlobalContext} />;
 
   return (
-    <div className="min-h-screen bg-background lg:grid lg:grid-cols-[14.5rem_minmax(0,1fr)]">
+    <div className="min-h-screen bg-[hsl(var(--workspace))] lg:grid lg:grid-cols-[14.5rem_minmax(0,1fr)]">
       <a className="skip-link" href="#main-content">Naar hoofdinhoud</a>
-      <aside className="app-sidebar hidden min-h-screen flex-col bg-[hsl(var(--header))] text-[hsl(var(--header-foreground))] lg:sticky lg:top-0 lg:flex lg:h-screen">
+      <aside className="app-sidebar hidden min-h-screen flex-col border-r border-[hsl(var(--header-foreground)/0.12)] bg-[hsl(var(--header))] text-[hsl(var(--header-foreground))] lg:sticky lg:top-0 lg:flex lg:h-screen">
         <BrandLink href={user ? "/" : "/login"} />
         {user ? <nav aria-label="Hoofdnavigatie" className="flex-1 space-y-1 overflow-y-auto px-3 py-2">{navigation}</nav> : null}
       </aside>
       <div className="min-w-0">
-        <header className="app-header sticky top-0 z-30 border-b border-border bg-surface/95 backdrop-blur-sm">
+        <header className="app-header sticky top-0 z-30 border-b border-[hsl(var(--header-foreground)/0.12)] bg-[hsl(var(--header))] text-[hsl(var(--header-foreground))]">
           <div className="flex min-h-[4.5rem] items-center gap-3 px-4 sm:px-6 lg:px-8">
             <div className="lg:hidden"><BrandLink href={user ? "/" : "/login"} compact /></div>
-            {user ? <div className="hidden min-w-0 items-center gap-3 lg:flex"><span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Tenant</span><TenantSwitcher key={`desktop-${user.activeTenantId ?? "no-tenant"}`} action={switchTenantContextAction} activeTenantId={user.activeTenantId} canSwitch={canSwitchTenants} tenantName={tenantName} tenants={tenants} /></div> : null}
+            {user ? <div className="hidden min-w-0 items-center gap-3 lg:flex"><span className="text-xs font-semibold uppercase tracking-[0.12em] text-[hsl(var(--header-foreground)/0.68)]">Tenant</span><TenantSwitcher key={`desktop-${user.activeTenantId ?? "no-tenant"}`} action={switchTenantContextAction} activeTenantId={user.activeTenantId} canSwitch={canSwitchTenants} tenantName={tenantName} tenants={tenants} /></div> : null}
             {user ? <div className="ml-auto flex min-w-0 items-center gap-2"><Link href="/help" aria-label="Help" className="topbar-icon"><Icon name="help" /></Link><HeaderUserMenu email={user.email} isBreakGlassSettingsOnly={isBreakGlassSettingsOnly} logoutAction={logoutAction} name={user.name} /></div> : <Link className="ml-auto inline-flex min-h-11 items-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground" href="/login">Inloggen</Link>}
           </div>
-          {user ? <div className="border-t border-border/70 px-4 pb-3 pt-2 sm:px-6 lg:hidden"><div className="mb-1 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Actieve tenant</div><TenantSwitcher key={`mobile-${user.activeTenantId ?? "no-tenant"}`} action={switchTenantContextAction} activeTenantId={user.activeTenantId} canSwitch={canSwitchTenants} fullWidth id="tenant-context-mobile" tenantName={tenantName} tenants={tenants} /></div> : null}
+          {user ? <div className="border-t border-[hsl(var(--header-foreground)/0.12)] px-4 pb-3 pt-2 sm:px-6 lg:hidden"><div className="mb-1 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-[hsl(var(--header-foreground)/0.68)]">Actieve tenant</div><TenantSwitcher key={`mobile-${user.activeTenantId ?? "no-tenant"}`} action={switchTenantContextAction} activeTenantId={user.activeTenantId} canSwitch={canSwitchTenants} fullWidth id="tenant-context-mobile" tenantName={tenantName} tenants={tenants} /></div> : null}
         </header>
         <main className="mr-auto w-full max-w-[1680px] px-4 py-5 outline-none sm:px-6 lg:px-8 lg:py-6 xl:px-10" id="main-content" tabIndex={-1}>{children}</main>
       </div>
@@ -48,7 +48,7 @@ export async function Shell({ children }: { children: React.ReactNode }) {
 }
 
 function BrandLink({ href, compact = false }: { href: string; compact?: boolean }) {
-  return <Link href={href} aria-label="Forti Backup - overzicht" className={clsx("brand-mark inline-flex min-h-11 items-center gap-2.5 rounded-lg", compact ? "px-0" : "mx-4 my-4 px-1")}><Image alt="" aria-hidden height={compact ? 30 : 38} src={compact ? "/brand/forti-backup-mark-light.svg" : "/brand/forti-backup-mark-dark.svg"} width={compact ? 30 : 38}/><BrandWordmark inverse={!compact} size={compact ? "compact" : "default"}/></Link>;
+  return <Link href={href} aria-label="Forti Backup - overzicht" className={clsx("brand-mark inline-flex min-h-11 items-center gap-2.5 rounded-lg", compact ? "px-0" : "mx-4 my-4 px-1")}><Image alt="" aria-hidden className="dark:hidden" height={compact ? 30 : 38} src="/brand/forti-backup-mark-light.svg" width={compact ? 30 : 38}/><Image alt="" aria-hidden className="hidden dark:block" height={compact ? 30 : 38} src="/brand/forti-backup-mark-dark.svg" width={compact ? 30 : 38}/><BrandWordmark size={compact ? "compact" : "default"}/></Link>;
 }
 
 function NavigationLinks({ isBreakGlassSettingsOnly, isGlobalContext, canManageTenants, canReadUsers, canReadAudit, canReadSecurity }: { isBreakGlassSettingsOnly: boolean; isGlobalContext: boolean; canManageTenants: boolean; canReadUsers: boolean; canReadAudit: boolean; canReadSecurity:boolean }) {
