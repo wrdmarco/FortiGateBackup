@@ -54,6 +54,7 @@ export default async function EditCustomerFortiGatePage({
             name="scheduleType"
             defaultValue={device.scheduleType ?? "DAILY"}
           >
+            <option value="MANUAL">Alleen handmatig</option>
             <option value="HOURLY">Elk uur</option>
             <option value="DAILY">Dagelijks</option>
             <option value="WEEKLY">Wekelijks</option>

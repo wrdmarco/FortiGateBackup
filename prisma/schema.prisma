@@ -42,6 +42,7 @@ enum BackupJobTrigger {
 }
 
 enum ScheduleType {
+  MANUAL
   HOURLY
   DAILY
   WEEKLY
@@ -91,49 +92,60 @@ enum FindingDispositionKind {
   SUPPRESSED
 }
 
+enum SecurityRulesetStatus {
+  DRAFT
+  ACTIVE
+  RETIRED
+}
+
+enum SecurityRuleEvaluator {
+  BUILTIN
+  DECLARATIVE
+}
+
 model Tenant {
-  id        String          @id @default(cuid())
-  name      String
-  slug      String          @unique
-  kind      TenantKind      @default(CUSTOMER)
-  active    Boolean         @default(true)
-  createdAt DateTime @db.Timestamptz(3)        @default(now())
-  updatedAt DateTime @db.Timestamptz(3)        @updatedAt
-  customers Customer[]
-  users     User[]
-  accessRoles AccessRole[]
-  settings  SystemSetting[]
-  configArtifacts ConfigArtifact[]
-  securityAnalyses SecurityAnalysis[]
-  securityAnalysisJobs SecurityAnalysisJob[]
+  id                        String                     @id @default(cuid())
+  name                      String
+  slug                      String                     @unique
+  kind                      TenantKind                 @default(CUSTOMER)
+  active                    Boolean                    @default(true)
+  createdAt                 DateTime                   @default(now()) @db.Timestamptz(3)
+  updatedAt                 DateTime                   @updatedAt @db.Timestamptz(3)
+  customers                 Customer[]
+  users                     User[]
+  accessRoles               AccessRole[]
+  settings                  SystemSetting[]
+  configArtifacts           ConfigArtifact[]
+  securityAnalyses          SecurityAnalysis[]
+  securityAnalysisJobs      SecurityAnalysisJob[]
   securityAnalysisJobEvents SecurityAnalysisJobEvent[]
-  securityFindings SecurityFinding[]
-  securityReports SecurityAnalysisReport[]
-  foundryConfig TenantFoundryConfig?
-  auditHead AuditHead?
+  securityFindings          SecurityFinding[]
+  securityReports           SecurityAnalysisReport[]
+  foundryConfig             TenantFoundryConfig?
+  auditHead                 AuditHead?
 
   @@index([kind, active])
 }
 
 model User {
-  id            String       @id @default(cuid())
-  tenantId      String?
-  name          String?
-  email         String       @unique
-  emailVerified DateTime? @db.Timestamptz(3)
-  image         String?
-  passwordHash  String?
-  mustChangePassword Boolean @default(false)
-  role          UserRole     @default(VIEWER)
-  provider      AuthProvider @default(LOCAL)
-  active        Boolean      @default(true)
-  createdAt     DateTime @db.Timestamptz(3)     @default(now())
-  updatedAt     DateTime @db.Timestamptz(3)     @updatedAt
-  tenant        Tenant?      @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  accounts      Account[]
-  sessions      Session[]
-  auditLogs     AuditLog[]
-  accessRoles   UserAccessRole[]
+  id                 String           @id @default(cuid())
+  tenantId           String?
+  name               String?
+  email              String           @unique
+  emailVerified      DateTime?        @db.Timestamptz(3)
+  image              String?
+  passwordHash       String?
+  mustChangePassword Boolean          @default(false)
+  role               UserRole         @default(VIEWER)
+  provider           AuthProvider     @default(LOCAL)
+  active             Boolean          @default(true)
+  createdAt          DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime         @updatedAt @db.Timestamptz(3)
+  tenant             Tenant?          @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  accounts           Account[]
+  sessions           Session[]
+  auditLogs          AuditLog[]
+  accessRoles        UserAccessRole[]
 }
 
 model AccessPermission {
@@ -141,7 +153,7 @@ model AccessPermission {
   key         String                 @unique
   category    String
   description String
-  createdAt   DateTime @db.Timestamptz(3)               @default(now())
+  createdAt   DateTime               @default(now()) @db.Timestamptz(3)
   roles       AccessRolePermission[]
 }
 
@@ -151,8 +163,8 @@ model AccessRole {
   name        String
   description String?
   system      Boolean                @default(false)
-  createdAt   DateTime @db.Timestamptz(3)               @default(now())
-  updatedAt   DateTime @db.Timestamptz(3)               @updatedAt
+  createdAt   DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime               @updatedAt @db.Timestamptz(3)
   tenant      Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   permissions AccessRolePermission[]
   users       UserAccessRole[]
@@ -173,7 +185,7 @@ model AccessRolePermission {
 model UserAccessRole {
   userId     String
   roleId     String
-  assignedAt DateTime @db.Timestamptz(3)   @default(now())
+  assignedAt DateTime   @default(now()) @db.Timestamptz(3)
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   role       AccessRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
@@ -200,13 +212,13 @@ model Account {
 }
 
 model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique
-  userId       String
-  activeTenantId String?
-  breakGlassSettingsOnly Boolean @default(false)
-  expires      DateTime @db.Timestamptz(3)
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                     String   @id @default(cuid())
+  sessionToken           String   @unique
+  userId                 String
+  activeTenantId         String?
+  breakGlassSettingsOnly Boolean  @default(false)
+  expires                DateTime @db.Timestamptz(3)
+  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model VerificationToken {
@@ -220,9 +232,9 @@ model VerificationToken {
 model SetupToken {
   id        String    @id @default(cuid())
   tokenHash String    @unique
-  expires   DateTime @db.Timestamptz(3)
+  expires   DateTime  @db.Timestamptz(3)
   usedAt    DateTime? @db.Timestamptz(3)
-  createdAt DateTime @db.Timestamptz(3)  @default(now())
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
 
   @@index([expires, usedAt])
 }
@@ -231,69 +243,69 @@ model LoginThrottle {
   key         String    @id
   failures    Int       @default(0)
   lockedUntil DateTime? @db.Timestamptz(3)
-  updatedAt   DateTime @db.Timestamptz(3)  @updatedAt
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
 
   @@index([lockedUntil])
   @@index([updatedAt])
 }
 
 model Customer {
-  id        String      @id @default(cuid())
-  tenantId  String
-  name      String
-  contact   String?
-  email     String?
-  phone     String?
-  notes     String?
+  id                   String      @id @default(cuid())
+  tenantId             String
+  name                 String
+  contact              String?
+  email                String?
+  phone                String?
+  notes                String?
   itGlueOrganizationId String?
-  autotaskCompanyId String?
-  active    Boolean     @default(true)
-  createdAt DateTime @db.Timestamptz(3)    @default(now())
-  updatedAt DateTime @db.Timestamptz(3)    @updatedAt
-  tenant    Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  devices   FortiGate[]
+  autotaskCompanyId    String?
+  active               Boolean     @default(true)
+  createdAt            DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime    @updatedAt @db.Timestamptz(3)
+  tenant               Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  devices              FortiGate[]
 
   @@index([tenantId, active])
 }
 
 model FortiGate {
-  id                String           @id @default(cuid())
-  customerId        String
-  hostname          String?
-  serialNumber      String?
-  model             String?
-  firmwareVersion   String?
-  firmwareBuild     String?
-  uptime            String?
-  externalIpAddresses String?
-  licenseInfo       String?
-  itGlueConfigurationId String?
-  managementUrl     String
-  httpsPort         Int              @default(443)
-  apiTokenEncrypted String
-  tlsVerify         Boolean          @default(true)
+  id                        String                @id @default(cuid())
+  customerId                String
+  hostname                  String?
+  serialNumber              String?
+  model                     String?
+  firmwareVersion           String?
+  firmwareBuild             String?
+  uptime                    String?
+  externalIpAddresses       String?
+  licenseInfo               String?
+  itGlueConfigurationId     String?
+  managementUrl             String
+  httpsPort                 Int                   @default(443)
+  apiTokenEncrypted         String
+  tlsVerify                 Boolean               @default(true)
   tlsCertificateFingerprint String?
-  tlsCertificateSubject String?
-  tlsCertificateIssuer String?
-  tlsCertificateValidFrom DateTime? @db.Timestamptz(3)
-  tlsCertificateValidTo DateTime? @db.Timestamptz(3)
-  tlsCertificateAcceptedAt DateTime? @db.Timestamptz(3)
-  vdom              String?
-  scheduleType      ScheduleType     @default(DAILY)
-  cronExpression    String?
-  nextRunAt         DateTime? @db.Timestamptz(3)
-  lastCheckedAt     DateTime? @db.Timestamptz(3)
-  active            Boolean          @default(true)
-  createdAt         DateTime @db.Timestamptz(3)         @default(now())
-  updatedAt         DateTime @db.Timestamptz(3)         @updatedAt
-  customer          Customer         @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  backups           Backup[]
-  logs              FortiGateLog[]
-  versionHistory    VersionHistory[]
-  jobs              BackupJob[]
-  configArtifacts   ConfigArtifact[]
-  securityAnalyses  SecurityAnalysis[]
-  securityAnalysisJobs SecurityAnalysisJob[]
+  tlsCertificateSubject     String?
+  tlsCertificateIssuer      String?
+  tlsCertificateValidFrom   DateTime?             @db.Timestamptz(3)
+  tlsCertificateValidTo     DateTime?             @db.Timestamptz(3)
+  tlsCertificateAcceptedAt  DateTime?             @db.Timestamptz(3)
+  vdom                      String?
+  scheduleType              ScheduleType          @default(DAILY)
+  cronExpression            String?
+  nextRunAt                 DateTime?             @db.Timestamptz(3)
+  lastCheckedAt             DateTime?             @db.Timestamptz(3)
+  active                    Boolean               @default(true)
+  createdAt                 DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt                 DateTime              @updatedAt @db.Timestamptz(3)
+  customer                  Customer              @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  backups                   Backup[]
+  logs                      FortiGateLog[]
+  versionHistory            VersionHistory[]
+  jobs                      BackupJob[]
+  configArtifacts           ConfigArtifact[]
+  securityAnalyses          SecurityAnalysis[]
+  securityAnalysisJobs      SecurityAnalysisJob[]
 
   @@index([customerId, active])
   @@index([nextRunAt])
@@ -307,15 +319,15 @@ model BackupJob {
   trigger           BackupJobTrigger
   status            BackupJobStatus  @default(PENDING)
   attempts          Int              @default(0)
-  availableAt       DateTime @db.Timestamptz(3)         @default(now())
-  startedAt         DateTime? @db.Timestamptz(3)
-  finishedAt        DateTime? @db.Timestamptz(3)
+  availableAt       DateTime         @default(now()) @db.Timestamptz(3)
+  startedAt         DateTime?        @db.Timestamptz(3)
+  finishedAt        DateTime?        @db.Timestamptz(3)
   error             String?
-  createdAt         DateTime @db.Timestamptz(3)         @default(now())
-  updatedAt         DateTime @db.Timestamptz(3)         @updatedAt
+  createdAt         DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime         @updatedAt @db.Timestamptz(3)
   workerId          String?
-  leaseExpiresAt    DateTime? @db.Timestamptz(3)
-  heartbeatAt       DateTime? @db.Timestamptz(3)
+  leaseExpiresAt    DateTime?        @db.Timestamptz(3)
+  heartbeatAt       DateTime?        @db.Timestamptz(3)
   fortigate         FortiGate        @relation(fields: [fortigateId], references: [id], onDelete: Cascade)
 
   @@index([status, availableAt, createdAt])
@@ -324,25 +336,25 @@ model BackupJob {
 }
 
 model Backup {
-  id          String       @id @default(cuid())
-  fortigateId String
-  tenantId    String
-  configArtifactId String?
-  filename    String?
-  sha256      String?
-  filesize    Int          @default(0)
-  status      BackupStatus
-  error       String?
-  itGlueAttachmentId String?
-  itGlueUploadedAt DateTime? @db.Timestamptz(3)
-  itGlueError String?
-  autotaskTicketId String?
-  autotaskTicketCreatedAt DateTime? @db.Timestamptz(3)
-  autotaskError String?
-  createdAt   DateTime @db.Timestamptz(3)     @default(now())
-  fortigate   FortiGate    @relation(fields: [fortigateId], references: [id], onDelete: Cascade)
-  configArtifact ConfigArtifact? @relation(fields: [tenantId, configArtifactId], references: [tenantId, id], onDelete: Restrict)
-  sourceAnalysis SecurityAnalysis? @relation("SourceBackup")
+  id                      String            @id @default(cuid())
+  fortigateId             String
+  tenantId                String
+  configArtifactId        String?
+  filename                String?
+  sha256                  String?
+  filesize                Int               @default(0)
+  status                  BackupStatus
+  error                   String?
+  itGlueAttachmentId      String?
+  itGlueUploadedAt        DateTime?         @db.Timestamptz(3)
+  itGlueError             String?
+  autotaskTicketId        String?
+  autotaskTicketCreatedAt DateTime?         @db.Timestamptz(3)
+  autotaskError           String?
+  createdAt               DateTime          @default(now()) @db.Timestamptz(3)
+  fortigate               FortiGate         @relation(fields: [fortigateId], references: [id], onDelete: Cascade)
+  configArtifact          ConfigArtifact?   @relation(fields: [tenantId, configArtifactId], references: [tenantId, id], onDelete: Restrict)
+  sourceAnalysis          SecurityAnalysis? @relation("SourceBackup")
 
   @@index([fortigateId, createdAt])
   @@index([tenantId, createdAt])
@@ -356,7 +368,7 @@ model FortiGateLog {
   event       String
   message     String
   metadata    String?
-  createdAt   DateTime @db.Timestamptz(3)          @default(now())
+  createdAt   DateTime          @default(now()) @db.Timestamptz(3)
   fortigate   FortiGate         @relation(fields: [fortigateId], references: [id], onDelete: Cascade)
 
   @@index([fortigateId, createdAt])
@@ -367,31 +379,31 @@ model VersionHistory {
   fortigateId     String
   firmwareVersion String
   firmwareBuild   String?
-  detectedAt      DateTime @db.Timestamptz(3)  @default(now())
+  detectedAt      DateTime  @default(now()) @db.Timestamptz(3)
   fortigate       FortiGate @relation(fields: [fortigateId], references: [id], onDelete: Cascade)
 
   @@index([fortigateId, detectedAt])
 }
 
 model AuditLog {
-  id        String   @id @default(cuid())
-  tenantId  String?
-  tenantName String?
-  userId    String?
-  actorId   String?
-  actorName String?
-  actorEmail String?
-  action    String
-  outcome   String   @default("success")
-  entity    String?
-  entityId  String?
-  metadata  String?
-  ipAddress String?
-  requestId String?
-  previousHash String?
+  id            String   @id @default(cuid())
+  tenantId      String?
+  tenantName    String?
+  userId        String?
+  actorId       String?
+  actorName     String?
+  actorEmail    String?
+  action        String
+  outcome       String   @default("success")
+  entity        String?
+  entityId      String?
+  metadata      String?
+  ipAddress     String?
+  requestId     String?
+  previousHash  String?
   integrityHash String?
-  createdAt DateTime @db.Timestamptz(3) @default(now())
-  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  user          User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, createdAt])
   @@index([requestId])
@@ -403,34 +415,34 @@ model SystemSetting {
   key       String
   value     String
   encrypted Boolean  @default(false)
-  createdAt DateTime @db.Timestamptz(3) @default(now())
-  updatedAt DateTime @db.Timestamptz(3) @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
   tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, key])
 }
 
 model AuditHead {
-  scopeKey      String   @id
-  tenantId      String?  @unique
-  lastAuditId   String?
-  lastHash      String?
-  updatedAt     DateTime @db.Timestamptz(3) @updatedAt
-  tenant        Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  scopeKey    String   @id
+  tenantId    String?  @unique
+  lastAuditId String?
+  lastHash    String?
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 }
 
 model ConfigArtifact {
-  id            String   @id @default(cuid())
-  tenantId      String
-  fortigateId   String
-  sha256        String
-  path          String
-  filesize      Int
-  createdAt     DateTime @db.Timestamptz(3) @default(now())
-  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  fortigate     FortiGate @relation(fields: [fortigateId], references: [id], onDelete: Cascade)
-  backups       Backup[]
-  analysis      SecurityAnalysis?
+  id          String            @id @default(cuid())
+  tenantId    String
+  fortigateId String
+  sha256      String
+  path        String
+  filesize    Int
+  createdAt   DateTime          @default(now()) @db.Timestamptz(3)
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fortigate   FortiGate         @relation(fields: [fortigateId], references: [id], onDelete: Cascade)
+  backups     Backup[]
+  analysis    SecurityAnalysis?
 
   @@unique([tenantId, id])
   @@unique([tenantId, fortigateId, sha256])
@@ -438,50 +450,50 @@ model ConfigArtifact {
 }
 
 model TenantFoundryConfig {
-  tenantId             String   @id
-  enabled              Boolean  @default(false)
+  tenantId             String    @id
+  enabled              Boolean   @default(false)
   endpoint             String
   deployment           String
   apiKeyEncrypted      String
   lastValidatedAt      DateTime? @db.Timestamptz(3)
   lastValidationStatus String?
-  createdAt            DateTime @db.Timestamptz(3) @default(now())
-  updatedAt            DateTime @db.Timestamptz(3) @updatedAt
-  tenant               Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt            DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime  @updatedAt @db.Timestamptz(3)
+  tenant               Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 }
 
 model SecurityAnalysis {
-  id                 String   @id @default(cuid())
-  tenantId           String
-  fortigateId        String
-  configArtifactId   String   @unique
-  configSha256       String
-  sourceBackupId     String   @unique
-  status             SecurityAnalysisStatus @default(PENDING)
-  score              Int?
-  criticalCount      Int      @default(0)
-  highCount          Int      @default(0)
-  mediumCount        Int      @default(0)
-  lowCount           Int      @default(0)
-  scoreComponents    String?
-  parserVersion      String
-  rulesetVersion     String
-  promptVersion      String
-  foundryDeployment  String
-  safeSummary        String?
-  redactionStats     String?
-  durationMs         Int?
-  errorCode          String?
-  createdAt          DateTime @db.Timestamptz(3) @default(now())
-  startedAt          DateTime? @db.Timestamptz(3)
-  completedAt        DateTime? @db.Timestamptz(3)
-  tenant             Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  fortigate          FortiGate @relation(fields: [fortigateId], references: [id], onDelete: Cascade)
-  configArtifact     ConfigArtifact @relation(fields: [tenantId, configArtifactId], references: [tenantId, id], onDelete: Restrict)
-  sourceBackup       Backup @relation("SourceBackup", fields: [sourceBackupId], references: [id], onDelete: Restrict)
-  job                SecurityAnalysisJob?
-  findings           SecurityFinding[]
-  report             SecurityAnalysisReport?
+  id                String                  @id @default(cuid())
+  tenantId          String
+  fortigateId       String
+  configArtifactId  String                  @unique
+  configSha256      String
+  sourceBackupId    String                  @unique
+  status            SecurityAnalysisStatus  @default(PENDING)
+  score             Int?
+  criticalCount     Int                     @default(0)
+  highCount         Int                     @default(0)
+  mediumCount       Int                     @default(0)
+  lowCount          Int                     @default(0)
+  scoreComponents   String?
+  parserVersion     String
+  rulesetVersion    String
+  promptVersion     String
+  foundryDeployment String
+  safeSummary       String?
+  redactionStats    String?
+  durationMs        Int?
+  errorCode         String?
+  createdAt         DateTime                @default(now()) @db.Timestamptz(3)
+  startedAt         DateTime?               @db.Timestamptz(3)
+  completedAt       DateTime?               @db.Timestamptz(3)
+  tenant            Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fortigate         FortiGate               @relation(fields: [fortigateId], references: [id], onDelete: Cascade)
+  configArtifact    ConfigArtifact          @relation(fields: [tenantId, configArtifactId], references: [tenantId, id], onDelete: Restrict)
+  sourceBackup      Backup                  @relation("SourceBackup", fields: [sourceBackupId], references: [id], onDelete: Restrict)
+  job               SecurityAnalysisJob?
+  findings          SecurityFinding[]
+  report            SecurityAnalysisReport?
 
   @@unique([tenantId, id])
   @@unique([tenantId, configArtifactId])
@@ -490,24 +502,27 @@ model SecurityAnalysis {
 }
 
 model SecurityAnalysisJob {
-  id             String   @id @default(cuid())
-  tenantId       String
-  fortigateId    String
-  analysisId     String   @unique
-  status         SecurityAnalysisJobStatus @default(PENDING)
-  attempts       Int      @default(0)
-  availableAt    DateTime @db.Timestamptz(3) @default(now())
-  workerId       String?
-  leaseExpiresAt DateTime? @db.Timestamptz(3)
-  heartbeatAt    DateTime? @db.Timestamptz(3)
-  errorCode      String?
-  createdAt      DateTime @db.Timestamptz(3) @default(now())
-  updatedAt      DateTime @db.Timestamptz(3) @updatedAt
-  finishedAt     DateTime? @db.Timestamptz(3)
-  tenant         Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  fortigate      FortiGate @relation(fields: [fortigateId], references: [id], onDelete: Cascade)
-  analysis       SecurityAnalysis @relation(fields: [tenantId, analysisId], references: [tenantId, id], onDelete: Cascade)
-  events         SecurityAnalysisJobEvent[]
+  id                   String                     @id @default(cuid())
+  tenantId             String
+  fortigateId          String
+  analysisId           String                     @unique
+  status               SecurityAnalysisJobStatus  @default(PENDING)
+  attempts             Int                        @default(0)
+  availableAt          DateTime                   @default(now()) @db.Timestamptz(3)
+  workerId             String?
+  leaseExpiresAt       DateTime?                  @db.Timestamptz(3)
+  heartbeatAt          DateTime?                  @db.Timestamptz(3)
+  errorCode            String?
+  reassessment         Boolean                    @default(false)
+  targetRulesetVersion String?
+  createdAt            DateTime                   @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime                   @updatedAt @db.Timestamptz(3)
+  finishedAt           DateTime?                  @db.Timestamptz(3)
+  tenant               Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fortigate            FortiGate                  @relation(fields: [fortigateId], references: [id], onDelete: Cascade)
+  analysis             SecurityAnalysis           @relation(fields: [tenantId, analysisId], references: [tenantId, id], onDelete: Cascade)
+  events               SecurityAnalysisJobEvent[]
+  targetRuleset        SecurityRuleset?           @relation(fields: [targetRulesetVersion], references: [version], onDelete: Restrict)
 
   @@unique([tenantId, id])
   @@unique([tenantId, analysisId])
@@ -515,13 +530,13 @@ model SecurityAnalysisJob {
 }
 
 model SecurityAnalysisJobEvent {
-  id        String   @id @default(cuid())
+  id        String              @id @default(cuid())
   tenantId  String
   jobId     String
   stage     String
   message   String
-  createdAt DateTime @db.Timestamptz(3) @default(now())
-  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt DateTime            @default(now()) @db.Timestamptz(3)
+  tenant    Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   job       SecurityAnalysisJob @relation(fields: [tenantId, jobId], references: [tenantId, id], onDelete: Cascade)
 
   @@unique([tenantId, id])
@@ -529,21 +544,21 @@ model SecurityAnalysisJobEvent {
 }
 
 model SecurityFinding {
-  id            String   @id @default(cuid())
-  tenantId      String
-  analysisId    String
-  ruleId        String
-  category      String
-  severity      SecuritySeverity
-  penalty       Int
-  title         String
-  explanation   String
-  evidence      String
-  remediation   String
-  createdAt     DateTime @db.Timestamptz(3) @default(now())
-  tenant        Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  analysis      SecurityAnalysis @relation(fields: [tenantId, analysisId], references: [tenantId, id], onDelete: Cascade)
-  dispositions  SecurityFindingDisposition[]
+  id           String                       @id @default(cuid())
+  tenantId     String
+  analysisId   String
+  ruleId       String
+  category     String
+  severity     SecuritySeverity
+  penalty      Int
+  title        String
+  explanation  String
+  evidence     String
+  remediation  String
+  createdAt    DateTime                     @default(now()) @db.Timestamptz(3)
+  tenant       Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  analysis     SecurityAnalysis             @relation(fields: [tenantId, analysisId], references: [tenantId, id], onDelete: Cascade)
+  dispositions SecurityFindingDisposition[]
 
   @@unique([tenantId, id])
   @@unique([analysisId, ruleId, evidence])
@@ -551,32 +566,69 @@ model SecurityFinding {
 }
 
 model SecurityFindingDisposition {
-  id          String   @id @default(cuid())
+  id          String                 @id @default(cuid())
   tenantId    String
   findingId   String
   kind        FindingDispositionKind
   rationale   String?
   createdById String
-  createdAt   DateTime @db.Timestamptz(3) @default(now())
-  updatedAt   DateTime @db.Timestamptz(3) @updatedAt
-  finding     SecurityFinding @relation(fields: [tenantId, findingId], references: [tenantId, id], onDelete: Cascade)
+  createdAt   DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime               @updatedAt @db.Timestamptz(3)
+  finding     SecurityFinding        @relation(fields: [tenantId, findingId], references: [tenantId, id], onDelete: Cascade)
 
   @@unique([tenantId, findingId])
   @@index([tenantId, kind])
 }
 
 model SecurityAnalysisReport {
-  id          String   @id @default(cuid())
-  tenantId    String
-  analysisId  String   @unique
-  path        String
-  sha256      String
-  filesize    Int
-  createdAt   DateTime @db.Timestamptz(3) @default(now())
-  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  analysis    SecurityAnalysis @relation(fields: [tenantId, analysisId], references: [tenantId, id], onDelete: Restrict)
+  id         String           @id @default(cuid())
+  tenantId   String
+  analysisId String           @unique
+  path       String
+  sha256     String
+  filesize   Int
+  createdAt  DateTime         @default(now()) @db.Timestamptz(3)
+  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  analysis   SecurityAnalysis @relation(fields: [tenantId, analysisId], references: [tenantId, id], onDelete: Restrict)
 
   @@unique([tenantId, id])
   @@unique([tenantId, analysisId])
   @@index([tenantId, createdAt])
+}
+
+model SecurityRuleset {
+  id           String                @id @default(cuid())
+  version      String                @unique
+  status       SecurityRulesetStatus @default(DRAFT)
+  changeReason String
+  createdById  String
+  createdAt    DateTime              @default(now()) @db.Timestamptz(3)
+  publishedAt  DateTime?             @db.Timestamptz(3)
+  rules        SecurityRule[]
+  jobs         SecurityAnalysisJob[]
+
+  @@index([status, createdAt])
+}
+
+model SecurityRule {
+  id            String                @id @default(cuid())
+  rulesetId     String
+  ruleId        String
+  enabled       Boolean               @default(true)
+  category      String
+  severity      SecuritySeverity
+  weight        Int
+  title         String
+  explanation   String
+  remediation   String
+  positiveTitle String
+  evaluator     SecurityRuleEvaluator
+  configPath    String?
+  conditions    String?
+  sortOrder     Int                   @default(0)
+  createdAt     DateTime              @default(now()) @db.Timestamptz(3)
+  ruleset       SecurityRuleset       @relation(fields: [rulesetId], references: [id], onDelete: Cascade)
+
+  @@unique([rulesetId, ruleId])
+  @@index([rulesetId, enabled, sortOrder])
 }

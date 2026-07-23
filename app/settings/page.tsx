@@ -3,7 +3,7 @@ import { SettingsForm } from "@/components/settings-form";
 import { SettingsTabs } from "@/components/settings-tabs";
 import { FoundrySettingsPanel } from "@/components/foundry-settings-panel";
 import { UpdateStartForm } from "@/components/update-start-form";
-import { Badge, PageHeader, Panel, Shell } from "@/components/ui";
+import { ActionLink, Badge, PageHeader, Panel, Shell } from "@/components/ui";
 import { getAppUpdateStatus } from "@/lib/app-update";
 import { prisma } from "@/lib/db";
 import { getMailProviderMode } from "@/lib/mail";
@@ -39,6 +39,7 @@ export default async function SettingsPage({
   const tenantId = selectedTenantId || null;
   const isGlobalScope = Boolean(tenantId && tenantId === globalTenantId);
   const canManageFoundry = !user.breakGlassSettingsOnly && !isGlobalScope && await hasPermission(user, "security.foundry.manage");
+  const canReadRulesets=!user.breakGlassSettingsOnly&&isGlobalScope&&await hasPermission(user,"platform.security.rulesets.read");
   const [canReadBaseSettings, canReadMail, canReadItGlue, canReadAutotask, canReadSso, canReadUpdates, canRunUpdates] =
     user.breakGlassSettingsOnly
       ? [false, false, false, false, true, false, false]
@@ -272,6 +273,7 @@ export default async function SettingsPage({
     allowSystemMail: !isGlobalScope
   };
   const foundryConfig = canManageFoundry && selectedTenantId ? await maskedFoundryConfig(selectedTenantId) : null;
+  const activeRuleset=canReadRulesets?await prisma.securityRuleset.findFirst({where:{status:"ACTIVE"},include:{_count:{select:{rules:true}}}}):null;
   const configTabs = user.breakGlassSettingsOnly
     ? ["sso"]
     : [
@@ -283,7 +285,7 @@ export default async function SettingsPage({
         ...(canReadSso ? ["sso"] : []),
         ...(canReadBaseSettings ? ["scheduler"] : [])
       ];
-  const tabIds = [...configTabs, ...(updateStatus ? ["updates"] : [])];
+  const tabIds = [...configTabs, ...(canReadRulesets?["rulesets"]:[]), ...(updateStatus ? ["updates"] : [])];
   if (!tabIds.length || (params?.tab && !tabIds.includes(params.tab))) notFound();
   const activeTab = params?.tab ?? tabIds[0];
 
@@ -376,6 +378,13 @@ export default async function SettingsPage({
               </Panel>
             )
           }] : []),
+          ...(canReadRulesets?[{
+            id:"rulesets",
+            label:"Beveiligingsregels",
+            href:settingsHref("rulesets"),
+            description:"Beheer globale, versieerbare FortiGate-controles voor toekomstige analyses en expliciete herbeoordelingen.",
+            content:<Panel title="Actieve ruleset" description="Gepubliceerde rulesets en analyses blijven immutable. Wijzigingen worden eerst als concept samengesteld."><div className="flex flex-wrap items-center gap-4"><Badge tone={activeRuleset?"success":"danger"}>{activeRuleset?`Versie ${activeRuleset.version}`:"Geen actieve ruleset"}</Badge>{activeRuleset?<span className="text-sm text-muted-foreground">{activeRuleset._count.rules} regels</span>:null}<ActionLink href="/settings/rulesets" variant="primary">Rulesets beheren</ActionLink></div></Panel>
+          }]:[]),
           ...(updateStatus
             ? [
                 {

@@ -1492,6 +1492,7 @@ export async function updateFortiGate(formData: FormData) {
       } : {}),
       vdom: parsed.vdom,
       scheduleType: parsed.scheduleType,
+      ...(parsed.scheduleType !== existing.scheduleType ? { nextRunAt: null } : {}),
       cronExpression: parsed.cronExpression,
       itGlueConfigurationId: parsed.itGlueConfigurationId
     },
@@ -1722,7 +1723,7 @@ async function validateSettingsForm(formData: FormData, tenantId: string | null)
   validateIntegerSetting(formData, "backup.retention.count", 1, 10000);
   validateIntegerSetting(formData, "backup.retry.count", 0, 10);
   const schedule = formData.get("backup.defaultSchedule");
-  if (schedule && !new Set(["HOURLY", "DAILY", "WEEKLY", "MONTHLY"]).has(String(schedule))) {
+  if (schedule && !new Set(["MANUAL", "HOURLY", "DAILY", "WEEKLY", "MONTHLY"]).has(String(schedule))) {
     throw new Error("Ongeldig standaard backupschema.");
   }
 }

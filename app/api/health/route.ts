@@ -8,7 +8,7 @@ export async function GET() {
     if(!database||database.version<160000||database.superuser||database.bypassrls)throw new Error("PostgreSQL runtime role voldoet niet aan de beveiligingseisen.");
     return NextResponse.json({
       status: "ok",
-      version: "0.2.18",
+      version: "0.2.19",
       database: "ok",
       databaseEngine: "postgresql",
       databaseVersion: database.version,

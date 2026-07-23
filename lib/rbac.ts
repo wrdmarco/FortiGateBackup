@@ -28,6 +28,8 @@ export const permissions = [
   { key: "platform.audit.read", category: "Platform", description: "Platformbrede auditlogs bekijken" },
   { key: "platform.health.read", category: "Platform", description: "Healthchecks en systeemstatus bekijken" },
   { key: "platform.version.read", category: "Platform", description: "Applicatieversie en Git commit bekijken" },
+  { key: "platform.security.rulesets.read", category: "Platform", description: "Globale FortiGate-rulesets bekijken" },
+  { key: "platform.security.rulesets.manage", category: "Platform", description: "Globale FortiGate-rulesetconcepten beheren en publiceren" },
   { key: "tenant.dashboard.read", category: "Tenant", description: "Tenant dashboard bekijken" },
   { key: "tenant.users.read", category: "Tenant", description: "Gebruikers binnen tenant bekijken" },
   { key: "tenant.users.create", category: "Tenant", description: "Tenantgebruikers aanmaken" },

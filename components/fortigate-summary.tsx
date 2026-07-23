@@ -130,7 +130,7 @@ export function FortiGateSummary({ device, timeZone }: { device: FortiGateSummar
         <section className="rounded-md border border-border bg-surface-soft p-4">
           <h3 className="font-semibold">Backup summary</h3>
           <dl className="mt-3 grid gap-2 text-sm">
-            <InfoRow label="Schema" value={device.scheduleType === "CRON" ? device.cronExpression ?? "Cron" : device.scheduleType} />
+            <InfoRow label="Schema" value={device.scheduleType === "MANUAL" ? "Alleen handmatig" : device.scheduleType === "CRON" ? device.cronExpression ?? "Cron" : device.scheduleType} />
             <InfoRow label="Volgende run" value={formatDate(device.nextRunAt, timeZone)} />
             <InfoRow label="Laatste status" value={latestBackup?.status ?? "Nog niet uitgevoerd"} />
             <InfoRow label="Laatste bestand" value={latestBackup?.filename ? `${latestBackup.filesize} bytes` : latestBackup?.error ?? "Geen bestand"} />

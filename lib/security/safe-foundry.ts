@@ -8,9 +8,9 @@ export const safeFoundryPayloadSchema = z.object({
   fortiOsVersion: z.string().regex(/^\d+(?:\.\d+){1,3}$/).max(24),
   score: z.number().int().min(0).max(100),
   findings: z.array(z.object({
-    ruleId: z.string().regex(/^FG-[A-Z]+-\d{3}$/),
+    ruleId: z.string().regex(/^FG-[A-Z0-9]+-\d{3}$/),
     severity: z.enum(["CRITICAL","HIGH","MEDIUM","LOW"]),
-    category: z.enum(["Firewallbeleid","Logging","Beheer","Security profiles","VPN","Objecten"]),
+    category: z.enum(["Firewallbeleid","Logging","Beheer","Security profiles","VPN","Objecten","Overig"]),
     objectToken: token,
     penalty: z.number().int().min(0).max(100),
     flags: z.record(z.string().regex(/^[a-z][a-zA-Z]+$/), z.boolean()).default({})
@@ -20,7 +20,8 @@ export const safeFoundryPayloadSchema = z.object({
 export type SafeFoundryPayload = z.infer<typeof safeFoundryPayloadSchema> & { readonly __safeFoundryPayload: unique symbol };
 
 export function createSafeFoundryPayload(input:{version:string;score:number;findings:LocalFinding[];counts:{policies:number;interfaces:number;vdoms:number}}):SafeFoundryPayload {
-  const candidate={schemaVersion:1 as const,fortiOsVersion:input.version,score:input.score,findings:input.findings.map((finding,index)=>({ruleId:finding.ruleId,severity:finding.severity,category:finding.category as "Firewallbeleid",objectToken:`OBJECT_${index+1}`,penalty:finding.penalty,flags:{requiresReview:true}})),counts:input.counts};
+  const allowedCategories=new Set(["Firewallbeleid","Logging","Beheer","Security profiles","VPN","Objecten"]);
+  const candidate={schemaVersion:1 as const,fortiOsVersion:input.version,score:input.score,findings:input.findings.map((finding,index)=>({ruleId:finding.ruleId,severity:finding.severity,category:(allowedCategories.has(finding.category)?finding.category:"Overig") as "Firewallbeleid",objectToken:`OBJECT_${index+1}`,penalty:finding.penalty,flags:{requiresReview:true}})),counts:input.counts};
   residualSecretScan(candidate);
   return safeFoundryPayloadSchema.parse(candidate) as SafeFoundryPayload;
 }

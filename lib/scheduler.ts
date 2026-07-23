@@ -61,6 +61,7 @@ async function runDueBackupsInternal() {
   const due = await prisma.fortiGate.findMany({
     where: {
       active: true,
+      scheduleType: { not: ScheduleType.MANUAL },
       customer: {
         active: true,
         tenantId: { in: enabledTenantIds },
@@ -92,6 +93,7 @@ async function runDueBackupsInternal() {
       where: {
         id: device.id,
         active: true,
+        scheduleType: { not: ScheduleType.MANUAL },
         customer: {
           active: true,
           tenantId: { in: enabledTenantIds },
@@ -114,6 +116,11 @@ async function runScheduledBackup(device: {
   timeZone: string;
   customer: { tenantId: string };
 }) {
+  const stillScheduled=await prisma.fortiGate.findFirst({where:{id:device.id,active:true,scheduleType:{not:ScheduleType.MANUAL}},select:{id:true}});
+  if(!stillScheduled){
+    await prisma.fortiGate.updateMany({where:{id:device.id,scheduleType:ScheduleType.MANUAL},data:{nextRunAt:null}});
+    return;
+  }
   let queueFailed = false;
   try {
     const queued = await enqueueScheduledBackup({ fortigateId: device.id, tenantId: device.customer.tenantId });

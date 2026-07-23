@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { UpdateMaintenanceScreen, UpdateRuntimeObserver } from "@/components/update-maintenance-screen";
 import { getUpdateRuntimeStatus } from "@/lib/app-update";
 import { currentUser } from "@/lib/session";
+import { NavigationProgress } from "@/components/navigation-progress";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -34,6 +35,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           />
         ) : (
           <>
+            <NavigationProgress />
             {children}
             {user ? <UpdateRuntimeObserver /> : null}
           </>

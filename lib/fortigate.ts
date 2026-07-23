@@ -10,7 +10,6 @@ import { applyBackupRetention } from "@/lib/backup-retention";
 import { decryptSecret, sha256 } from "@/lib/crypto";
 import { artifactRelativePath, writeImmutableArtifact } from "@/lib/security/artifact-storage";
 import { FORTIOS_PARSER_VERSION } from "@/lib/security/fortios-parser";
-import { SECURITY_RULESET_VERSION } from "@/lib/security/rules";
 import { tenantTransaction } from "@/lib/tenant-db";
 import { prisma } from "@/lib/db";
 import { uploadBackupToItGlue } from "@/lib/itglue";
@@ -759,7 +758,7 @@ async function runBackupInternal(deviceId: string, options: { notifyResult?: boo
         const created=await tx.backup.create({data:{tenantId,fortigateId:device.id,configArtifactId:artifact.id,filename:path.relative(process.cwd(),fullPath),sha256:digest,filesize:config.byteLength,status:BackupStatus.CHANGED}});
         const existing=await tx.securityAnalysis.findUnique({where:{tenantId_fortigateId_configSha256:{tenantId,fortigateId:device.id,configSha256:digest}},select:{id:true}});
         const foundry=await tx.tenantFoundryConfig.findUnique({where:{tenantId},select:{enabled:true,endpoint:true,deployment:true,apiKeyEncrypted:true}});
-        if(!existing&&foundry?.enabled&&foundry.endpoint&&foundry.deployment&&foundry.apiKeyEncrypted){const analysis=await tx.securityAnalysis.create({data:{tenantId,fortigateId:device.id,configArtifactId:artifact.id,configSha256:digest,sourceBackupId:created.id,parserVersion:FORTIOS_PARSER_VERSION,rulesetVersion:SECURITY_RULESET_VERSION,promptVersion:"1.0.0",foundryDeployment:foundry.deployment}});await tx.securityAnalysisJob.create({data:{tenantId,fortigateId:device.id,analysisId:analysis.id}});}
+        if(!existing&&foundry?.enabled&&foundry.endpoint&&foundry.deployment&&foundry.apiKeyEncrypted){const ruleset=await tx.securityRuleset.findFirst({where:{status:"ACTIVE"},select:{version:true}});if(!ruleset)throw new Error("ACTIVE_RULESET_MISSING");const analysis=await tx.securityAnalysis.create({data:{tenantId,fortigateId:device.id,configArtifactId:artifact.id,configSha256:digest,sourceBackupId:created.id,parserVersion:FORTIOS_PARSER_VERSION,rulesetVersion:ruleset.version,promptVersion:"1.0.0",foundryDeployment:foundry.deployment}});await tx.securityAnalysisJob.create({data:{tenantId,fortigateId:device.id,analysisId:analysis.id,targetRulesetVersion:ruleset.version}});}
         return created;
       });
     } catch (error) {

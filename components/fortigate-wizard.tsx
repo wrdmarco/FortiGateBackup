@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { FortiGateCreateState } from "@/app/actions";
 import { FieldError, FormFeedback } from "@/components/form-feedback";
 
@@ -79,6 +80,7 @@ export function FortiGateWizard({
   successHref?: string;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
+  const router=useRouter();
   const [step, setStep] = useState(0);
   const [furthestStep, setFurthestStep] = useState(0);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<WizardFieldName, string>>>({});
@@ -90,10 +92,11 @@ export function FortiGateWizard({
 
   useEffect(() => {
     if (!state.ok) return;
-    window.location.href = state.customerId && state.deviceId
+    const destination = state.customerId && state.deviceId
       ? `/customers/${state.customerId}/fortigates/${state.deviceId}`
       : successHref ?? "/customers";
-  }, [state.customerId, state.deviceId, state.ok, successHref]);
+    router.replace(destination);
+  }, [router,state.customerId, state.deviceId, state.ok, successHref]);
 
   function fieldElement(name: WizardFieldName) {
     return formRef.current?.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | null;
@@ -251,7 +254,7 @@ export function FortiGateWizard({
             <p className="mt-1 text-sm text-muted-foreground">{steps[step].description}</p>
           </div>
 
-          <section hidden={step !== 0} className="grid gap-5" aria-labelledby="wizard-step-title">
+          <section hidden={step !== 0} className={step===0?"grid gap-5":"hidden"} aria-labelledby="wizard-step-title">
             <label className="grid gap-1 text-sm">
               <span className="font-medium">Klant</span>
               <select
@@ -294,7 +297,7 @@ export function FortiGateWizard({
             </div>
           </section>
 
-          <section hidden={step !== 1} className="grid gap-5" aria-labelledby="wizard-step-title">
+          <section hidden={step !== 1} className={step===1?"grid gap-5":"hidden"} aria-labelledby="wizard-step-title">
             <div className="grid gap-4">
               <Instruction number="1" title="Open de FortiGate GUI">
                 Log in op de FortiGate en ga naar System, Administrators, Create New, REST API Admin.
@@ -318,7 +321,7 @@ export function FortiGateWizard({
             </div>
           </section>
 
-          <section hidden={step !== 2} className="grid gap-4" aria-labelledby="wizard-step-title">
+          <section hidden={step !== 2} className={step===2?"grid gap-4":"hidden"} aria-labelledby="wizard-step-title">
             <label className="grid gap-1 text-sm">
               <span className="font-medium">Management URL</span>
               <input
@@ -415,7 +418,7 @@ export function FortiGateWizard({
             </div>
           </section>
 
-          <section hidden={step !== 3} className="grid gap-5" aria-labelledby="wizard-step-title">
+          <section hidden={step !== 3} className={step===3?"grid gap-5":"hidden"} aria-labelledby="wizard-step-title">
             <label className="grid gap-1 text-sm">
               <span className="font-medium">Backupschema</span>
               <select
@@ -433,13 +436,14 @@ export function FortiGateWizard({
                 }}
                 onBlur={() => validateField("scheduleType")}
               >
+                <option value="MANUAL">Alleen handmatig</option>
                 <option value="HOURLY">Elk uur</option>
                 <option value="DAILY">Dagelijks</option>
                 <option value="WEEKLY">Wekelijks</option>
                 <option value="MONTHLY">Maandelijks</option>
                 <option value="CRON">Cron</option>
               </select>
-              <span id="wizard-schedule-help" className="text-xs text-muted-foreground">Dagelijks is voor de meeste klanten een nette balans tussen historie en opslag.</span>
+              <span id="wizard-schedule-help" className="text-xs text-muted-foreground">Bij Alleen handmatig plant de scheduler nooit automatisch een backup; de handmatige backupknop blijft beschikbaar.</span>
               <FieldError id="wizard-schedule-error" message={fieldErrors.scheduleType} />
             </label>
 
@@ -476,7 +480,7 @@ export function FortiGateWizard({
             </div>
           </section>
 
-          <section hidden={step !== 4} className="grid gap-5" aria-labelledby="wizard-step-title">
+          <section hidden={step !== 4} className={step===4?"grid gap-5":"hidden"} aria-labelledby="wizard-step-title">
             {state.certificate ? (
               <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100" role="alert">
                 <p className="font-semibold">

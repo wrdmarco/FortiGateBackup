@@ -4,19 +4,20 @@ import { auditLog } from "@/lib/audit";
 import { sha256 } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 import { tenantTransaction } from "@/lib/tenant-db";
-import { verifyImmutableArtifact } from "./artifact-storage";
+import { removeVerifiedReportArtifact, verifyImmutableArtifact } from "./artifact-storage";
 import { enrichWithFoundry } from "./foundry";
 import { getUsableFoundryConfig } from "./foundry-config";
 import { FORTIOS_PARSER_VERSION, parseFortiOsConfig } from "./fortios-parser";
 import { generateSecurityReport } from "./report";
-import { evaluateFortiOs, SECURITY_RULESET_VERSION } from "./rules";
+import { evaluateFortiOs } from "./rules";
+import { activeSecurityRuleset } from "./ruleset";
 import { createSafeFoundryPayload, safePayloadDigest } from "./safe-foundry";
 
 const WORKER_ID = `analysis-${process.pid}-${randomUUID()}`;
 const LEASE_MS = 60_000;
 const MAX_ATTEMPTS = 4;
 export const ANALYSIS_CONCURRENCY = 2;
-type Claimed = { id: string; tenantId: string; analysisId: string; fortigateId: string; attempts: number };
+type Claimed = { id: string; tenantId: string; analysisId: string; fortigateId: string; attempts: number; reassessment: boolean; targetRulesetVersion:string|null };
 let processing: Promise<void> | null = null;
 
 export function processSecurityAnalysisJobs() {
@@ -55,7 +56,7 @@ async function claim() {
       SET status='RUNNING',"workerId"=${WORKER_ID},"leaseExpiresAt"=now()+interval '60 seconds',
           "heartbeatAt"=now(),attempts=attempts+1,"updatedAt"=now()
       FROM candidate WHERE j.id=candidate.id
-      RETURNING j.id,j."tenantId",j."analysisId",j."fortigateId",j.attempts
+      RETURNING j.id,j."tenantId",j."analysisId",j."fortigateId",j.attempts,j.reassessment,j."targetRulesetVersion"
     `;
     return rows[0] ?? null;
   });
@@ -64,18 +65,21 @@ async function claim() {
 async function execute(job: Claimed) {
   const heartbeat = setInterval(() => void heartbeatJob(job).catch(() => undefined), 20_000);
   heartbeat.unref();
+  let stagedReport: { relative: string; digest: string; size: number } | null = null;
   try {
     await progress(job, "CLAIMED", "Analysejob is door de worker opgepakt.");
     const data = await tenantTransaction(job.tenantId, async (tx) => {
       const analysis = await tx.securityAnalysis.findUniqueOrThrow({
         where: { tenantId_id: { tenantId: job.tenantId, id: job.analysisId } },
-        include: { configArtifact: true, sourceBackup: true, fortigate: { include: { customer: { include: { tenant: true } } } } }
+        include: { configArtifact: true, sourceBackup: true, report: true, fortigate: { include: { customer: { include: { tenant: true } } } } }
       });
-      if (analysis.status === SecurityAnalysisStatus.COMPLETED) return null;
-      await tx.securityAnalysis.update({
-        where: { id: analysis.id },
-        data: { status: SecurityAnalysisStatus.RUNNING, startedAt: analysis.startedAt ?? new Date(), errorCode: null, parserVersion: FORTIOS_PARSER_VERSION }
-      });
+      if (analysis.status === SecurityAnalysisStatus.COMPLETED && !job.reassessment) return null;
+      if (!job.reassessment) {
+        await tx.securityAnalysis.update({
+          where: { id: analysis.id },
+          data: { status: SecurityAnalysisStatus.RUNNING, startedAt: analysis.startedAt ?? new Date(), errorCode: null, parserVersion: FORTIOS_PARSER_VERSION }
+        });
+      }
       return analysis;
     });
     if (!data) return;
@@ -92,7 +96,8 @@ async function execute(job: Claimed) {
     if (parsed.digest !== data.configSha256) throw new Error("ARTIFACT_INTEGRITY_FAILED");
 
     await progress(job, "LOCAL_RULES", "Deterministische beveiligingsregels en score worden lokaal berekend.");
-    const local = evaluateFortiOs(parsed);
+    const ruleset=await activeSecurityRuleset(job.targetRulesetVersion??data.rulesetVersion);
+    const local = evaluateFortiOs(parsed,ruleset.rules);
     const payload = createSafeFoundryPayload({
       version: parsed.version,
       score: local.score,
@@ -141,15 +146,24 @@ async function execute(job: Claimed) {
       scoreComponents: local.scoreComponents,
       hash: data.configSha256,
       parserVersion: data.parserVersion,
-      rulesetVersion: SECURITY_RULESET_VERSION,
+      rulesetVersion: ruleset.version,
       summary: enrichment.managementSummary,
       findings: local.findings,
       newFindingIds,
       resolvedFindingIds
+      ,replacement: job.reassessment
     });
+    const reportDigest=sha256(report.buffer);
+    stagedReport = { relative: report.relative, digest: reportDigest, size: report.buffer.byteLength };
 
     await progress(job, "PERSIST", "Bevindingen, score en rapportintegriteit worden atomisch vastgelegd.");
+    const oldReport = data.report;
     await tenantTransaction(job.tenantId, async (tx) => {
+      if (job.reassessment) {
+        await tx.securityFindingDisposition.deleteMany({ where: { tenantId: job.tenantId, finding: { analysisId: job.analysisId } } });
+        await tx.securityFinding.deleteMany({ where: { tenantId: job.tenantId, analysisId: job.analysisId } });
+        await tx.securityAnalysisReport.deleteMany({ where: { tenantId: job.tenantId, analysisId: job.analysisId } });
+      }
       await tx.securityFinding.createMany({
         data: local.findings.map((finding) => ({
           ...finding,
@@ -164,7 +178,7 @@ async function execute(job: Claimed) {
           tenantId: job.tenantId,
           analysisId: job.analysisId,
           path: report.relative,
-          sha256: sha256(report.buffer),
+          sha256: reportDigest,
           filesize: report.buffer.byteLength
         }
       });
@@ -179,7 +193,7 @@ async function execute(job: Claimed) {
           mediumCount: count("MEDIUM"),
           lowCount: count("LOW"),
           scoreComponents: JSON.stringify({ passedControls: local.passedControls, totalControls: local.totalControls, components: local.scoreComponents }),
-          rulesetVersion: SECURITY_RULESET_VERSION,
+          rulesetVersion: ruleset.version,
           safeSummary: enrichment.managementSummary,
           redactionStats: JSON.stringify({
             payloadSha256: safePayloadDigest(payload),
@@ -197,14 +211,28 @@ async function execute(job: Claimed) {
         data: { tenantId: job.tenantId, jobId: job.id, stage: "COMPLETED", message: "Analyse en immutable PDF zijn succesvol voltooid." }
       });
     });
+    stagedReport = null;
+    if (job.reassessment && oldReport && oldReport.path !== report.relative) {
+      await progress(job, "OLD_REPORT_CLEANUP", "Het vervangen PDF-rapport wordt na de geslaagde cutover veilig verwijderd.");
+      try {
+        await removeReportWithRetry(oldReport.path, oldReport.sha256, oldReport.filesize);
+        await progress(job, "OLD_REPORT_CLEANUP_COMPLETED", "Het vervangen PDF-rapport is na hashcontrole verwijderd.");
+      } catch {
+        await progress(job, "OLD_REPORT_CLEANUP_FAILED", "Het nieuwe rapport is actief, maar gecontroleerde opschoning van het oude PDF-bestand vereist beheeractie.");
+        await auditLog({action:"security.report.cleanup_failed",tenantId:job.tenantId,entity:"SecurityAnalysisReport",entityId:oldReport.id,outcome:"failure",reason:"VERIFIED_DELETE_FAILED"});
+      }
+    }
     await auditLog({
-      action: "security.analysis.completed",
+      action: job.reassessment ? "security.analysis.reassessment_completed" : "security.analysis.completed",
       tenantId: job.tenantId,
       entity: "SecurityAnalysis",
       entityId: job.analysisId,
       metadata: { score: local.score, reportId, deployment: data.foundryDeployment }
     });
   } catch (error) {
+    if (stagedReport) {
+      await removeReportWithRetry(stagedReport.relative, stagedReport.digest, stagedReport.size).catch(() => undefined);
+    }
     await fail(job, error instanceof Error ? error.message : "ANALYSIS_FAILED");
   } finally {
     clearInterval(heartbeat);
@@ -245,30 +273,45 @@ async function fail(job: Claimed, code: string) {
         ...(!retry ? { finishedAt: new Date() } : {})
       }
     });
-    await tx.securityAnalysis.update({
-      where: { id: job.analysisId },
-      data: {
-        status: retry ? SecurityAnalysisStatus.PENDING : safe === "REPORTING_NOT_CONFIGURED" ? SecurityAnalysisStatus.BLOCKED : SecurityAnalysisStatus.FAILED,
-        errorCode: safe
-      }
-    });
+    if (!job.reassessment) {
+      await tx.securityAnalysis.update({
+        where: { id: job.analysisId },
+        data: {
+          status: retry ? SecurityAnalysisStatus.PENDING : safe === "REPORTING_NOT_CONFIGURED" ? SecurityAnalysisStatus.BLOCKED : SecurityAnalysisStatus.FAILED,
+          errorCode: safe
+        }
+      });
+    }
     await tx.securityAnalysisJobEvent.create({
       data: {
         tenantId: job.tenantId,
         jobId: job.id,
         stage: retry ? "RETRY_SCHEDULED" : "FAILED",
-        message: retry ? "Analyse is veilig opnieuw ingepland." : analysisErrorMessage(safe)
+        message: retry ? (job.reassessment ? "Herbeoordeling is veilig opnieuw ingepland; het bestaande rapport blijft beschikbaar." : "Analyse is veilig opnieuw ingepland.") : (job.reassessment ? `Herbeoordeling mislukt; het bestaande rapport is behouden. ${analysisErrorMessage(safe)}` : analysisErrorMessage(safe))
       }
     });
   });
   await auditLog({
-    action: safe === "SENSITIVE_DATA_DETECTED" ? "security.analysis.secret_preflight_blocked" : "security.analysis.failed",
+    action: safe === "SENSITIVE_DATA_DETECTED" ? "security.analysis.secret_preflight_blocked" : job.reassessment ? "security.analysis.reassessment_failed" : "security.analysis.failed",
     tenantId: job.tenantId,
     entity: "SecurityAnalysis",
     entityId: job.analysisId,
     outcome: "failure",
     reason: safe
   });
+}
+
+async function removeReportWithRetry(relative:string,digest:string,size:number) {
+  let lastError: unknown;
+  for (let attempt=0;attempt<3;attempt+=1) {
+    try {
+      await removeVerifiedReportArtifact(relative,digest,size);
+      return;
+    } catch (error) {
+      lastError=error;
+    }
+  }
+  throw lastError;
 }
 
 function analysisErrorMessage(code: string) {

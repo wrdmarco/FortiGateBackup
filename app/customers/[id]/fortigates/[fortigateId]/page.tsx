@@ -131,7 +131,7 @@ export default async function CustomerFortiGatePage({
         <Card title="Model" value={device.model ?? "-"} detail={device.serialNumber ?? "Geen serienummer"} />
         {canReadFirmware ? <Card title="Firmware" value={device.firmwareVersion ?? "-"} detail={device.firmwareBuild ? `Build ${device.firmwareBuild}` : "Geen build"} /> : null}
         {canReadBackups ? <Card title="Laatste backup" value={latestBackup?.status ?? "-"} detail={latestBackup ? formatDateTime(latestBackup.createdAt, timeZone) : "Nog niet uitgevoerd"} /> : null}
-        <Card title="Schema" value={device.scheduleType} detail={device.cronExpression ?? "Standaard schema"} />
+        <Card title="Schema" value={device.scheduleType==="MANUAL"?"Alleen handmatig":device.scheduleType} detail={device.scheduleType==="MANUAL"?"Geen automatische backups":device.cronExpression ?? "Standaard schema"} />
         <Card title="TLS" value="Altijd aan" detail={device.tlsCertificateFingerprint ? "Geaccepteerde fingerprint" : "PKI-validatie"} />
         {canReadSecurity ? <Card
           title="Beveiligingsscore"
@@ -222,7 +222,7 @@ export default async function CustomerFortiGatePage({
             <InfoRow label="Serienummer" value={device.serialNumber ?? "Niet uitgelezen"} />
             <InfoRow label="VDOM" value={device.vdom ?? "Global"} />
             <InfoRow label="TLS" value={device.tlsCertificateFingerprint ? "Aan · fingerprint geaccepteerd" : "Aan · PKI-validatie"} />
-            <InfoRow label="Schema" value={device.scheduleType === "CRON" ? device.cronExpression ?? "Cron" : device.scheduleType} />
+            <InfoRow label="Schema" value={device.scheduleType === "MANUAL" ? "Alleen handmatig" : device.scheduleType === "CRON" ? device.cronExpression ?? "Cron" : device.scheduleType} />
             {canReadFirmware ? <InfoRow label="Firmware" value={[device.firmwareVersion, device.firmwareBuild ? `build ${device.firmwareBuild}` : null].filter(Boolean).join(" ") || "Niet uitgelezen"} /> : null}
             {canReadBackups ? <InfoRow label="Laatste backup" value={latestBackup ? `${latestBackup.status} - ${formatDateTime(latestBackup.createdAt, timeZone)}` : "Nog niet uitgevoerd"} /> : null}
             {canReadBackups ? <InfoRow label="Laatste wijziging" value={latestStoredBackup ? formatDateTime(latestStoredBackup.createdAt, timeZone) : "Nog geen gewijzigde backup"} /> : null}

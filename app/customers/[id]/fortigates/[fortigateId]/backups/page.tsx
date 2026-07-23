@@ -1,13 +1,15 @@
 import { BackupStatus } from "@prisma/client";
 import { notFound } from "next/navigation";
 import { firstQueryValue, normalizePage, parsePageParam, ServerPagination } from "@/components/server-pagination";
-import { ActionLink, Badge, PageHeader, Shell, TableShell } from "@/components/ui";
+import { reassessSecurityAnalysisAction } from "@/app/security/actions";
+import { ActionLink, Badge, Button, PageHeader, Shell, TableShell } from "@/components/ui";
 import { assertOperationalTenant, assertTenantAccess, requirePermission } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { hasPermission } from "@/lib/rbac";
 import { formatDateTime } from "@/lib/time";
 import { getTenantTimeZone } from "@/lib/tenant-timezone";
 import { tenantTransaction } from "@/lib/tenant-db";
+import { isGlobalTenantId } from "@/lib/tenant-main";
 
 export const dynamic = "force-dynamic";
 const PAGE_SIZE = 50;
@@ -33,10 +35,13 @@ export default async function CustomerFortiGateBackupsPage({
   if (!device) notFound();
   assertTenantAccess(user, device.customer.tenantId);
   await assertOperationalTenant(user, device.customer.tenantId);
-  const [canDownloadBackup, canReadDiff] = await Promise.all([
+  const [canDownloadBackup, canReadDiff, hasReassessPermission, globalOrigin] = await Promise.all([
     hasPermission(user, "backups.download"),
-    hasPermission(user, "backups.diff.read")
+    hasPermission(user, "backups.diff.read"),
+    hasPermission(user, "security.analyses.reassess"),
+    isGlobalTenantId(user.tenantId)
   ]);
+  const canReassess=globalOrigin&&hasReassessPermission;
   const backupWhere = { fortigateId: device.id, ...(status ? { status } : {}) };
   const totalBackups = await prisma.backup.count({ where: backupWhere });
   const page = normalizePage(requestedPage, totalBackups, PAGE_SIZE);
@@ -109,6 +114,7 @@ export default async function CustomerFortiGateBackupsPage({
                       {canReadDiff ? <ActionLink href={`${detailHref}/backups/${backup.id}/diff`}>Diff</ActionLink> : null}
                     </>
                   ) : <span className="text-muted-foreground">{backup.filename ? "Geen actie toegestaan" : "Geen bestand"}</span>}
+                  {canReassess&&backup.status==="CHANGED"&&backup.configArtifact?.analysis?.status==="COMPLETED"&&backup.configArtifact.analysis.report?<form action={reassessSecurityAnalysisAction}><input name="backupId" type="hidden" value={backup.id}/><Button type="submit" variant="secondary">Opnieuw beoordelen</Button></form>:null}
                 </td>
               </tr>
             )) : (

@@ -278,3 +278,11 @@ textarea {
     transition-duration: 0.01ms !important;
   }
 }
+@keyframes navigation-progress {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(310%); }
+}
+.navigation-progress-bar { animation: navigation-progress 1.05s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .navigation-progress-bar { animation: none; width: 100%; }
+}

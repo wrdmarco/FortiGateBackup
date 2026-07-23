@@ -69,7 +69,7 @@ export default async function QueuePage() {
       <h2 className="font-display text-xl font-semibold">Analysetaken</h2>
       <TableShell>
         <table className="table-pro w-full min-w-[1080px] text-left text-sm">
-          <thead className="bg-surface-soft"><tr><th>FortiGate</th><th>Klant</th><th>Status</th><th>Actuele fase</th><th>Bijgewerkt</th><th>Pogingen</th><th>Actie</th></tr></thead>
+          <thead className="bg-surface-soft"><tr><th>FortiGate</th><th>Klant</th><th>Taak</th><th>Status</th><th>Actuele fase</th><th>Bijgewerkt</th><th>Pogingen</th><th>Actie</th></tr></thead>
           <tbody>
             {analysisJobs.length ? analysisJobs.map((job) => {
               const latest = job.events.at(-1);
@@ -79,6 +79,7 @@ export default async function QueuePage() {
                   <span className="mt-1 block font-mono text-[0.7rem] text-muted-foreground">{job.analysis.configSha256.slice(0, 12)}</span>
                 </td>
                 <td>{job.fortigate.customer.name}</td>
+                <td><Badge>{job.reassessment?"Herbeoordeling":"Analyse"}</Badge></td>
                 <td><AnalysisJobBadge status={job.status}/>{job.errorCode ? <p className="mt-1 text-xs text-danger">{analysisErrorLabel(job.errorCode)}</p> : null}</td>
                 <td className="max-w-sm"><p className="font-medium">{latest?.message ?? "Taak wacht op de analyseworker."}</p><p className="mt-1 font-mono text-[0.7rem] text-muted-foreground">{latest?.stage ?? "QUEUED"}</p></td>
                 <td className="font-mono text-xs">{formatDateTime(job.updatedAt, timeZone)}</td>
@@ -109,7 +110,7 @@ export default async function QueuePage() {
                   </div>
                 </td>
               </tr>;
-            }) : <tr className="border-t border-border"><td className="py-10 text-center text-muted-foreground" colSpan={7}>Er zijn geen actieve of recent voltooide analysetaken.</td></tr>}
+            }) : <tr className="border-t border-border"><td className="py-10 text-center text-muted-foreground" colSpan={8}>Er zijn geen actieve of recent voltooide analysetaken.</td></tr>}
           </tbody>
         </table>
       </TableShell>

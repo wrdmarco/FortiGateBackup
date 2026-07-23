@@ -3,6 +3,8 @@ import { rm } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { generateSecurityReport } from "./report";
+import { removeVerifiedReportArtifact, verifyImmutableArtifact } from "./artifact-storage";
+import { sha256 } from "@/lib/crypto";
 import type { LocalFinding } from "./rules";
 
 test("genereert een geldig meerpagina-PDF zonder ruwe configuratie of secrets", async () => {
@@ -47,4 +49,25 @@ test("genereert een geldig meerpagina-PDF zonder ruwe configuratie of secrets", 
   assert.match(pdf.toString("latin1"), /\/Type\s*\/Page\b/);
   assert.doesNotMatch(pdf.toString("latin1"), /synthetic-secret|config firewall policy|set password/i);
   if (process.env.KEEP_PDF_FIXTURE !== "1") await rm(testRoot, { recursive: true, force: true });
+});
+
+test("bouwt een vervangend rapport naast het bestaande en verwijdert alleen hash-geverifieerd", async () => {
+  const testRoot = path.join(process.cwd(), "data", "backups", "tenant_replacement");
+  await rm(testRoot, { recursive: true, force: true });
+  const common = {
+    tenantId:"tenant_replacement",tenantName:"Tenant",customerName:"Klant",fortigateId:"fortigate_replacement",
+    hostname:"FG",model:"FortiGate",fortiOsVersion:"7.4.x",configDate:new Date("2026-01-01T00:00:00Z"),
+    analysisDate:new Date("2026-01-02T00:00:00Z"),score:100,scoreDelta:null,passedControls:1,totalControls:1,
+    scoreComponents:[],hash:"b".repeat(64),parserVersion:"1",rulesetVersion:"1",summary:"Veilig",
+    findings:[] as LocalFinding[],newFindingIds:[] as string[],resolvedFindingIds:[] as string[]
+  };
+  const original=await generateSecurityReport({reportId:"original",...common});
+  const replacement=await generateSecurityReport({reportId:"replacement",...common,replacement:true});
+  assert.notEqual(original.relative,replacement.relative);
+  await verifyImmutableArtifact(original.relative,sha256(original.buffer),original.buffer.length);
+  await verifyImmutableArtifact(replacement.relative,sha256(replacement.buffer),replacement.buffer.length);
+  await removeVerifiedReportArtifact(original.relative,sha256(original.buffer),original.buffer.length);
+  await assert.rejects(()=>verifyImmutableArtifact(original.relative,sha256(original.buffer),original.buffer.length));
+  await verifyImmutableArtifact(replacement.relative,sha256(replacement.buffer),replacement.buffer.length);
+  await rm(testRoot,{recursive:true,force:true});
 });

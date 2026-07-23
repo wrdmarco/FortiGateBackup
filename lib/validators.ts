@@ -31,7 +31,7 @@ const fortigateBaseSchema = z.object({
   apiToken: z.string().min(8).max(4096),
   tlsVerify: z.boolean().refine((value) => value, "TLS-certificaatcontrole moet ingeschakeld zijn."),
   vdom: z.string().trim().max(160).optional(),
-  scheduleType: z.enum(["HOURLY", "DAILY", "WEEKLY", "MONTHLY", "CRON"]).default("DAILY"),
+  scheduleType: z.enum(["MANUAL", "HOURLY", "DAILY", "WEEKLY", "MONTHLY", "CRON"]).default("DAILY"),
   cronExpression: z.string().trim().max(255).optional(),
   itGlueConfigurationId: z.string().trim().max(160).optional(),
   active: z.boolean().default(true)

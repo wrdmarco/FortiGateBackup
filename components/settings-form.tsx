@@ -401,6 +401,7 @@ export function SettingsForm({
                 <label className="grid gap-1 text-sm">
                   <span className="font-medium">Standaard schema</span>
                   <select className="rounded-md border border-border bg-surface px-3 py-2" name="backup.defaultSchedule" defaultValue={values.backupDefaultSchedule}>
+                    <option value="MANUAL">Alleen handmatig</option>
                     <option value="HOURLY">Elk uur</option>
                     <option value="DAILY">Dagelijks</option>
                     <option value="WEEKLY">Wekelijks</option>
