@@ -32,9 +32,23 @@ test("PostgreSQL dwingt één actieve en immutable gepubliceerde ruleset af",asy
 });
 
 test("rulesetactions vereisen Global-context en aparte platformpermission",async()=>{
-  const actions=await readFile("app/settings/rulesets/actions.ts","utf8");
+  const actions=await readFile("app/rulesets/actions.ts","utf8");
   assert.match(actions,/platform\.security\.rulesets\.manage/);
   assert.match(actions,/isGlobalTenantId\(user\.tenantId\)/);
   assert.match(actions,/isGlobalTenantId\(tenantId\)/);
   assert.doesNotMatch(actions,/eval\(|new Function|child_process/);
+});
+
+test("zelfstandige ruleset-builder gebruikt alleen geallowliste bouwstenen",async()=>{
+  const [builder,form,settings]=await Promise.all([
+    readFile("app/rulesets/[rulesetId]/page.tsx","utf8"),
+    readFile("app/rulesets/[rulesetId]/rules/rule-form.tsx","utf8"),
+    readFile("app/settings/page.tsx","utf8")
+  ]);
+  assert.match(builder,/Ruleset-builder/);
+  assert.match(builder,/moveRuleAction/);
+  assert.match(form,/RULE_FIELD_ALLOWLIST/);
+  assert.match(form,/RULE_PATH_ALLOWLIST/);
+  assert.match(form,/Voorwaarde toevoegen/);
+  assert.doesNotMatch(settings,/id:"rulesets"/);
 });

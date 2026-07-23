@@ -78,6 +78,24 @@ export async function deleteDraftRule(rulesetId:string,ruleId:string){
   });
 }
 
+export async function moveDraftRule(rulesetId:string,ruleId:string,direction:"UP"|"DOWN"){
+  await prisma.$transaction(async(tx)=>{
+    await tx.$executeRaw`SELECT set_config('app.global_ruleset_admin','1',true)`;
+    const ruleset=await tx.securityRuleset.findUniqueOrThrow({where:{id:rulesetId}});
+    if(ruleset.status!==SecurityRulesetStatus.DRAFT)throw new Error("RULESET_IMMUTABLE");
+    const rules=await tx.securityRule.findMany({where:{rulesetId},orderBy:[{sortOrder:"asc"},{ruleId:"asc"}],select:{id:true}});
+    const index=rules.findIndex((rule)=>rule.id===ruleId);
+    if(index<0)throw new Error("RULE_NOT_FOUND");
+    const targetIndex=direction==="UP"?index-1:index+1;
+    if(targetIndex<0||targetIndex>=rules.length)return;
+    const ordered=[...rules];
+    [ordered[index],ordered[targetIndex]]=[ordered[targetIndex],ordered[index]];
+    for(const [position,rule] of ordered.entries()){
+      await tx.securityRule.update({where:{id:rule.id},data:{sortOrder:(position+1)*10}});
+    }
+  },{isolationLevel:"Serializable"});
+}
+
 export async function publishRuleset(rulesetId:string){
   return prisma.$transaction(async(tx)=>{
     await tx.$executeRaw`SELECT set_config('app.global_ruleset_admin','1',true)`;

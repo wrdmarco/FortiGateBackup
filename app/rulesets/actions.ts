@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { auditLog } from "@/lib/audit";
 import { requirePermission, tenantFilter } from "@/lib/authz";
-import { createRulesetDraft, deleteDraftRule, publishRuleset, saveDraftRule } from "@/lib/security/ruleset";
+import { createRulesetDraft, deleteDraftRule, moveDraftRule, publishRuleset, saveDraftRule } from "@/lib/security/ruleset";
 import type { RuleCondition } from "@/lib/security/rules";
 import { isGlobalTenantId } from "@/lib/tenant-main";
 
@@ -19,7 +19,7 @@ export async function createRulesetDraftAction(formData:FormData){
   const {user,tenantId}=await globalRulesetAdmin();
   const draft=await createRulesetDraft({version:String(formData.get("version")??""),changeReason:String(formData.get("changeReason")??""),createdById:user.id});
   await auditLog({action:"security.ruleset.draft_created",tenantId,userId:user.id,entity:"SecurityRuleset",entityId:draft.id,metadata:{version:draft.version}});
-  redirect(`/settings/rulesets/${draft.id}`);
+  redirect(`/rulesets/${draft.id}`);
 }
 
 export async function saveRuleAction(formData:FormData){
@@ -42,16 +42,28 @@ export async function saveRuleAction(formData:FormData){
     configPath:String(formData.get("configPath")??""),conditions
   });
   await auditLog({action:"security.ruleset.rule_saved",tenantId,userId:user.id,entity:"SecurityRule",entityId:rule.id,metadata:{rulesetId,ruleId:rule.ruleId}});
-  revalidatePath(`/settings/rulesets/${rulesetId}`);
-  redirect(`/settings/rulesets/${rulesetId}`);
+  revalidatePath(`/rulesets/${rulesetId}`);
+  redirect(`/rulesets/${rulesetId}`);
 }
 
 export async function deleteRuleAction(formData:FormData){
   const {user,tenantId}=await globalRulesetAdmin();
-  const rulesetId=String(formData.get("rulesetId")??"");const ruleId=String(formData.get("ruleId")??"");
+  const rulesetId=String(formData.get("rulesetId")??"");
+  const ruleId=String(formData.get("ruleId")??"");
   await deleteDraftRule(rulesetId,ruleId);
   await auditLog({action:"security.ruleset.rule_deleted",tenantId,userId:user.id,entity:"SecurityRule",entityId:ruleId,metadata:{rulesetId}});
-  revalidatePath(`/settings/rulesets/${rulesetId}`);
+  revalidatePath(`/rulesets/${rulesetId}`);
+}
+
+export async function moveRuleAction(formData:FormData){
+  const {user,tenantId}=await globalRulesetAdmin();
+  const rulesetId=String(formData.get("rulesetId")??"");
+  const ruleId=String(formData.get("ruleId")??"");
+  const direction=String(formData.get("direction")??"");
+  if(direction!=="UP"&&direction!=="DOWN")throw new Error("Ongeldige verplaatsingsrichting.");
+  await moveDraftRule(rulesetId,ruleId,direction);
+  await auditLog({action:"security.ruleset.rule_reordered",tenantId,userId:user.id,entity:"SecurityRule",entityId:ruleId,metadata:{rulesetId,direction}});
+  revalidatePath(`/rulesets/${rulesetId}`);
 }
 
 export async function publishRulesetAction(formData:FormData){
@@ -59,7 +71,6 @@ export async function publishRulesetAction(formData:FormData){
   const rulesetId=String(formData.get("rulesetId")??"");
   const published=await publishRuleset(rulesetId);
   await auditLog({action:"security.ruleset.published",tenantId,userId:user.id,entity:"SecurityRuleset",entityId:published.id,metadata:{version:published.version}});
-  revalidatePath("/settings");
-  revalidatePath("/settings/rulesets");
-  redirect("/settings/rulesets");
+  revalidatePath("/rulesets");
+  redirect("/rulesets");
 }

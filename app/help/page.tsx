@@ -32,6 +32,7 @@ function GlobalManual() {
         <GlobalTenantManagementManual />
         <GlobalUsersRolesManual />
         <GlobalSettingsManual />
+        <GlobalRulesetManual />
         <GlobalAuditManual />
         <TenantArchiveManual />
         <UpdateManual />
@@ -190,10 +191,32 @@ function GlobalSettingsManual() {
   );
 }
 
-function GlobalAuditManual() {
+function GlobalRulesetManual() {
   return (
     <ManualSection
       number="05"
+      title="FortiGate-rulesets bouwen"
+      description="Rulesets hebben een eigen Global-pagina en bepalen deterministisch welke lokale controles en scoregewichten toekomstige analyses gebruiken."
+      steps={[
+        { title: "Open Rulesets", body: "Kies vanuit Global het zelfstandige menu-item Rulesets.", result: "Je ziet de actieve versie, concepten, scoregewicht en versiehistorie." },
+        { title: "Maak een concept", body: "Geef een nieuwe semantische versie en wijzigingsreden op. De actieve versie wordt volledig gekopieerd.", result: "Bestaande analyses en de actieve ruleset blijven ongewijzigd." },
+        { title: "Bouw en orden regels", body: "Voeg geallowliste FortiOS-secties, velden, operators en maximaal vijf voorwaarden toe. Pas severity, scoregewicht en veilige rapporttekst aan.", result: "De leesbare preview toont exact wanneer de lokale bevinding ontstaat." },
+        { title: "Valideer en publiceer", body: "Controleer actieve regels en severityverdeling en publiceer daarna expliciet.", result: "De nieuwe versie wordt immutable actief; de vorige versie blijft historisch beschikbaar." }
+      ]}
+      screenshot={
+        <Screenshot title="Ruleset-builder">
+          <ScreenshotTable headers={["Volgorde", "Rule-ID", "Severity", "Gewicht", "Actie"]} rows={[["01", "FG-POL-001", "Critical", "18", "Bewerken"], ["02", "FG-MGT-002", "High", "10", "Bewerken"]]} />
+          <Callout x="right-8" y="top-20" label="Builder staat als eigen Global-pagina in het menu." />
+        </Screenshot>
+      }
+    />
+  );
+}
+
+function GlobalAuditManual() {
+  return (
+    <ManualSection
+      number="06"
       title="Platformaudit controleren"
       description="Gebruik Global audit voor platformacties zoals tenantbeheer, updates, tenantwissel en geweigerde platformrechten."
       steps={[
@@ -214,7 +237,7 @@ function GlobalAuditManual() {
 function TenantArchiveManual() {
   return (
     <ManualSection
-      number="06"
+      number="07"
       title="Tenant backup en restore"
       description="Alleen Global kan tenantdata exporteren of herstellen."
       steps={[
@@ -235,7 +258,7 @@ function TenantArchiveManual() {
 function UpdateManual() {
   return (
     <ManualSection
-      number="07"
+      number="08"
       title="Applicatie update starten"
       description="Updates worden vanuit Global gestart. Tijdens de update is de interface tijdelijk niet beschikbaar."
       steps={[
@@ -265,7 +288,7 @@ function UpdateManual() {
 function BreakGlassManual() {
   return (
     <ManualSection
-      number="08"
+      number="09"
       title="Break-glass SSO herstel"
       description="Gebruik dit alleen wanneer SSO niet meer werkt en je Global SSO moet uitschakelen."
       steps={[

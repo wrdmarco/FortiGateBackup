@@ -23,7 +23,7 @@ export async function Shell({ children }: { children: React.ReactNode }) {
   const canReadAudit = permissionKeys.has(isGlobalContext ? "platform.audit.read" : "audit.read");
   const tenantName = user?.activeTenant?.name ?? user?.tenant?.name ?? "Geen tenant";
 
-  const navigation = <NavigationLinks canManageTenants={canReadTenants} canReadAudit={canReadAudit} canReadUsers={canReadUsers} canReadSecurity={permissionKeys.has("security.analyses.read")} isBreakGlassSettingsOnly={isBreakGlassSettingsOnly} isGlobalContext={isGlobalContext} />;
+  const navigation = <NavigationLinks canManageTenants={canReadTenants} canReadAudit={canReadAudit} canReadUsers={canReadUsers} canReadSecurity={permissionKeys.has("security.analyses.read")} canReadRulesets={isGlobalContext&&permissionKeys.has("platform.security.rulesets.read")} isBreakGlassSettingsOnly={isBreakGlassSettingsOnly} isGlobalContext={isGlobalContext} />;
 
   return (
     <div className="min-h-screen bg-[hsl(var(--workspace))] lg:grid lg:grid-cols-[14.5rem_minmax(0,1fr)]">
@@ -51,7 +51,7 @@ function BrandLink({ href, compact = false }: { href: string; compact?: boolean 
   return <Link href={href} aria-label="Forti Backup - overzicht" className={clsx("brand-mark inline-flex min-h-11 items-center gap-2.5 rounded-lg", compact ? "px-0" : "mx-4 my-4 px-1")}><Image alt="" aria-hidden className="dark:hidden" height={compact ? 30 : 38} src="/brand/forti-backup-mark-light.svg" width={compact ? 30 : 38}/><Image alt="" aria-hidden className="hidden dark:block" height={compact ? 30 : 38} src="/brand/forti-backup-mark-dark.svg" width={compact ? 30 : 38}/><BrandWordmark size={compact ? "compact" : "default"}/></Link>;
 }
 
-function NavigationLinks({ isBreakGlassSettingsOnly, isGlobalContext, canManageTenants, canReadUsers, canReadAudit, canReadSecurity }: { isBreakGlassSettingsOnly: boolean; isGlobalContext: boolean; canManageTenants: boolean; canReadUsers: boolean; canReadAudit: boolean; canReadSecurity:boolean }) {
+function NavigationLinks({ isBreakGlassSettingsOnly, isGlobalContext, canManageTenants, canReadUsers, canReadAudit, canReadSecurity, canReadRulesets }: { isBreakGlassSettingsOnly: boolean; isGlobalContext: boolean; canManageTenants: boolean; canReadUsers: boolean; canReadAudit: boolean; canReadSecurity:boolean; canReadRulesets:boolean }) {
   if (isBreakGlassSettingsOnly) return <><span className="flex min-h-11 items-center rounded-lg bg-amber-400/15 px-3 py-2 text-sm font-medium text-amber-200">Break-glass toegang</span><AppNavLink href="/settings?tab=sso"><Icon name="settings"/>SSO instellingen</AppNavLink></>;
   return <>
     <AppNavLink href="/"><Icon name="overview"/>Overzicht</AppNavLink>
@@ -59,6 +59,7 @@ function NavigationLinks({ isBreakGlassSettingsOnly, isGlobalContext, canManageT
     {canManageTenants && isGlobalContext ? <AppNavLink href="/tenants"><Icon name="tenant"/>Tenants</AppNavLink> : null}
     {canReadUsers ? <AppNavLink href="/users"><Icon name="user"/>Gebruikers</AppNavLink> : null}
     <AppNavLink href="/roles"><Icon name="shield"/>Rollen</AppNavLink>
+    {canReadRulesets ? <AppNavLink href="/rulesets"><Icon name="check"/>Rulesets</AppNavLink> : null}
     {canReadAudit ? <AppNavLink href="/audit"><Icon name="audit"/>Auditlog</AppNavLink> : null}
     <AppNavLink href="/settings"><Icon name="settings"/>Instellingen</AppNavLink>
   </>;
