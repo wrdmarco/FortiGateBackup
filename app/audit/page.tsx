@@ -1,4 +1,5 @@
 import { firstQueryValue, normalizePage, parsePageParam, ServerPagination } from "@/components/server-pagination";
+import { Modal } from "@/components/modal";
 import { ActionLink, Badge, Button, FilterBar, PageHeader, Shell, TableShell } from "@/components/ui";
 import { requireContextPermission } from "@/lib/authz";
 import { prisma } from "@/lib/db";
@@ -145,7 +146,27 @@ export default async function AuditPage({
                     <div className="font-mono text-xs text-muted-foreground">{log.entityId ?? "-"}</div>
                   </td>
                   <td className="px-3 py-2">
-                    <AuditDetails metadata={metadata} />
+                    <AuditDetails
+                      metadata={metadata}
+                      coreDetails={[
+                        ["Audit-ID", log.id],
+                        ["Tijdstip", formatDateTime(log.createdAt, timeZone)],
+                        ["Tenant", log.tenantName ?? tenant?.name ?? activeTenantId],
+                        ["Tenant-ID", log.tenantId],
+                        ["Actor", actorName],
+                        ["Actor e-mail", actorEmail],
+                        ["Actor-ID", log.actorId ?? log.userId],
+                        ["Actiecode", log.action],
+                        ["Uitkomst", labelForOutcome(outcome)],
+                        ["Objecttype", log.entity],
+                        ["Object-ID", log.entityId],
+                        ["Reden", metadata.reason],
+                        ["Request-ID", log.requestId],
+                        ["IP-adres", log.ipAddress],
+                        ["Vorige hash", log.previousHash],
+                        ["Integriteitshash", log.integrityHash]
+                      ]}
+                    />
                   </td>
                 </tr>
               );
@@ -180,29 +201,39 @@ function parseMetadata(value: string | null): AuditMetadata {
   }
 }
 
-function AuditDetails({ metadata }: { metadata: AuditMetadata }) {
-  const entries = Object.entries(metadata).filter(([key]) => ![
-    "actorName",
-    "actorEmail",
-    "actorType",
-    "auditSchemaVersion",
-    "outcome",
-    "reason",
-    "target"
-  ].includes(key));
-  if (!entries.length) return <span className="text-muted-foreground">Geen extra details</span>;
+function AuditDetails({ metadata, coreDetails }: { metadata: AuditMetadata; coreDetails: Array<[string, unknown]> }) {
+  const entries = Object.entries(metadata);
   return (
-    <details className="min-w-56 rounded-md border border-border bg-surface-soft px-3 py-2">
-      <summary className="cursor-pointer text-sm font-medium">{entries.length} detailvelden</summary>
-      <div className="mt-2 grid gap-1">
+    <Modal
+      title="Auditdetails"
+      description="Veilige, lokaal opgeslagen metadata van deze auditregel. Gevoelige velden zijn vóór opslag geredigeerd."
+      size="wide"
+      trigger={<Button variant="secondary">Bekijk details</Button>}
+    >
+      <section>
+        <h3 className="font-display text-base font-semibold">Auditcontext</h3>
+        <dl className="mt-3 grid gap-x-6 gap-y-3 sm:grid-cols-2">
+          {coreDetails.map(([key, value]) => (
+            <div key={key} className="min-w-0 border-t border-border pt-2">
+              <dt className="text-xs font-medium text-muted-foreground">{key}</dt>
+              <dd className="mt-1 break-all font-mono text-xs">{formatMetadataValue(value)}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+      <section className="mt-7">
+        <h3 className="font-display text-base font-semibold">Volledige geredigeerde metadata</h3>
+        <div className="mt-3 grid gap-1">
         {entries.map(([key, value]) => (
           <div key={key} className="grid gap-1 border-t border-border py-2 first:border-t-0 first:pt-0">
             <span className="text-xs font-medium text-muted-foreground">{key}</span>
             <span className="break-all font-mono text-xs">{formatMetadataValue(value)}</span>
           </div>
         ))}
-      </div>
-    </details>
+        {!entries.length ? <p className="text-sm text-muted-foreground">Deze auditregel bevat geen aanvullende metadata.</p> : null}
+        </div>
+      </section>
+    </Modal>
   );
 }
 

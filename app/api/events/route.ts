@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getUpdateRuntimeStatus } from "@/lib/app-update";
 import { prisma } from "@/lib/db";
 import { currentUser } from "@/lib/session";
+import { tenantTransaction } from "@/lib/tenant-db";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -119,6 +120,13 @@ function sse(event: string, data: unknown) {
 }
 
 async function tenantDataVersion(tenantId: string) {
+  const analysis = await tenantTransaction(tenantId, async (tx) => {
+    const [jobs, events] = await Promise.all([
+      tx.securityAnalysisJob.aggregate({ where: { tenantId }, _max: { updatedAt: true } }),
+      tx.securityAnalysisJobEvent.aggregate({ where: { tenantId }, _max: { createdAt: true } })
+    ]);
+    return { jobUpdatedAt: jobs._max.updatedAt, eventCreatedAt: events._max.createdAt };
+  });
   const [tenant, customers, fortigates, backups, jobs, logs, users, roles, settings, audit] = await Promise.all([
     prisma.tenant.aggregate({ where: { id: tenantId }, _max: { updatedAt: true } }),
     prisma.customer.aggregate({ where: { tenantId }, _max: { updatedAt: true } }),
@@ -147,7 +155,9 @@ async function tenantDataVersion(tenantId: string) {
     users._max.updatedAt,
     roles._max.updatedAt,
     settings._max.updatedAt,
-    audit._max.createdAt
+    audit._max.createdAt,
+    analysis.jobUpdatedAt,
+    analysis.eventCreatedAt
   ]
     .map(versionPart)
     .join(":");

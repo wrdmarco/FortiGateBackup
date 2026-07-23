@@ -276,9 +276,9 @@ export default async function SettingsPage({
     ? ["sso"]
     : [
         ...(!isGlobalScope && canReadBaseSettings ? ["portal"] : []),
+        ...(canManageFoundry ? ["foundry"] : []),
         ...(!isGlobalScope && canReadItGlue ? ["itglue"] : []),
         ...(!isGlobalScope && canReadAutotask ? ["autotask"] : []),
-        ...(canManageFoundry ? ["foundry"] : []),
         ...(canReadMail ? ["mail"] : []),
         ...(canReadSso ? ["sso"] : []),
         ...(canReadBaseSettings ? ["scheduler"] : [])
@@ -307,6 +307,13 @@ export default async function SettingsPage({
               </Panel>
             )
           }] : []),
+          ...(canManageFoundry ? [{
+            id: "foundry",
+            label: "Azure Foundry",
+            href: settingsHref("foundry"),
+            description: "Configureer tenantgebonden AI-verrijking voor FortiGate-configuratieanalyses.",
+            content: <FoundrySettingsPanel tenantId={selectedTenantId} config={foundryConfig} error={params?.error} saved={params?.saved} />
+          }] : []),
           ...(!isGlobalScope && canReadItGlue ? [{
             id: "itglue",
             label: "IT Glue",
@@ -328,13 +335,6 @@ export default async function SettingsPage({
                 <SettingsForm key={`${selectedTenantId}:autotask`} {...formProps} canUpdate={canUpdateAutotask} visibleTabs={["autotask"]} initialTab="autotask" />
               </Panel>
             )
-          }] : []),
-          ...(canManageFoundry ? [{
-            id: "foundry",
-            label: "Azure Foundry",
-            href: settingsHref("foundry"),
-            description: "Configureer tenantgebonden AI-verrijking voor FortiGate-configuratieanalyses.",
-            content: <FoundrySettingsPanel tenantId={selectedTenantId} config={foundryConfig} error={params?.error} saved={params?.saved} />
           }] : []),
           ...(canReadMail ? [{
             id: "mail",

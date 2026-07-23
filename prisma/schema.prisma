@@ -106,6 +106,7 @@ model Tenant {
   configArtifacts ConfigArtifact[]
   securityAnalyses SecurityAnalysis[]
   securityAnalysisJobs SecurityAnalysisJob[]
+  securityAnalysisJobEvents SecurityAnalysisJobEvent[]
   securityFindings SecurityFinding[]
   securityReports SecurityAnalysisReport[]
   foundryConfig TenantFoundryConfig?
@@ -506,10 +507,25 @@ model SecurityAnalysisJob {
   tenant         Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   fortigate      FortiGate @relation(fields: [fortigateId], references: [id], onDelete: Cascade)
   analysis       SecurityAnalysis @relation(fields: [tenantId, analysisId], references: [tenantId, id], onDelete: Cascade)
+  events         SecurityAnalysisJobEvent[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, analysisId])
   @@index([status, availableAt])
+}
+
+model SecurityAnalysisJobEvent {
+  id        String   @id @default(cuid())
+  tenantId  String
+  jobId     String
+  stage     String
+  message   String
+  createdAt DateTime @db.Timestamptz(3) @default(now())
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  job       SecurityAnalysisJob @relation(fields: [tenantId, jobId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, jobId, createdAt])
 }
 
 model SecurityFinding {

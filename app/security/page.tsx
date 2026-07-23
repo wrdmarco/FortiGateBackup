@@ -24,7 +24,6 @@ export default async function SecurityPage() {
       <PageHeader
         title="FortiGate beveiliging"
         description="Actuele, tenantgebonden analyse van de nieuwste gewijzigde configuratie per FortiGate."
-        actions={<ActionLink href="/settings?tab=foundry">Azure Foundry instellen</ActionLink>}
       />
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Card title="Gemiddelde score" value={overview.average ?? "Niet beschikbaar"} />
