@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { parseFortiOsConfig, tokenizeFortiOsLine } from "./fortios-parser";
-import { calculateSecurityScore, evaluateFortiOs, type SecurityControlResult } from "./rules";
+import { calculateSecurityScore, evaluateFortiOs, parseStoredScoreComponents, type SecurityControlResult } from "./rules";
 
 const valid=`#config-version=FG100F-7.4.7-FW-build0000-000000:opmode=0:vdom=0:user=admin
 config system interface
@@ -41,4 +41,9 @@ test("goede configuratieobjecten leveren aantoonbaar punten op",()=>{
   assert.equal(result.score,90);
   assert.equal(result.passed,9);
   assert.equal(result.total,10);
+});
+test("opgeslagen scorecomponenten worden uitsluitend via bekende veilige labels gelezen",()=>{
+  const stored=JSON.stringify({components:[{ruleId:"FG-LOG-001",passed:9,failed:1,earned:45,possible:50},{ruleId:"UNKNOWN",passed:1,failed:0,earned:1,possible:1}]});
+  assert.deepEqual(parseStoredScoreComponents(stored),[{ruleId:"FG-LOG-001",category:"Logging",title:"Verkeerslogging is actief",passed:9,failed:1,earned:45,possible:50}]);
+  assert.deepEqual(parseStoredScoreComponents("ongeldige json"),[]);
 });

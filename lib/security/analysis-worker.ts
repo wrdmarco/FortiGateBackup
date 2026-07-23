@@ -138,6 +138,7 @@ async function execute(job: Claimed) {
       scoreDelta: typeof previous?.score === "number" ? local.score - previous.score : null,
       passedControls: local.passedControls,
       totalControls: local.totalControls,
+      scoreComponents: local.scoreComponents,
       hash: data.configSha256,
       parserVersion: data.parserVersion,
       rulesetVersion: SECURITY_RULESET_VERSION,

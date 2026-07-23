@@ -43,3 +43,16 @@ test("scores worden overal als percentage gepresenteerd", async () => {
   assert.match(combined, /score\}%/);
   assert.match(combined, /procentpunt/);
 });
+
+test("geslaagde controles staan veilig in de online analyse en PDF", async () => {
+  const [analysis, report, worker] = await Promise.all([
+    readFile("app/security/analyses/[analysisId]/page.tsx", "utf8"),
+    readFile("lib/security/report.ts", "utf8"),
+    readFile("lib/security/analysis-worker.ts", "utf8")
+  ]);
+  assert.match(analysis, /Geslaagde controles/);
+  assert.match(analysis, /parseStoredScoreComponents/);
+  assert.match(report, /Geslaagde controles/);
+  assert.match(report, /component\.passed/);
+  assert.match(worker, /scoreComponents: local\.scoreComponents/);
+});

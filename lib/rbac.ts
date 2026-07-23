@@ -55,6 +55,7 @@ export const permissions = [
   { key: "backups.diff.read", category: "Backups", description: "Diff bekijken" },
   { key: "security.analyses.read", category: "Beveiligingsanalyse", description: "Analyses en scorehistorie bekijken" },
   { key: "security.analyses.run", category: "Beveiligingsanalyse", description: "Analyse starten of opnieuw proberen" },
+  { key: "security.analyses.reassess", category: "Beveiligingsanalyse", description: "Een voltooide analyse van een gewijzigde backup opnieuw beoordelen" },
   { key: "security.findings.review", category: "Beveiligingsanalyse", description: "Bevindingen beoordelen" },
   { key: "security.reports.download", category: "Beveiligingsanalyse", description: "Immutable PDF-rapporten downloaden" },
   { key: "security.foundry.manage", category: "Beveiligingsanalyse", description: "Azure AI Foundry voor de tenant beheren" },

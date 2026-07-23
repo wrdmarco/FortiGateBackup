@@ -3,19 +3,20 @@ import type { ParsedFortiOsConfig } from "./fortios-parser";
 export const SECURITY_RULESET_VERSION = "2.0.0";
 export type LocalFinding = { ruleId: string; category: string; severity: "CRITICAL"|"HIGH"|"MEDIUM"|"LOW"; penalty: number; title: string; explanation: string; evidence: string; remediation: string };
 export type SecurityControlResult = { ruleId: string; weight: number; passed: boolean };
+export type SecurityScoreComponent = { ruleId:string; category:string; title:string; passed:number; failed:number; earned:number; possible:number };
 
 const definitions = {
-  "FG-POL-001": ["Firewallbeleid", "CRITICAL", 18, "Any-to-any beleid", "Een accepterend beleid is te breed.", "Beperk bron, bestemming en service tot wat functioneel nodig is."],
-  "FG-POL-002": ["Firewallbeleid", "HIGH", 8, "Bron is all", "Het beleid accepteert verkeer vanaf iedere bron.", "Gebruik specifieke bronobjecten."],
-  "FG-POL-003": ["Firewallbeleid", "HIGH", 8, "Bestemming is all", "Het beleid accepteert verkeer naar iedere bestemming.", "Gebruik specifieke bestemmingsobjecten."],
-  "FG-POL-004": ["Firewallbeleid", "HIGH", 8, "Service is onbeperkt", "Het beleid staat alle services toe.", "Sta alleen benodigde services toe."],
-  "FG-LOG-001": ["Logging", "MEDIUM", 5, "Logging ontbreekt", "Een accepterend beleid logt verkeer niet.", "Schakel all-sessions logging in."],
-  "FG-MGT-001": ["Beheer", "CRITICAL", 16, "Telnet-beheer actief", "Telnet biedt geen transportversleuteling.", "Verwijder telnet uit allowaccess."],
-  "FG-MGT-002": ["Beheer", "HIGH", 10, "HTTP-beheer actief", "HTTP-beheer is onbeveiligd.", "Gebruik uitsluitend HTTPS voor webbeheer."],
-  "FG-MGT-003": ["Beheer", "HIGH", 10, "Breed beheer op publieke interface", "Een publieke interface staat beheerprotocollen toe.", "Beperk beheer tot een dedicated managementnetwerk en trusted hosts."],
-  "FG-UTM-001": ["Security profiles", "MEDIUM", 6, "Securityprofielen ontbreken", "Een accepterend internetbeleid heeft geen zichtbaar securityprofiel.", "Activeer passende AV-, IPS- en webfilterprofielen."],
-  "FG-VPN-001": ["VPN", "HIGH", 10, "Risicovolle VPN-crypto", "De VPN gebruikt een verouderde of zwakke cryptografische instelling.", "Gebruik actuele IKE- en sterke encryptie-instellingen."],
-  "FG-GRP-001": ["Objecten", "LOW", 3, "Overmatig brede groep", "Een objectgroep bevat uitzonderlijk veel leden.", "Splits groepen op functionele zone of toepassing."]
+  "FG-POL-001": ["Firewallbeleid", "CRITICAL", 18, "Any-to-any beleid", "Een accepterend beleid is te breed.", "Beperk bron, bestemming en service tot wat functioneel nodig is.", "Geen volledig any-to-any beleid"],
+  "FG-POL-002": ["Firewallbeleid", "HIGH", 8, "Bron is all", "Het beleid accepteert verkeer vanaf iedere bron.", "Gebruik specifieke bronobjecten.", "Bronnen zijn specifiek begrensd"],
+  "FG-POL-003": ["Firewallbeleid", "HIGH", 8, "Bestemming is all", "Het beleid accepteert verkeer naar iedere bestemming.", "Gebruik specifieke bestemmingsobjecten.", "Bestemmingen zijn specifiek begrensd"],
+  "FG-POL-004": ["Firewallbeleid", "HIGH", 8, "Service is onbeperkt", "Het beleid staat alle services toe.", "Sta alleen benodigde services toe.", "Services zijn specifiek begrensd"],
+  "FG-LOG-001": ["Logging", "MEDIUM", 5, "Logging ontbreekt", "Een accepterend beleid logt verkeer niet.", "Schakel all-sessions logging in.", "Verkeerslogging is actief"],
+  "FG-MGT-001": ["Beheer", "CRITICAL", 16, "Telnet-beheer actief", "Telnet biedt geen transportversleuteling.", "Verwijder telnet uit allowaccess.", "Telnet-beheer is uitgeschakeld"],
+  "FG-MGT-002": ["Beheer", "HIGH", 10, "HTTP-beheer actief", "HTTP-beheer is onbeveiligd.", "Gebruik uitsluitend HTTPS voor webbeheer.", "HTTP-beheer is uitgeschakeld"],
+  "FG-MGT-003": ["Beheer", "HIGH", 10, "Breed beheer op publieke interface", "Een publieke interface staat beheerprotocollen toe.", "Beperk beheer tot een dedicated managementnetwerk en trusted hosts.", "Publieke beheerblootstelling is geblokkeerd"],
+  "FG-UTM-001": ["Security profiles", "MEDIUM", 6, "Securityprofielen ontbreken", "Een accepterend internetbeleid heeft geen zichtbaar securityprofiel.", "Activeer passende AV-, IPS- en webfilterprofielen.", "Securityprofielen zijn gekoppeld"],
+  "FG-VPN-001": ["VPN", "HIGH", 10, "Risicovolle VPN-crypto", "De VPN gebruikt een verouderde of zwakke cryptografische instelling.", "Gebruik actuele IKE- en sterke encryptie-instellingen.", "VPN-cryptografie gebruikt geen herkende zwakke instelling"],
+  "FG-GRP-001": ["Objecten", "LOW", 3, "Overmatig brede groep", "Een objectgroep bevat uitzonderlijk veel leden.", "Splits groepen op functionele zone of toepassing.", "Objectgroepen blijven binnen de breedtelimiet"]
 } as const;
 
 export function evaluateFortiOs(parsed: ParsedFortiOsConfig) {
@@ -53,7 +54,28 @@ export function evaluateFortiOs(parsed: ParsedFortiOsConfig) {
     if (node.path.endsWith("firewall addrgrp") || node.path.endsWith("firewall service group")){const broad=(v.member?.length??0)>50;control(controls,"FG-GRP-001",!broad);if(broad)add(findings,"FG-GRP-001",node);}
   }
   const scoring=calculateSecurityScore(controls);
-  return { findings, score:scoring.score, scoreComponents:scoring.components, passedControls:scoring.passed, totalControls:scoring.total };
+  const scoreComponents:SecurityScoreComponent[]=scoring.components.map((component)=>{
+    const definition=definitions[component.ruleId as keyof typeof definitions];
+    return {...component,category:definition?.[0]??"Overig",title:definition?.[6]??component.ruleId};
+  });
+  return { findings, score:scoring.score, scoreComponents, passedControls:scoring.passed, totalControls:scoring.total };
+}
+
+export function parseStoredScoreComponents(value:string|null):SecurityScoreComponent[]{
+  if(!value)return[];
+  try{
+    const parsed:unknown=JSON.parse(value);
+    const components=typeof parsed==="object"&&parsed!==null&&"components" in parsed?(parsed as {components?:unknown}).components:null;
+    if(!Array.isArray(components))return[];
+    return components.flatMap((component)=>{
+      if(typeof component!=="object"||component===null)return[];
+      const item=component as Record<string,unknown>;
+      const definition=typeof item.ruleId==="string"?definitions[item.ruleId as keyof typeof definitions]:undefined;
+      const numbers=["passed","failed","earned","possible"].map((key)=>item[key]);
+      if(!definition||numbers.some((number)=>typeof number!=="number"||!Number.isFinite(number)||number<0))return[];
+      return [{ruleId:item.ruleId as string,category:definition[0],title:definition[6],passed:numbers[0] as number,failed:numbers[1] as number,earned:numbers[2] as number,possible:numbers[3] as number}];
+    });
+  }catch{return[];}
 }
 
 export function calculateSecurityScore(controls: SecurityControlResult[]) {
