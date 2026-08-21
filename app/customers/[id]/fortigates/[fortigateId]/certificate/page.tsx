@@ -1,6 +1,5 @@
 import { notFound } from "next/navigation";
-import { acceptFortiGateCertificate } from "@/app/actions";
-import { ActionLink, Button, PageHeader, Shell } from "@/components/ui";
+import { ActionLink, PageHeader, Shell } from "@/components/ui";
 import { assertOperationalTenant, assertTenantAccess, requirePermission } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { inspectFortiGateCertificate } from "@/lib/fortigate";
@@ -53,7 +52,7 @@ export default async function FortiGateCertificatePage({
               <p className="mt-1">
                 {certificate.trusted
                   ? "De volledige certificaatketen en hostnaam zijn geldig. Handmatige acceptatie is niet nodig."
-                  : "Backups blijven geblokkeerd totdat je precies deze fingerprint expliciet accepteert."}
+                  : "Dit certificaat wordt volgens het ingestelde beleid automatisch geaccepteerd; de verbinding blijft TLS-versleuteld."}
               </p>
             </div>
             <dl className="mt-5 grid gap-3 text-sm sm:grid-cols-[10rem_1fr]">
@@ -64,23 +63,6 @@ export default async function FortiGateCertificatePage({
               <dt className="font-medium text-muted-foreground">SHA-256</dt><dd className="break-all font-mono text-xs">{certificate.fingerprint}</dd>
               <dt className="font-medium text-muted-foreground">Validatie</dt><dd>{certificate.validationError ?? "Geldig"}</dd>
             </dl>
-            {!certificate.trusted ? (
-              device.tlsCertificateFingerprint === certificate.fingerprint ? (
-                <p className="mt-5 rounded-md border border-green-300 bg-green-50 p-4 text-sm text-green-950 dark:border-green-800 dark:bg-green-950 dark:text-green-100">
-                  Deze fingerprint is al expliciet geaccepteerd. Backups controleren hem bij iedere verbinding.
-                </p>
-              ) : (
-                <form action={acceptFortiGateCertificate} className="mt-5 grid gap-4 border-t border-border pt-5">
-                  <input type="hidden" name="id" value={device.id} />
-                  <input type="hidden" name="fingerprint" value={certificate.fingerprint} />
-                  <label className="flex items-start gap-3 rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
-                    <input className="mt-1 h-5 w-5 shrink-0" name="acceptCertificate" type="checkbox" value="true" required />
-                    <span>Ik heb het certificaat buiten deze applicatie gecontroleerd en accepteer deze exacte SHA-256-fingerprint voor deze FortiGate.</span>
-                  </label>
-                  <div><Button>Certificaat eenmalig accepteren</Button></div>
-                </form>
-              )
-            ) : null}
           </>
         ) : null}
       </section>

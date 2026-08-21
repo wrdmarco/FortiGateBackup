@@ -413,7 +413,7 @@ export function FortiGateWizard({
             <div className="rounded-md border border-border bg-surface-soft p-4 text-sm">
               <p className="font-medium">TLS is altijd ingeschakeld</p>
               <p className="mt-1 text-muted-foreground">
-                De server valideert eerst het certificaat. Een ongeldig of self-signed certificaat wordt pas gebruikt nadat je de getoonde fingerprint expliciet accepteert.
+                De verbinding blijft versleuteld. Geldige, self-signed, verlopen en anderszins ongeldige certificaten worden automatisch geaccepteerd.
               </p>
             </div>
           </section>
@@ -481,31 +481,13 @@ export function FortiGateWizard({
           </section>
 
           <section hidden={step !== 4} className={step===4?"grid gap-5":"hidden"} aria-labelledby="wizard-step-title">
-            {state.certificate ? (
-              <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100" role="alert">
-                <p className="font-semibold">
-                  {state.certificate.selfSigned ? "Self-signed certificaat gevonden" : "Certificaat kan niet automatisch worden gevalideerd"}
-                </p>
-                <dl className="mt-3 grid gap-2 sm:grid-cols-[9rem_1fr]">
-                  <dt className="font-medium">Onderwerp</dt><dd className="break-all">{state.certificate.subject}</dd>
-                  <dt className="font-medium">Uitgever</dt><dd className="break-all">{state.certificate.issuer}</dd>
-                  <dt className="font-medium">Geldig tot</dt><dd>{new Date(state.certificate.validTo).toLocaleString("nl-NL")}</dd>
-                  <dt className="font-medium">SHA-256</dt><dd className="break-all font-mono text-xs">{state.certificate.fingerprint}</dd>
-                  <dt className="font-medium">Validatiefout</dt><dd>{state.certificate.validationError ?? "Onbekend"}</dd>
-                </dl>
-                <label className="mt-4 flex items-start gap-3 rounded-md border border-amber-400/60 bg-white/60 p-3 dark:bg-black/20">
-                  <input className="mt-1 h-5 w-5 shrink-0" name="acceptedTlsFingerprint" type="checkbox" value={state.certificate.fingerprint} required />
-                  <span>Ik heb onderwerp, uitgever en SHA-256-fingerprint gecontroleerd en accepteer precies dit certificaat voor deze FortiGate.</span>
-                </label>
-              </div>
-            ) : null}
             <div className="grid gap-3 rounded-md border border-border bg-surface-soft p-4 text-sm">
               <p className="font-semibold">Laatste controle voor opslaan</p>
               <CheckItem text="De klant is correct geselecteerd." />
               <CheckItem text="De Management URL is bereikbaar vanaf de backupserver, niet alleen vanaf je laptop." />
               <CheckItem text="De API-token hoort bij een REST API Admin en is niet verlopen of opnieuw gegenereerd na kopieren." />
               <CheckItem text="Trusted Hosts staat na de eerste test beperkt op het IP-adres van de backupserver." />
-              <CheckItem text="TLS blijft altijd aan; een self-signed certificaat wordt alleen op zijn geaccepteerde fingerprint vertrouwd." />
+              <CheckItem text="TLS blijft altijd aan; alle aangeboden certificaten worden automatisch geaccepteerd." />
             </div>
 
             <div className="rounded-md border border-green-200 bg-green-50 p-4 text-sm text-green-950 dark:border-green-900 dark:bg-green-950 dark:text-green-100">

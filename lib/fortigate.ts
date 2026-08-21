@@ -1,6 +1,6 @@
 import { request as httpsRequest } from "node:https";
 import { isIP } from "node:net";
-import { connect as tlsConnect, type DetailedPeerCertificate, type TLSSocket } from "node:tls";
+import { connect as tlsConnect, type DetailedPeerCertificate } from "node:tls";
 import { mkdir, open, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 import { Backup, BackupStatus, FortiGate, FortiGateLogLevel } from "@prisma/client";
@@ -30,7 +30,6 @@ type RequestOptions = {
   headers: Record<string, string>;
   method?: "GET" | "POST";
   maximumBytes: number;
-  certificateFingerprint?: string | null;
 };
 
 type BackupAttempt = {
@@ -94,14 +93,13 @@ async function requestBuffer(url: URL, options: RequestOptions) {
       clearTimeout(overallTimeout);
       reject(error);
     };
-    const pinnedFingerprint = normalizeFingerprint(options.certificateFingerprint);
     const req = httpsRequest(
       url,
       {
         method: options.method ?? "GET",
         headers: options.headers,
         agent: false,
-        rejectUnauthorized: !pinnedFingerprint,
+        rejectUnauthorized: false,
         lookup: pinnedLookup(resolvedAddress.address, resolvedAddress.family),
         timeout: FORTIGATE_REQUEST_TIMEOUT_MS
       },
@@ -142,29 +140,11 @@ async function requestBuffer(url: URL, options: RequestOptions) {
       req.destroy(new Error(`FortiGate API timeout na ${FORTIGATE_REQUEST_TIMEOUT_MS} ms voor ${url.pathname}.`));
     });
     req.on("error", finishWithError);
-    if (pinnedFingerprint) {
-      req.on("socket", (socket) => {
-        const tlsSocket = socket as TLSSocket;
-        tlsSocket.once("secureConnect", () => {
-          const certificate = tlsSocket.getPeerCertificate(true) as DetailedPeerCertificate;
-          const actualFingerprint = peerCertificateFingerprint(certificate);
-          if (!actualFingerprint) {
-            req.destroy(new Error("De FortiGate TLS-verbinding leverde geen controleerbaar leaf-certificaat op."));
-            return;
-          }
-          if (!certificateFingerprintMatches(pinnedFingerprint, actualFingerprint)) {
-            req.destroy(new Error("Het FortiGate TLS-certificaat is gewijzigd en moet opnieuw expliciet worden geaccepteerd."));
-            return;
-          }
-          req.end();
-        });
-      });
-    }
     const overallTimeout = setTimeout(() => {
       req.destroy(new Error(`FortiGate API timeout na ${FORTIGATE_REQUEST_TIMEOUT_MS} ms voor ${url.pathname}.`));
     }, FORTIGATE_REQUEST_TIMEOUT_MS);
     overallTimeout.unref();
-    if (!pinnedFingerprint) req.end();
+    req.end();
   });
 }
 
@@ -502,7 +482,6 @@ async function fortigateFetch(
       headers: { Authorization: `Bearer ${token}` },
       method,
       maximumBytes,
-      certificateFingerprint: device.tlsCertificateFingerprint
     });
   } catch (error) {
     throw new Error(networkErrorMessage(error, endpoint));

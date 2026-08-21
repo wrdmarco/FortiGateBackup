@@ -67,7 +67,7 @@ export default async function EditCustomerFortiGatePage({
         <div className="rounded-md border border-border bg-surface-soft p-4 text-sm">
           <p className="font-medium">TLS is altijd ingeschakeld</p>
           <p className="mt-1 text-muted-foreground">
-            Wijzig je host of poort, dan vervalt een eerder geaccepteerde fingerprint. Controleer daarna opnieuw het TLS-certificaat op de FortiGate-pagina.
+            TLS blijft actief. Ook na een host-, poort- of certificaatwijziging wordt het aangeboden certificaat automatisch geaccepteerd.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

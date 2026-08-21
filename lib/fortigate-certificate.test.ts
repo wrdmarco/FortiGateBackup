@@ -17,8 +17,9 @@ test("certificaatpin wordt canoniek uit het ruwe leaf-certificaat berekend", () 
   );
 });
 
-test("gepinde self-signed verbindingen gebruiken een verse TLS-socket", () => {
+test("alle FortiGate-certificaten worden automatisch geaccepteerd", () => {
   const source=readFileSync("lib/fortigate.ts","utf8");
   assert.match(source,/agent: false/);
-  assert.match(source,/rejectUnauthorized: !pinnedFingerprint/);
+  assert.match(source,/rejectUnauthorized: false/);
+  assert.doesNotMatch(source,/certificaat is gewijzigd en moet opnieuw expliciet worden geaccepteerd/i);
 });

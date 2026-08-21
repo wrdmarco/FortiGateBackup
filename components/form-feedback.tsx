@@ -65,8 +65,8 @@ export function FormFeedback({
       aria-live={state.ok ? "polite" : "assertive"}
       tabIndex={state.ok ? undefined : -1}
     >
-      <span className="font-semibold">{state.ok ? "Gelukt: " : "Niet gelukt: "}</span>
-      {state.message}
+      <span className="font-semibold">{state.ok ? "Gelukt:" : "Niet gelukt:"}</span>{" "}
+      <span>{state.message}</span>
     </p>
   );
 }

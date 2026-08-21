@@ -9,7 +9,7 @@ import bcrypt from "bcryptjs";
 import { auditLog } from "@/lib/audit";
 import { stageBackupFiles } from "@/lib/backup-cleanup";
 import { enqueueManualBackup } from "@/lib/backup-jobs";
-import { inspectFortiGateCertificate, probeFortiGateConnection, type FortiGateCertificateInspection } from "@/lib/fortigate";
+import { inspectFortiGateCertificate, probeFortiGateConnection } from "@/lib/fortigate";
 import { assertOperationalTenant, assertPermission, assertTenantAccess, isSuperAdmin, requirePermission, requireTenantUser } from "@/lib/authz";
 import { encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
@@ -39,16 +39,7 @@ export type AccessRoleEditState = ActionState;
 export type FortiGateCreateState = ActionState & {
   customerId?: string;
   deviceId?: string;
-  certificate?: FortiGateCertificateInspection;
 };
-
-class FortiGateCertificateAcceptanceRequired extends Error {
-  constructor(readonly certificate: FortiGateCertificateInspection) {
-    super(certificate.selfSigned
-      ? "De FortiGate gebruikt een self-signed certificaat. Controleer de gegevens en accepteer dit certificaat expliciet."
-      : "Het FortiGate-certificaat kan niet worden gevalideerd. Controleer de gegevens en accepteer dit certificaat expliciet.");
-  }
-}
 
 function bool(value: FormDataEntryValue | null) {
   return value === "on" || value === "true";
@@ -1336,10 +1327,6 @@ export async function createFortiGate(formData: FormData) {
   }
   normalizeFortiGateBaseUrl(parsed.managementUrl, parsed.httpsPort, parsed.tlsVerify);
   const certificate = await inspectFortiGateCertificate(parsed.managementUrl, parsed.httpsPort);
-  const acceptedFingerprint = String(formData.get("acceptedTlsFingerprint") ?? "").replace(/[^a-fA-F0-9]/g, "").toUpperCase();
-  if (!certificate.trusted && acceptedFingerprint !== certificate.fingerprint) {
-    throw new FortiGateCertificateAcceptanceRequired(certificate);
-  }
   const apiTokenEncrypted = encryptSecret(parsed.apiToken);
   const inventory = await probeFortiGateConnection({
     managementUrl: parsed.managementUrl,
@@ -1392,52 +1379,11 @@ export async function createFortiGateWithState(_state: FortiGateCreateState, for
     const device = await createFortiGate(formData);
     return { ok: true, message: "FortiGate is opgeslagen.", ...device };
   } catch (error) {
-    if (error instanceof FortiGateCertificateAcceptanceRequired) {
-      return { ok: false, message: error.message, certificate: error.certificate };
-    }
     return {
       ok: false,
       message: error instanceof Error ? error.message : "FortiGate kon niet worden opgeslagen."
     };
   }
-}
-
-export async function acceptFortiGateCertificate(formData: FormData) {
-  const user = await requireTenantUser();
-  const id = String(formData.get("id") ?? "");
-  const expectedFingerprint = String(formData.get("fingerprint") ?? "").replace(/[^a-fA-F0-9]/g, "").toUpperCase();
-  if (!boolField(formData, "acceptCertificate")) throw new Error("Bevestig expliciet dat je dit specifieke certificaat accepteert.");
-  const device = await prisma.fortiGate.findUniqueOrThrow({ where: { id }, include: { customer: true } });
-  assertTenantAccess(user, device.customer.tenantId);
-  await assertOperationalTenant(user, device.customer.tenantId);
-  await assertPermission(user, "fortigates.update");
-  const certificate = await inspectFortiGateCertificate(device.managementUrl, device.httpsPort);
-  if (certificate.trusted) throw new Error("Het certificaat is inmiddels geldig en hoeft niet handmatig geaccepteerd te worden.");
-  if (certificate.fingerprint !== expectedFingerprint) {
-    throw new Error("Het FortiGate-certificaat veranderde tijdens de controle. Vernieuw de pagina en controleer het nieuwe certificaat.");
-  }
-  await prisma.fortiGate.update({
-    where: { id: device.id },
-    data: {
-      tlsVerify: true,
-      tlsCertificateFingerprint: certificate.fingerprint,
-      tlsCertificateSubject: certificate.subject,
-      tlsCertificateIssuer: certificate.issuer,
-      tlsCertificateValidFrom: new Date(certificate.validFrom),
-      tlsCertificateValidTo: new Date(certificate.validTo),
-      tlsCertificateAcceptedAt: new Date()
-    }
-  });
-  await auditLog({
-    action: "fortigate.certificate.accepted",
-    tenantId: device.customer.tenantId,
-    userId: user.id,
-    entity: "FortiGate",
-    entityId: device.id,
-    metadata: { fingerprint: certificate.fingerprint, selfSigned: certificate.selfSigned, validationError: certificate.validationError }
-  });
-  revalidatePath(`/customers/${device.customerId}/fortigates/${device.id}`);
-  redirect(`/customers/${device.customerId}/fortigates/${device.id}`);
 }
 
 export async function updateFortiGate(formData: FormData) {
